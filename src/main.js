@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const pythonWorker = require('./services/PythonWorkerService');
 
 let mainWindow;
@@ -15,29 +16,55 @@ function createWindow() {
             enableRemoteModule: false,
             preload: path.join(__dirname, 'preload.js')
         },
-        icon: path.join(__dirname, 'assets/icon.png'), // optional
-        show: false // Don't show until ready
+        icon: path.join(__dirname, 'assets/icon.png'),
+        show: false
     });
 
-    // In development: load from React dev server
-    // In production: load from built HTML file
     if (process.env.NODE_ENV === 'development') {
         mainWindow.loadURL('http://localhost:3000');
         mainWindow.webContents.openDevTools();
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        // Robust production loader: prefer an unpacked copy in resources/dist,
+        // fallback to the app.asar copy under __dirname/../dist
+        const unpackedIndex = path.join(process.resourcesPath, 'dist', 'index.html');
+        const asarIndex = path.join(__dirname, '../dist/index.html');
+
+        console.log('[MAIN] NODE_ENV=production. Checking for index files:');
+        console.log('[MAIN] unpackedIndex =', unpackedIndex);
+        console.log('[MAIN] asarIndex =', asarIndex);
+        try {
+            console.log('[MAIN] resourcesPath listing:', fs.readdirSync(process.resourcesPath));
+        } catch (e) {
+            console.warn('[MAIN] cannot read resourcesPath:', e && e.message);
+        }
+
+        if (fs.existsSync(unpackedIndex)) {
+            console.log('[MAIN] Loading unpacked index from resources/dist');
+            mainWindow.loadFile(unpackedIndex);
+        } else if (fs.existsSync(asarIndex)) {
+            console.log('[MAIN] Loading index from app.asar (fallback)');
+            mainWindow.loadFile(asarIndex);
+        } else {
+            console.error('[MAIN] ERROR: index.html not found in either resources/dist or app.asar');
+            // Show a minimal error page so user isn't left with a blank window
+            const fallbackHtml = `data:text/html,
+                <h2>Application startup error</h2>
+                <p>index.html not found. Please reinstall the application.</p>`;
+            mainWindow.loadURL(fallbackHtml);
+        }
     }
 
-    // Show window when ready to prevent visual flash
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
     });
 
-    // Handle window being closed
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 }
+
+// ... ipcMain handlers and app event listeners remain unchanged
+
 
 ipcMain.handle('login', async (event, credentials) => {
     try {

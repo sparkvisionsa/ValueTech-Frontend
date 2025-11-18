@@ -1,16 +1,72 @@
 {
   "name": "electron-python-app",
   "version": "1.0.0",
-  "description": "",
-  "license": "ISC",
+  "description": "Electron + Python desktop app",
   "author": "",
+  "license": "ISC",
   "type": "commonjs",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "webpack --mode development",
-    "dev": "npm run build && electron .",
-    "watch": "webpack --mode development --watch"
+    "build": "webpack --mode production",
+    "build-react": "npm run build",
+    "dev": "npm run build-react && electron .",
+    "build-py-worker": "bash build-scripts/build_py_worker.sh",
+    "prepare-build": "npm run build-react && npm run build-py-worker",
+    "dist-linux": "npm run prepare-build && electron-builder --linux --x64",
+    "build-win": "powershell -ExecutionPolicy Bypass -File build-scripts\\build_win_release.ps1",
+    "dist-win": "npm run build-win && npx electron-builder --win --x64"
+  },
+  "build": {
+    "productName": "AutomationApp",
+    "appId": "com.example.automationapp",
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "preload.js",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/python_exe",
+        "to": "python_exe",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/win_python_exe",
+        "to": "python_exe",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "${name}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "${name}-setup-${version}.${ext}"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "afterPack": "build/afterPack.js"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -22,6 +78,7 @@
     "babel-loader": "^10.0.0",
     "css-loader": "^7.1.2",
     "electron": "^39.2.1",
+    "electron-builder": "^24.9.1",
     "html-webpack-plugin": "^5.6.4",
     "style-loader": "^4.0.0",
     "webpack": "^5.102.1",
