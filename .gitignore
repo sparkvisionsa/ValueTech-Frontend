@@ -2,3 +2,7 @@
 node_modules/
 build/
 release/
+
+__pycache__/
+*.py[cod]
+*$py.class
