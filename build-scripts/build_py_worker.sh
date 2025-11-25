@@ -30,12 +30,11 @@ PY_DISTPATH="build/pyinstaller_build/dist"
 PY_WORKPATH="build/pyinstaller_build/build"
 PY_SPECPATH="build/pyinstaller_build"
 echo "[BUILD] Running PyInstaller (dist -> ${PY_DISTPATH})..."
-pyinstaller --onedir --noconfirm \
-    --name excec_worker \
-    --distpath "${PY_DISTPATH}" \
-    --workpath "${PY_WORKPATH}" \
-    --specpath "${PY_SPECPATH}" \
-    src/scripts/worker.py
+pyinstaller --noconfirm \
+  --distpath "${PY_DISTPATH}" \
+  --workpath "${PY_WORKPATH}" \
+  build-scripts/exec_worker.spec
+
 
 # PyInstaller created ${PY_DISTPATH}/excec_worker
 if [ ! -d "${PY_DISTPATH}/excec_worker" ]; then

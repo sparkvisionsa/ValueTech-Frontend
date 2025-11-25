@@ -12,6 +12,9 @@ function registerIpcHandlers() {
     ipcMain.handle('create-macros', reportHandlers.handleCreateMacros);
     ipcMain.handle('extract-asset-data', reportHandlers.handleExtractAssetData);
     ipcMain.handle('grab-macro-ids', reportHandlers.handleGrabMacroIds);
+    ipcMain.handle('macro-fill', reportHandlers.handleMacroFill);
+    ipcMain.handle('full-check', reportHandlers.handleFullCheck);
+    ipcMain.handle('half-check', reportHandlers.handleHalfCheck);
 
     // Worker handlers
     ipcMain.handle('ping-worker', workerHandlers.handlePing);
@@ -38,6 +41,9 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('create-macros');
     ipcMain.removeAllListeners('extract-asset-data');
     ipcMain.removeAllListeners('grab-macro-ids');
+    ipcMain.removeAllListeners('macro-fill');
+    ipcMain.removeAllListeners('full-check');
+    ipcMain.removeAllListeners('half-check');
 
     ipcMain.removeAllListeners('check-server-health');
 

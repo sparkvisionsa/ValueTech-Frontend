@@ -1,25 +1,3 @@
-<#
-  build_win_release.ps1
-  Run from project root (or call via npm script).
-
-  What it does:
-    - Builds frontend (webpack / npm run build)
-    - Creates/activates Windows venv (.venv) if present
-    - Installs requirements and PyInstaller
-    - Runs PyInstaller (onedir) on src\scripts\worker.py
-    - Copies PyInstaller output into build\win_python_exe
-    - Runs electron-builder to produce Windows artifacts
-
-  Usage:
-    Open PowerShell (non-elevated is okay), from project root:
-      Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-      .\build-scripts\build_win_release.ps1
-
-  Notes:
-    - Adjust paths below if your repo layout differs.
-    - Ensure Node + npm + python are on PATH.
-#>
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 

@@ -158,7 +158,7 @@ async def bulk_inject_inputs(page, record, field_map, field_types):
 
     await page.evaluate(js)
 
-async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False, control_state=None, report_id=None):
+async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False, report_id=None):
     try:
         
         await bulk_inject_inputs(page, record, field_map, field_types)
@@ -197,7 +197,10 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
                 error_div = await wait_for_element(page, "div.alert.alert-danger", timeout=5)
                 if error_div and retries < max_retries:
                     await asyncio.sleep(1)
-                    return await fill_form(page, record, field_map, field_types, is_last_step, retries+1, max_retries, skip_special_fields, control_state, report_id)
+                    return await fill_form(
+                        page, record, field_map, 
+                        field_types, is_last_step, retries+1, 
+                        max_retries, skip_special_fields, report_id)
         else:
             save_btn = await wait_for_element(page, "input[type='submit']", timeout=10)
             if save_btn:

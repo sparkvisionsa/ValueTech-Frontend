@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createMacros: (reportId, macroCount, tabsNum, batchSize) => safeInvoke('create-macros', reportId, macroCount, tabsNum, batchSize),
     extractAssetData: (excelFilePath) => safeInvoke('extract-asset-data', excelFilePath),
     grabMacroIds: (reportId, tabsNum) => safeInvoke('grab-macro-ids', reportId, tabsNum),
+    macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
+    fullCheck: (reportId, tabsNum) => safeInvoke('full-check', reportId, tabsNum),
+    halfCheck: (reportId, tabsNum) => safeInvoke('half-check', reportId, tabsNum),
 
     // Worker
     showOpenDialog: () => safeInvoke('show-open-dialog'),

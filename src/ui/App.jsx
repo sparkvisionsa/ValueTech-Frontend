@@ -10,6 +10,7 @@ import AssetCreate from './screens/AssetCreate';
 import UploadExcel from './screens/UploadExcel';
 import AddCommonFields from './screens/AddCommonFields';
 import GrabMacroIds from './screens/GrabMacroIds';
+import SubmitMacro from './screens/MacroEdits';
 
 
 
@@ -38,6 +39,9 @@ const App = () => {
 
             case 'grab-macro-ids':
                 return <GrabMacroIds />;
+
+            case 'macro-edit':
+                return <SubmitMacro />;
 
             default:
                 return <LoginForm />;

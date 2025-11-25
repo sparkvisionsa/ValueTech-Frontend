@@ -7,6 +7,9 @@ from scripts.loginFlow.login import startLogin, submitOtp
 from scripts.submission.validateReport import validate_report
 from scripts.submission.createMacros import run_create_assets
 from scripts.submission.grabMacroIds import get_all_macro_ids_parallel
+from scripts.submission.macroFiller import run_macro_edit
+
+from scripts.submission.checkMacroStatus import RunCheckMacroStatus, RunHalfCheckMacroStatus
 
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -34,7 +37,11 @@ async def command_handler():
                     "?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
                     "&scope=openid&response_type=code"
                 )
-                result = await startLogin(page, cmd.get("email", ""), cmd.get("password", ""), cmd.get("recordId"))
+                result = await startLogin(
+                    page, 
+                    cmd.get("email", ""), cmd.get("password", ""), 
+                    cmd.get("method", ""))
+                
                 result["commandId"] = cmd.get("commandId")
                 print(json.dumps(result), flush=True)
                 
@@ -89,6 +96,38 @@ async def command_handler():
 
                 print(json.dumps(result), flush=True)
 
+            elif action == "macro-edit":
+                browser = await get_browser()
+
+                report_id = cmd.get("reportId")
+                tabs_num = int(cmd.get("tabsNum", 3))
+
+                result = await run_macro_edit(browser, report_id, tabs_num)
+                result["commandId"] = cmd.get("commandId")
+
+                print(json.dumps(result), flush=True)
+
+            elif action == "full-check":
+                browser = await get_browser()
+
+                report_id = cmd.get("reportId")
+                tabs_num = int(cmd.get("tabsNum", 3))
+
+                result = await RunCheckMacroStatus(browser, report_id, tabs_num)
+                result["commandId"] = cmd.get("commandId")
+
+                print(json.dumps(result), flush=True)
+
+            elif action == "half-check":
+                browser = await get_browser()
+
+                report_id = cmd.get("reportId")
+                tabs_num = int(cmd.get("tabsNum", 3))
+
+                result = await RunHalfCheckMacroStatus(browser, report_id, tabs_num)
+                result["commandId"] = cmd.get("commandId")
+
+                print(json.dumps(result), flush=True)
                 
             elif action == "close":
                 await closeBrowser()

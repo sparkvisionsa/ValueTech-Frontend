@@ -3,9 +3,10 @@ const pythonAPI = require('../../services/python/PythonAPI');
 const authHandlers = {
     async handleLogin(event, credentials) {
         try {
+
             console.log('[MAIN] Received login request:', credentials.email);
 
-            const result = await pythonAPI.auth.login(credentials.email, credentials.password);
+            const result = await pythonAPI.auth.login(credentials.email, credentials.password, credentials.method);
 
             if (result.status === 'OTP_REQUIRED') {
                 return { status: 'OTP_REQUIRED', message: 'Please enter OTP' };

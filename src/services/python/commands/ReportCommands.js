@@ -34,6 +34,30 @@ class ReportCommands {
             tabsNum
         });
     }
+
+    async macroFill(reportId, tabsNum) {
+        return this._sendCommand({
+            action: 'macro-edit',
+            reportId,
+            tabsNum
+        });
+    }
+
+    async fullCheck(reportId, tabsNum) {
+        return this._sendCommand({
+            action: 'full-check',
+            reportId,
+            tabsNum
+        });
+    }
+
+    async halfCheck(reportId, tabsNum) {
+        return this._sendCommand({
+            action: 'half-check',
+            reportId,
+            tabsNum
+        });
+    }
 }
 
 module.exports = ReportCommands;

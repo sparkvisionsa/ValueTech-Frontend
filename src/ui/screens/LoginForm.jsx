@@ -4,17 +4,18 @@ const LoginForm = () => {
     const [formData, setFormData] = useState({
         email: '',
         password: '',
-        otp: ''
+        otp: '',
+        method: 'EMAIL' // Default method
     });
     const [showOtp, setShowOtp] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: value
+            [name]: type === 'checkbox' ? (checked ? 'SMS' : 'EMAIL') : value
         }));
     };
 
@@ -25,16 +26,18 @@ const LoginForm = () => {
 
         try {
             if (!showOtp) {
-                // First stage: Email + Password
+                // First stage: Email + Password + Method
                 console.log('Submitting credentials:', {
                     email: formData.email,
-                    password: formData.password
+                    password: formData.password,
+                    method: formData.method
                 });
 
                 if (window.electronAPI && window.electronAPI.login) {
                     const result = await window.electronAPI.login({
                         email: formData.email,
-                        password: formData.password
+                        password: formData.password,
+                        method: formData.method
                     });
 
                     console.log('Login result:', result);
@@ -42,7 +45,7 @@ const LoginForm = () => {
                     if (result.status === 'OTP_REQUIRED') {
                         setShowOtp(true);
                         setMessage({
-                            text: result.message || 'Two-factor authentication required. Please enter your OTP.',
+                            text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
                             type: 'info'
                         });
                     } else if (result.status === 'SUCCESS') {
@@ -88,7 +91,7 @@ const LoginForm = () => {
     };
 
     const handleReset = () => {
-        setFormData({ email: '', password: '', otp: '' });
+        setFormData({ email: '', password: '', otp: '', method: 'EMAIL' });
         setShowOtp(false);
         setMessage({ text: '', type: '' });
     };
@@ -147,11 +150,27 @@ const LoginForm = () => {
                         />
                     </div>
 
+                    {/* SMS Checkbox */}
+                    <div className="flex items-center">
+                        <input
+                            type="checkbox"
+                            id="method"
+                            name="method"
+                            checked={formData.method === 'SMS'}
+                            onChange={handleInputChange}
+                            disabled={showOtp || isLoading}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="method" className="ml-2 block text-sm text-gray-700">
+                            📱 Use SMS for two-factor authentication
+                        </label>
+                    </div>
+
                     {/* Conditional OTP Field */}
                     {showOtp && (
                         <div>
                             <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
-                                🔑 One-Time Password
+                                {formData.method === 'SMS' ? '📱' : '🔑'} One-Time Password
                             </label>
                             <input
                                 type="text"
@@ -160,14 +179,17 @@ const LoginForm = () => {
                                 value={formData.otp}
                                 onChange={handleInputChange}
                                 disabled={isLoading}
-                                placeholder="Enter 6-digit OTP"
+                                placeholder={`Enter ${formData.method === 'SMS' ? 'SMS' : '6-digit'} code`}
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                maxLength="6"
-                                pattern="[0-9]{6}"
+                                maxLength={formData.method === 'SMS' ? undefined : "6"}
+                                pattern={formData.method === 'SMS' ? undefined : "[0-9]{6}"}
                                 required
                             />
                             <p className="mt-2 text-sm text-gray-500">
-                                Check your authenticator app for the code
+                                {formData.method === 'SMS'
+                                    ? 'Check your phone for the SMS code'
+                                    : 'Check your authenticator app for the code'
+                                }
                             </p>
                         </div>
                     )}

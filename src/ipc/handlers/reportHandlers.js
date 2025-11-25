@@ -56,10 +56,6 @@ const reportHandlers = {
     },
 
     async handleExtractAssetData(event, excelFilePathOrDialogResult, options = {}) {
-        // excelFilePathOrDialogResult can be:
-        // - a string path,
-        // - an object returned from showOpenDialog: { status, filePaths, cancelled }
-        // - an array of paths (rare)
         try {
             console.log('[MAIN] handleExtractAssetData called with:', { excelFilePathOrDialogResult, options });
 
@@ -113,9 +109,34 @@ const reportHandlers = {
             console.error('[MAIN] Grab macro IDs error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
-    }
+    },
+
+    async handleMacroFill(event, reportId, tabsNum) {
+        try {
+            return await pythonAPI.report.macroFill(reportId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Macro fill error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleFullCheck(event, reportId, tabsNum) {
+        try {
+            return await pythonAPI.report.fullCheck(reportId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Full check error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleHalfCheck(event, reportId, tabsNum) {
+        try {
+            return await pythonAPI.report.halfCheck(reportId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Half check error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
 };
 
 module.exports = reportHandlers;
-
-//1560665

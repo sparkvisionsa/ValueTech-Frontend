@@ -10,9 +10,9 @@ const reportExistenceCheck = async (reportId) => {
     return await httpClient.get(url);
 }
 
-const addCommonFields = async (reportId, inspectionDate, region, city) => {
+const addCommonFields = async (reportId, inspectionDate, region, city, ownerName) => {
     const url = '/report/addCommonFields';
-    return await httpClient.put(url, { reportId, inspectionDate, region, city });
+    return await httpClient.put(url, { reportId, inspectionDate, region, city, ownerName });
 }
 
 module.exports = {

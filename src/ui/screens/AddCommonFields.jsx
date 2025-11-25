@@ -7,7 +7,8 @@ import {
     AlertTriangle,
     RefreshCw,
     Eye,
-    EyeOff
+    EyeOff,
+    User
 } from "lucide-react";
 import { addCommonFields } from "../../api/report";
 
@@ -35,6 +36,7 @@ const AddCommonFields = () => {
     const [inspectionDate, setInspectionDate] = useState("");
     const [region, setRegion] = useState("");
     const [city, setCity] = useState("");
+    const [ownerName, setOwnerName] = useState("");
     const [availableCities, setAvailableCities] = useState([]);
 
     const [isUpdating, setIsUpdating] = useState(false);
@@ -80,9 +82,9 @@ const AddCommonFields = () => {
 
         try {
             console.log(`Adding common fields to report: ${reportId}`);
-            console.log(`Fields - Date: ${inspectionDate}, Region: ${region}, City: ${city}`);
+            console.log(`Fields - Date: ${inspectionDate}, Region: ${region}, City: ${city}, Owner: ${ownerName}`);
 
-            const result = await addCommonFields(reportId, inspectionDate, region, city);
+            const result = await addCommonFields(reportId, inspectionDate, region, city, ownerName);
             console.log("Add common fields result:", result);
 
             setUpdateResult(result.data);
@@ -113,6 +115,7 @@ const AddCommonFields = () => {
         setInspectionDate("");
         setRegion("");
         setCity("");
+        setOwnerName("");
         setAvailableCities([]);
         setError("");
         setSuccess(false);
@@ -193,7 +196,11 @@ const AddCommonFields = () => {
                                     <div className="text-sm text-gray-500">City</div>
                                     <div className="font-semibold text-green-600">{city}</div>
                                 </div>
-                                <div className="bg-white p-4 rounded-lg border border-gray-200 md:col-span-2">
+                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                    <div className="text-sm text-gray-500">Owner Name</div>
+                                    <div className="font-semibold text-green-600">{ownerName || 'Not provided'}</div>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-gray-200">
                                     <div className="text-sm text-gray-500">Assets Updated</div>
                                     <div className="font-semibold text-green-600">{assetData.length} assets</div>
                                 </div>
@@ -321,7 +328,7 @@ const AddCommonFields = () => {
                         Back
                     </button>
                     <h1 className="text-3xl font-bold text-gray-800 mb-2">📍 Add Common Fields</h1>
-                    <p className="text-gray-600">Add common inspection date, region, and city to all assets in a report</p>
+                    <p className="text-gray-600">Add common inspection date, region, city, and owner name to all assets in a report</p>
                 </div>
 
                 {/* Main Form */}
@@ -427,6 +434,30 @@ const AddCommonFields = () => {
                             </p>
                         </div>
 
+                        {/* Owner Name Input */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Owner Name
+                            </label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                                <input
+                                    type="text"
+                                    value={ownerName}
+                                    onChange={(e) => {
+                                        setOwnerName(e.target.value);
+                                        setError("");
+                                    }}
+                                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    placeholder="Enter owner name (optional)"
+                                    disabled={isUpdating}
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Enter the owner name (optional)
+                            </p>
+                        </div>
+
                         {/* Information Box */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <div className="flex items-center gap-3">
@@ -434,8 +465,8 @@ const AddCommonFields = () => {
                                 <div>
                                     <p className="font-medium text-blue-800">About This Process</p>
                                     <p className="text-sm text-blue-600">
-                                        This will add the same inspection date, region, and city to all assets in the specified report.
-                                        The report must already exist in the system.
+                                        This will add the same inspection date, region, city, and owner name to all assets in the specified report.
+                                        The report must already exist in the system. Owner name is optional.
                                     </p>
                                 </div>
                             </div>
@@ -487,3 +518,5 @@ const AddCommonFields = () => {
 };
 
 export default AddCommonFields;
+
+

@@ -5,11 +5,20 @@ from scripts.core.browser import closeBrowser
 from scripts.core.utils import wait_for_element
 from .navigation import post_login_navigation
 
-async def startLogin(page, email, password, record_id=None):
+async def startLogin(page, email, password, method):
     try:
+
+        if method == "SMS":
+            method_selector = await wait_for_element(page, "#otpMethod", 10)
+            if method_selector:
+                sms_option = await method_selector.query_selector("[value='SMS']")
+                if sms_option:
+                    await sms_option.select_option()
+                    await asyncio.sleep(0.5)
+                    
         email_input = await wait_for_element(page, "#username", 30)
         if not email_input:
-            msg = {"status": "FAILED", "recordId": record_id, "error": "Email input not found"}
+            msg = {"status": "FAILED", "error": "Email input not found"}
             print(json.dumps(msg), flush=True)
             return msg
 
@@ -17,7 +26,7 @@ async def startLogin(page, email, password, record_id=None):
 
         password_input = await wait_for_element(page, "input[type='password']", 30)
         if not password_input:
-            msg = {"status": "FAILED", "recordId": record_id, "error": "Password input not found"}
+            msg = {"status": "FAILED", "error": "Password input not found"}
             print(json.dumps(msg), flush=True)
             return msg
 
@@ -25,7 +34,7 @@ async def startLogin(page, email, password, record_id=None):
 
         login_btn = await wait_for_element(page, "#kc-login", 30)
         if not login_btn:
-            msg = {"status": "FAILED", "recordId": record_id, "error": "Login button not found"}
+            msg = {"status": "FAILED", "error": "Login button not found"}
             print(json.dumps(msg), flush=True)
             return msg
 
@@ -38,21 +47,21 @@ async def startLogin(page, email, password, record_id=None):
 
         otp_field = await wait_for_element(page, "#otp, input[type='tel'], input[name='otp'], #emailCode, #verificationCode", 15)
         if otp_field:
-            msg = {"status": "OTP_REQUIRED", "recordId": record_id}
+            msg = {"status": "OTP_REQUIRED"}
             return msg
 
         dashboard = await wait_for_element(page, "#dashboard", 10)
         if dashboard:
-            msg = {"status": "LOGIN_SUCCESS", "recordId": record_id}
+            msg = {"status": "LOGIN_SUCCESS"}
             print(json.dumps(msg), flush=True)
             return msg
 
-        msg = {"status": "FAILED", "recordId": record_id, "error": "Unknown login state"}
+        msg = {"status": "FAILED", "error": "Unknown login state"}
         return msg
 
     except Exception as e:
         tb = traceback.format_exc()
-        msg = {"status": "FAILED", "recordId": record_id, "error": str(e), "traceback": tb}
+        msg = {"status": "FAILED", "error": str(e), "traceback": tb}
         print(json.dumps(msg), flush=True)
         return msg
 
