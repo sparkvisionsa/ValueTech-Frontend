@@ -8,7 +8,7 @@ import {
     ClipboardList,
     ListChecks,
     Edit3,
-    CircleDot
+    CircleDot,
 } from 'lucide-react';
 
 const Sidebar = ({ currentView, onViewChange }) => {
@@ -21,6 +21,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'common-fields', label: 'Add Common Fields', icon: ClipboardList },
         { id: 'grab-macro-ids', label: 'Grab Macro IDs', icon: ListChecks },
         { id: 'macro-edit', label: 'Edit Macro', icon: Edit3 },
+        { id: 'delete-report', label: 'Delete Report', icon: CircleDot }
     ];
 
     return (

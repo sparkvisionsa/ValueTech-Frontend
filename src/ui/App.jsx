@@ -11,7 +11,7 @@ import UploadExcel from './screens/UploadExcel';
 import AddCommonFields from './screens/AddCommonFields';
 import GrabMacroIds from './screens/GrabMacroIds';
 import SubmitMacro from './screens/MacroEdits';
-
+import DeleteReport from './screens/DeleteReport';
 
 
 const App = () => {
@@ -42,6 +42,9 @@ const App = () => {
 
             case 'macro-edit':
                 return <SubmitMacro />;
+
+            case 'delete-report':
+                return <DeleteReport />;
 
             default:
                 return <LoginForm />;

@@ -79,6 +79,29 @@ class ReportCommands {
             tabsNum
         });
     }
+
+    async deleteReport(reportId, maxRounds) {
+        return this._sendCommand({
+            action: 'delete-report',
+            reportId,
+            maxRounds
+        });
+    }
+
+    async deleteIncompleteAssets(reportId, maxRounds) {
+        return this._sendCommand({
+            action: 'delete-incomplete-assets',
+            reportId,
+            maxRounds
+        });
+    }
+
+    async handleCancelledReport(reportId) {
+        return this._sendCommand({
+            action: 'handle-cancelled-report',
+            reportId
+        });
+    }
 }
 
 module.exports = ReportCommands;

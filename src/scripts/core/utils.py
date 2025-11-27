@@ -1,4 +1,5 @@
 import time, asyncio, sys
+from datetime import datetime
 
 async def wait_for_element(page, selector, timeout=30, check_interval=1):
     start_time = time.time()
@@ -11,6 +12,11 @@ async def wait_for_element(page, selector, timeout=30, check_interval=1):
             pass
         await asyncio.sleep(check_interval)
     return None
+
+def log(msg: str, level: str = "INFO"):
+    stamp = datetime.now().strftime("%H:%M:%S")
+    icons = {"INFO":"ℹ️", "OK":"✅", "ERR":"❌", "STEP":"👉"}
+    print(f"{icons.get(level,'ℹ️')} [{stamp}] {msg}", flush=True)
 
 async def safe_query_selector_all(page, selector):
     """Safely query multiple elements without stale element issues"""

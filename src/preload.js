@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fullCheck: (reportId, tabsNum) => safeInvoke('full-check', reportId, tabsNum),
     halfCheck: (reportId, tabsNum) => safeInvoke('half-check', reportId, tabsNum),
 
+    deleteReport: (reportId, maxRounds) => safeInvoke('delete-report', reportId, maxRounds),
+    deleteIncompleteAssets: (reportId, maxRounds) => safeInvoke('delete-incomplete-assets', reportId, maxRounds),
+    handleCancelledReport: (reportId) => safeInvoke('handle-cancelled-report', reportId),
+
     // Progress listener for macro fill
     onMacroFillProgress: (callback) => {
         const subscription = (event, data) => callback(data);

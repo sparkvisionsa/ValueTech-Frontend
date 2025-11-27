@@ -188,6 +188,33 @@ const reportHandlers = {
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },
+
+    async deleteReport(event, reportId, maxRounds) {
+        try {
+            return await pythonAPI.report.deleteReport(reportId, maxRounds);
+        } catch (err) {
+            console.error('[MAIN] Delete report error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async deleteIncompleteAssets(event, reportId, maxRounds) {
+        try {
+            return await pythonAPI.report.deleteIncompleteAssets(reportId, maxRounds);
+        } catch (err) {
+            console.error('[MAIN] Delete incomplete assets error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleCancelledReport(event, reportId) {
+        try {
+            return await pythonAPI.report.handleCancelledReport(reportId);
+        } catch (err) {
+            console.error('[MAIN] Handle cancelled report error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
 };
 
 module.exports = reportHandlers;

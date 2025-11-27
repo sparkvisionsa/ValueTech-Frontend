@@ -16,6 +16,10 @@ from scripts.submission.macroFiller import (
 
 from scripts.submission.checkMacroStatus import RunCheckMacroStatus, RunHalfCheckMacroStatus
 
+from scripts.delete.reportDelete import delete_report_flow
+from scripts.delete.deleteIncompleteAssets import delete_incomplete_assets_flow
+from scripts.delete.cancelledReportHandler import handle_cancelled_report
+
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -165,6 +169,38 @@ async def handle_command(cmd):
         tabs_num = int(cmd.get("tabsNum", 3))
 
         result = await RunHalfCheckMacroStatus(browser, report_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "delete-report":
+        browser = await get_browser()
+
+        report_id = cmd.get("reportId")
+        max_rounds = int(cmd.get("maxRounds", 10))
+
+        result = await delete_report_flow(report_id=report_id, max_rounds=max_rounds)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "delete-incomplete-assets":
+        browser = await get_browser()
+
+        report_id = cmd.get("reportId")
+        max_rounds = int(cmd.get("maxRounds", 10))
+
+        result = await delete_incomplete_assets_flow(report_id=report_id, max_rounds=max_rounds)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "handle-cancelled-report":
+        browser = await get_browser()
+
+        report_id = cmd.get("reportId")
+
+        result = await handle_cancelled_report(report_id=report_id)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
