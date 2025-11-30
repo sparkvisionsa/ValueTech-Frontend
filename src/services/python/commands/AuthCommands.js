@@ -32,6 +32,19 @@ class AuthCommands {
         });
     }
 
+    async getCompanies() {
+        return this._sendCommand({
+            action: 'get-companies'
+        });
+    }
+
+    async navigateToCompany(url) {
+        return this._sendCommand({
+            action: 'navigate-to-company',
+            url
+        });
+    }
+
     async ping() {
         return this._sendCommand({
             action: 'ping'

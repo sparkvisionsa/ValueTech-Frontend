@@ -6,6 +6,8 @@ function registerIpcHandlers() {
     ipcMain.handle('login', authHandlers.handleLogin);
     ipcMain.handle('submit-otp', authHandlers.handleSubmitOtp);
     ipcMain.handle('check-status', authHandlers.handleCheckStatus);
+    ipcMain.handle('get-companies', authHandlers.handleGetCompanies);
+    ipcMain.handle('navigate-to-company', authHandlers.handleNavigateToCompany);
 
     // Report handlers
     ipcMain.handle('validate-report', reportHandlers.handleValidateReport);
@@ -37,10 +39,11 @@ function registerIpcHandlers() {
 }
 
 function unregisterIpcHandlers() {
-    // Remove all IPC handlers to prevent memory leaks
     ipcMain.removeAllListeners('login');
     ipcMain.removeAllListeners('submit-otp');
     ipcMain.removeAllListeners('check-status');
+    ipcMain.removeAllListeners('get-companies');
+    ipcMain.removeAllListeners('navigate-to-company');
 
     ipcMain.removeAllListeners('ping-worker');
     ipcMain.removeAllListeners('worker-status');

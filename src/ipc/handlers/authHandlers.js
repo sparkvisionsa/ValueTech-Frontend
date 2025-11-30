@@ -65,8 +65,57 @@ const authHandlers = {
                 message: result?.message || 'Status check failed'
             };
         }
-    }
+    },
 
+    async handleGetCompanies(event) {
+        try {
+            console.log('[MAIN] Received get companies request');
+
+            const result = await pythonAPI.auth.getCompanies();
+
+            if (!result) return { status: 'ERROR', error: 'Failed to get companies' };
+
+            console.log("Result at handler:", result);
+
+            // Make sure all properties are passed through
+            return {
+                status: result.status,
+                data: result.data
+            };
+
+        } catch (error) {
+            console.error('[MAIN] Get companies error:', error);
+            return {
+                status: 'ERROR',
+                error: error.message
+            };
+        }
+    },
+
+    async handleNavigateToCompany(event, url) {
+        try {
+            console.log('[MAIN] Received navigate to company request:', url);
+
+            const result = await pythonAPI.auth.navigateToCompany(url);
+
+            if (!result) return { status: 'ERROR', error: 'Failed to navigate to company' };
+
+            console.log("Result at handler:", result);
+
+            // Make sure all properties are passed through
+            return {
+                status: result.status,
+                data: result.data
+            };
+
+        } catch (error) {
+            console.error('[MAIN] Navigate to company error:', error);
+            return {
+                status: 'ERROR',
+                error: error.message
+            };
+        }
+    }
 };
 
 module.exports = authHandlers;

@@ -12,6 +12,7 @@ import AddCommonFields from './screens/AddCommonFields';
 import GrabMacroIds from './screens/GrabMacroIds';
 import SubmitMacro from './screens/MacroEdits';
 import DeleteReport from './screens/DeleteReport';
+import GetCompanies from './screens/GetCompanies';
 
 
 const App = () => {
@@ -45,6 +46,9 @@ const App = () => {
 
             case 'delete-report':
                 return <DeleteReport />;
+
+            case 'get-companies':
+                return <GetCompanies />
 
             default:
                 return <LoginForm />;

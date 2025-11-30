@@ -1,9 +1,8 @@
-// services/httpClient.js
 const axios = require('axios');
 
 const httpClient = axios.create({
-  baseURL: 'http://localhost:3000/api',
-  timeout: 5000, // adjust as needed
+  baseURL: 'https://future-electron-backend.onrender.com/api',
+  timeout: 50000,
   headers: {
     'Content-Type': 'application/json'
   }

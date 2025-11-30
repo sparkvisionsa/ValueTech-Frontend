@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     login: (credentials) => safeInvoke('login', credentials),
     submitOtp: (otp) => safeInvoke('submit-otp', otp),
     checkStatus: () => safeInvoke('check-status'),
+    getCompanies: () => safeInvoke('get-companies'),
+    navigateToCompany: (url) => safeInvoke('navigate-to-company', url),
 
     // Reports
     validateReport: (reportId) => safeInvoke('validate-report', reportId),

@@ -20,6 +20,9 @@ from scripts.delete.reportDelete import delete_report_flow
 from scripts.delete.deleteIncompleteAssets import delete_incomplete_assets_flow
 from scripts.delete.cancelledReportHandler import handle_cancelled_report
 
+from scripts.loginFlow.getCompanies import get_companies
+from scripts.loginFlow.companyNavigate import navigate_to_company
+
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -201,6 +204,22 @@ async def handle_command(cmd):
         report_id = cmd.get("reportId")
 
         result = await handle_cancelled_report(report_id=report_id)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "get-companies":
+        result = await get_companies()
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "navigate-to-company":
+        browser = await get_browser()
+
+        url = cmd.get("url")
+
+        result = await navigate_to_company(browser, url)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
