@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css'; // Add this line
 import Layout from './components/Layout';
+import { SessionProvider, useSession } from './context/SessionContext';
 
+import Registration from './screens/Registration';
 import LoginForm from './screens/LoginForm';
+import Profile from './screens/Profile';
 import CheckBrowser from './screens/CheckBrowser';
 import ValidateReport from './screens/ValidateReport';
 import AssetCreate from './screens/AssetCreate';
@@ -13,15 +16,25 @@ import GrabMacroIds from './screens/GrabMacroIds';
 import SubmitMacro from './screens/MacroEdits';
 import DeleteReport from './screens/DeleteReport';
 import GetCompanies from './screens/GetCompanies';
+import Packages from './screens/Packages';
+import RechargeBalance from './screens/RechargeBalance';
 
-
-const App = () => {
-    const [currentView, setCurrentView] = useState('login');
+const AppContent = () => {
+    const [currentView, setCurrentView] = useState('registration');
+    const { isAuthenticated, user } = useSession();
 
     const renderCurrentView = () => {
         switch (currentView) {
+            case 'registration':
+                return <Registration onViewChange={setCurrentView} />;
+
+            case 'profile':
+                return <Profile onViewChange={setCurrentView} />;
+
             case 'login':
-                return <LoginForm />;
+                return <LoginForm onViewChange={setCurrentView} />;
+            // case 'taqeem-login ': 
+            //     return < taqeen onViewChange={setCurrentView} />;
 
             case 'check-status':
                 return <CheckBrowser />;
@@ -50,8 +63,14 @@ const App = () => {
             case 'get-companies':
                 return <GetCompanies />
 
+            case 'packages':
+                return <Packages onViewChange={setCurrentView} />;
+
+            case 'recharge-balance':
+                return <RechargeBalance />;
+
             default:
-                return <LoginForm />;
+                return <Registration onViewChange={setCurrentView} />;
         }
     };
 
@@ -59,6 +78,14 @@ const App = () => {
         <Layout currentView={currentView} onViewChange={setCurrentView}>
             {renderCurrentView()}
         </Layout>
+    );
+};
+
+const App = () => {
+    return (
+        <SessionProvider>
+            <AppContent />
+        </SessionProvider>
     );
 };
 

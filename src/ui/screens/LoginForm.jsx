@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
+import { useSession } from '../context/SessionContext';
 
-const LoginForm = () => {
+const LoginForm = ({ onViewChange }) => {
     const [formData, setFormData] = useState({
         email: '',
         password: '',
+        phone: '',
         otp: '',
-        method: 'EMAIL' // Default method
+        method: 'EMAIL'
     });
     const [showOtp, setShowOtp] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
+    const [loginType, setLoginType] = useState('phone'); // 'legacy' or 'phone'
+    const { login } = useSession();
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -19,79 +23,150 @@ const LoginForm = () => {
         }));
     };
 
-    const handleSubmit = async (e) => {
+    const handlePhoneLogin = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setMessage({ text: '', type: '' });
+
+        try {
+            if (!formData.phone || !formData.password) {
+                throw new Error('Please enter phone number and password');
+            }
+
+            // Check if Electron API is available
+            if (!window.electronAPI) {
+                throw new Error('Electron API not available. Make sure you are running this in Electron.');
+            }
+
+            // Use the apiRequest method
+            const result = await window.electronAPI.apiRequest('POST', '/api/users/login', {
+                phone: formData.phone,
+                password: formData.password
+            });
+
+            if (result && result.user) {
+                login(result.user);
+                setMessage({
+                    text: '✅ Login successful!',
+                    type: 'success'
+                });
+                // Navigate to profile after successful login
+                setTimeout(() => {
+                    if (onViewChange) onViewChange('profile');
+                }, 500);
+            } else {
+                throw new Error(result?.error || result?.message || 'Login failed');
+            }
+        } catch (error) {
+            const errorMsg = error.response?.data?.message || error.message || 'Unknown error occurred';
+            setMessage({
+                text: '❌ Error: ' + errorMsg,
+                type: 'error'
+            });
+            console.error('Phone login error:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLegacyLogin = async (e) => {
         e.preventDefault();
         setIsLoading(true);
         setMessage({ text: '', type: '' });
 
         try {
             if (!showOtp) {
-                // First stage: Email + Password + Method
                 console.log('Submitting credentials:', {
                     email: formData.email,
                     password: formData.password,
                     method: formData.method
                 });
 
-                if (window.electronAPI && window.electronAPI.login) {
-                    const result = await window.electronAPI.login({
-                        email: formData.email,
-                        password: formData.password,
-                        method: formData.method
-                    });
-
-                    console.log('Login result:', result);
-
-                    if (result.status === 'OTP_REQUIRED') {
-                        setShowOtp(true);
-                        setMessage({
-                            text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
-                            type: 'info'
-                        });
-                    } else if (result.status === 'SUCCESS') {
-                        setMessage({
-                            text: result.message || '✅ Login successful! Starting automation...',
-                            type: 'success'
-                        });
-                    } else {
-                        throw new Error(result.error || 'Login failed');
-                    }
-                } else {
+                // Check if electronAPI exists
+                if (!window.electronAPI) {
                     throw new Error('Electron API not available');
                 }
+
+                if (!window.electronAPI.login) {
+                    throw new Error('Login handler not found');
+                }
+
+                const result = await window.electronAPI.login({
+                    email: formData.email,
+                    password: formData.password,
+                    method: formData.method
+                });
+
+                console.log('Login result:', result);
+
+                if (result.status === 'OTP_REQUIRED') {
+                    setShowOtp(true);
+                    setMessage({
+                        text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
+                        type: 'info'
+                    });
+                } else if (result.status === 'SUCCESS') {
+                    // Store user data in session context if available
+                    if (result.user) {
+                        login(result.user);
+                    }
+                    setMessage({
+                        text: result.message || '✅ Login successful!',
+                        type: 'success'
+                    });
+                    // Navigate to profile or next screen after successful login
+                    setTimeout(() => {
+                        if (onViewChange) onViewChange('profile');
+                    }, 500);
+                } else {
+                    throw new Error(result.error || 'Login failed');
+                }
             } else {
-                // Second stage: OTP
                 console.log('Submitting OTP:', formData.otp);
 
-                if (window.electronAPI && window.electronAPI.submitOtp) {
-                    const result = await window.electronAPI.submitOtp(formData.otp);
-
-                    console.log('OTP result:', result);
-
-                    if (result.status === 'SUCCESS') {
-                        setMessage({
-                            text: result.message || '✅ Authentication complete! Automation running...',
-                            type: 'success'
-                        });
-                    } else {
-                        throw new Error(result.error || 'OTP verification failed');
-                    }
-                } else {
+                if (!window.electronAPI) {
                     throw new Error('Electron API not available');
+                }
+
+                if (!window.electronAPI.submitOtp) {
+                    throw new Error('OTP handler not found');
+                }
+
+                const result = await window.electronAPI.submitOtp(formData.otp);
+
+                console.log('OTP result:', result);
+
+                if (result.status === 'SUCCESS') {
+                    // Store user data in session context if available
+                    if (result.user) {
+                        login(result.user);
+                    }
+                    setMessage({
+                        text: result.message || '✅ Authentication complete!',
+                        type: 'success'
+                    });
+                    // Navigate to profile or next screen after successful authentication
+                    setTimeout(() => {
+                        if (onViewChange) onViewChange('profile');
+                    }, 500);
+                } else {
+                    throw new Error(result.error || 'OTP verification failed');
                 }
             }
         } catch (error) {
+            const errorMsg = error.response?.data?.message || error.message || 'Unknown error occurred';
             setMessage({
-                text: '❌ Error: ' + error.message,
+                text: '❌ Error: ' + errorMsg,
                 type: 'error'
             });
+            console.error('Legacy login error:', error);
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleReset = () => {
-        setFormData({ email: '', password: '', otp: '', method: 'EMAIL' });
+        setFormData({ email: '', password: '', phone: '', otp: '', method: 'EMAIL' });
         setShowOtp(false);
         setMessage({ text: '', type: '' });
     };
@@ -110,10 +185,88 @@ const LoginForm = () => {
         }
     };
 
+    // Phone Login Form
+    if (loginType === 'phone') {
+        return (
+            <div className="max-w-md w-full mx-auto py-8">
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Login with Phone</h2>
+
+                    <form onSubmit={handlePhoneLogin} className="space-y-4">
+                        <div>
+                            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
+                                📱 Phone Number
+                            </label>
+                            <input
+                                type="tel"
+                                id="phone"
+                                name="phone"
+                                value={formData.phone}
+                                onChange={handleInputChange}
+                                disabled={isLoading}
+                                placeholder="Enter your phone number"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                                🔒 Password
+                            </label>
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                value={formData.password}
+                                onChange={handleInputChange}
+                                disabled={isLoading}
+                                placeholder="Enter your password"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                required
+                            />
+                        </div>
+
+                        {message.text && (
+                            <div className={getMessageStyles(message.type)}>
+                                {message.text}
+                            </div>
+                        )}
+
+                        <div className="flex space-x-4">
+                            <button
+                                type="submit"
+                                disabled={isLoading}
+                                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 ${isLoading
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                    }`}
+                            >
+                                {isLoading ? 'Logging in...' : 'Login'}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setLoginType('legacy')}
+                                disabled={isLoading}
+                                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-200"
+                            >
+                                Legacy
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    // Legacy Email Login Form
     return (
         <div className="max-w-md w-full mx-auto py-8">
             <div className="bg-white rounded-xl shadow-lg p-6">
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Legacy Login</h2>
+
+                <form onSubmit={handleLegacyLogin} className="space-y-6">
                     {/* Email Field */}
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -235,6 +388,17 @@ const LoginForm = () => {
                             {message.text}
                         </div>
                     )}
+
+                    {/* Switch to Phone Login */}
+                    <div className="text-center">
+                        <button
+                            type="button"
+                            onClick={() => setLoginType('phone')}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                            Login with Phone Number →
+                        </button>
+                    </div>
 
                     {/* Progress Steps */}
                     <div className="flex items-center justify-center space-x-8 pt-4">

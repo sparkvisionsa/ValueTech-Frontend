@@ -50,6 +50,13 @@ class AuthCommands {
             action: 'ping'
         });
     }
+
+    async register(userData) {
+        return this._sendCommand({
+            action: 'register',
+            ...userData
+        });
+    }
 }
 
 module.exports = AuthCommands;

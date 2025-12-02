@@ -3,6 +3,7 @@ import asyncio, sys, json, traceback, platform
 from .browser import closeBrowser, get_browser, check_browser_status
 
 from scripts.loginFlow.login import startLogin, submitOtp
+from scripts.loginFlow.register import register_user
 
 from scripts.submission.validateReport import validate_report
 from scripts.submission.createMacros import run_create_assets
@@ -242,6 +243,17 @@ async def handle_command(cmd):
         }
         print(json.dumps(result), flush=True)
         
+    elif action == "register":
+        user_data = {
+            "userType": cmd.get("userType"),
+            "phone": cmd.get("phone"),
+            "password": cmd.get("password")
+        }
+        
+        result = await register_user(user_data)
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+        
     else:
         result = {
             "status": "FAILED", 
@@ -250,7 +262,7 @@ async def handle_command(cmd):
                 "login", "otp", "check-status", "validate-report",
                 "create-macros", "grab-macro-ids", "macro-edit",
                 "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
-                "full-check", "half-check", "close", "ping"
+                "full-check", "half-check", "register", "close", "ping"
             ],
             "commandId": cmd.get("commandId")
         }

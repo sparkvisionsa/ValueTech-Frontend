@@ -115,6 +115,23 @@ const authHandlers = {
                 error: error.message
             };
         }
+    },
+
+    async handleRegister(event, userData) {
+        try {
+            console.log('[MAIN] Received registration request');
+
+            const result = await pythonAPI.auth.register(userData);
+
+            if (result.status === 'SUCCESS') {
+                return { status: 'SUCCESS', message: 'Registration successful' };
+            } else {
+                return { status: 'ERROR', error: result.error || 'Registration failed' };
+            }
+        } catch (error) {
+            console.error('[MAIN] Registration error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
     }
 };
 

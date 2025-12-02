@@ -2,3 +2,4 @@ nodriver
 dotenv
 motor
 bs4
+aiohttp

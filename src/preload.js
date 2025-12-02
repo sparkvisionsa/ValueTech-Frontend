@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkStatus: () => safeInvoke('check-status'),
     getCompanies: () => safeInvoke('get-companies'),
     navigateToCompany: (url) => safeInvoke('navigate-to-company', url),
+    register: (userData) => safeInvoke('register', userData),
 
     // Reports
     validateReport: (reportId) => safeInvoke('validate-report', reportId),
@@ -49,5 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showOpenDialog: () => safeInvoke('show-open-dialog'),
 
     // Health
-    checkHealth: () => safeInvoke('check-server-health')
+    checkHealth: () => safeInvoke('check-server-health'),
+
+    // API requests
+    apiRequest: (method, url, data) => safeInvoke('api-request', { method, url, data })
 });

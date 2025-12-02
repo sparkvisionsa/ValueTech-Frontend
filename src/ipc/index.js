@@ -1,5 +1,5 @@
 const { ipcMain } = require('electron');
-const { authHandlers, reportHandlers, workerHandlers, healthHandlers } = require('./handlers');
+const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers } = require('./handlers');
 
 function registerIpcHandlers() {
     // Auth handlers
@@ -8,6 +8,7 @@ function registerIpcHandlers() {
     ipcMain.handle('check-status', authHandlers.handleCheckStatus);
     ipcMain.handle('get-companies', authHandlers.handleGetCompanies);
     ipcMain.handle('navigate-to-company', authHandlers.handleNavigateToCompany);
+    ipcMain.handle('register', authHandlers.handleRegister);
 
     // Report handlers
     ipcMain.handle('validate-report', reportHandlers.handleValidateReport);
@@ -35,6 +36,9 @@ function registerIpcHandlers() {
     //Health handlers
     ipcMain.handle('check-server-health', healthHandlers.handleHealth);
 
+    // Package handlers
+    ipcMain.handle('api-request', packageHandlers.handleApiRequest);
+
     console.log('[IPC] All handlers registered');
 }
 
@@ -44,6 +48,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('check-status');
     ipcMain.removeAllListeners('get-companies');
     ipcMain.removeAllListeners('navigate-to-company');
+    ipcMain.removeAllListeners('register');
 
     ipcMain.removeAllListeners('ping-worker');
     ipcMain.removeAllListeners('worker-status');

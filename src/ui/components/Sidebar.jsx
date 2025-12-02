@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+    UserPlus,
     Lock,
     Activity,
     Search,
@@ -9,12 +10,18 @@ import {
     ListChecks,
     Edit3,
     CircleDot,
-    CompassIcon
+    CompassIcon,
+    Package,
+    CreditCard,
+    User
 } from 'lucide-react';
+import { useSession } from '../context/SessionContext';
 
 const Sidebar = ({ currentView, onViewChange }) => {
-    const menuItems = [
-        { id: 'login', label: 'Authentication', icon: Lock },
+    const { isAuthenticated, user } = useSession();
+
+    const authMenuItems = [
+        { id: 'profile', label: 'My Profile', icon: User },
         { id: 'check-status', label: 'Check Browser', icon: Activity },
         { id: 'validate-report', label: 'Validate Report', icon: Search },
         { id: 'asset-create', label: 'Create Asset', icon: FolderPlus },
@@ -24,7 +31,19 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'macro-edit', label: 'Edit Macro', icon: Edit3 },
         { id: 'delete-report', label: 'Delete Report', icon: CircleDot },
         { id: 'get-companies', label: 'Get Companies', icon: CompassIcon },
+        { id: 'packages', label: 'Packages', icon: Package },
+        { id: 'recharge-balance', label: 'Recharge Balance', icon: CreditCard },
+        { id: 'taqeem-login', label: 'Recharge ', icon: CreditCard },
+
+        
     ];
+
+    const publicMenuItems = [
+        { id: 'registration', label: 'Registration', icon: UserPlus },
+        { id: 'login', label: 'Login', icon: Lock },
+    ];
+
+    const menuItems = isAuthenticated ? authMenuItems : publicMenuItems;
 
     return (
         <div className="w-64 bg-gray-900 text-white h-screen flex flex-col">
@@ -32,10 +51,13 @@ const Sidebar = ({ currentView, onViewChange }) => {
             <div className="p-6 border-b border-gray-700">
                 <h1 className="text-xl font-bold text-white">🤖 AutoBot</h1>
                 <p className="text-gray-400 text-sm mt-1">Automation Suite</p>
+                {isAuthenticated && user && (
+                    <p className="text-blue-400 text-xs mt-2 truncate">📱 {user.phone}</p>
+                )}
             </div>
 
             {/* Navigation Menu */}
-            <nav className="flex-1 p-4">
+            <nav className="flex-1 p-4 overflow-y-auto">
                 <ul className="space-y-2">
                     {menuItems.map((item) => {
                         const Icon = item.icon;
