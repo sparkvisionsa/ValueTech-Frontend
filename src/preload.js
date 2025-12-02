@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Health
     checkHealth: () => safeInvoke('check-server-health'),
 
-    // API requests
-    apiRequest: (method, url, data) => safeInvoke('api-request', { method, url, data })
+    // API requests (optionally include headers, e.g., Authorization)
+    apiRequest: (method, url, data = {}, headers = {}) =>
+        safeInvoke('api-request', { method, url, data, headers })
 });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const TaqeemAuth = () => {
+const TaqeemAuth = ({ onViewChange }) => {
     const [formData, setFormData] = useState({
         email: '',
         password: '',
@@ -10,6 +10,13 @@ const TaqeemAuth = () => {
     const [showOtp, setShowOtp] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
+
+    const goToCompanies = () => {
+        if (onViewChange) {
+            // Small delay so the success message is visible
+            setTimeout(() => onViewChange('get-companies'), 400);
+        }
+    };
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -53,6 +60,7 @@ const TaqeemAuth = () => {
                             text: result.message || '✅ Login successful! Starting automation...',
                             type: 'success'
                         });
+                        goToCompanies();
                     } else {
                         throw new Error(result.error || 'Login failed');
                     }
@@ -73,6 +81,7 @@ const TaqeemAuth = () => {
                             text: result.message || '✅ Authentication complete! Automation running...',
                             type: 'success'
                         });
+                        goToCompanies();
                     } else {
                         throw new Error(result.error || 'OTP verification failed');
                     }
