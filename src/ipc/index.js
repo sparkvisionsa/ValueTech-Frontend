@@ -9,6 +9,10 @@ function registerIpcHandlers() {
     ipcMain.handle('get-companies', authHandlers.handleGetCompanies);
     ipcMain.handle('navigate-to-company', authHandlers.handleNavigateToCompany);
     ipcMain.handle('register', authHandlers.handleRegister);
+    ipcMain.handle('auth-set-refresh-token', authHandlers.handleSetRefreshToken);
+    ipcMain.handle('auth-clear-refresh-token', authHandlers.handleClearRefreshToken);
+    ipcMain.handle('get-token', authHandlers.getRefreshToken)
+
 
     // Report handlers
     ipcMain.handle('validate-report', reportHandlers.handleValidateReport);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSession } from '../context/SessionContext';
+import { registerUser } from '../../api/auth';
 
 const Registration = ({ onViewChange }) => {
     const [step, setStep] = useState('welcome');
@@ -37,25 +38,33 @@ const Registration = ({ onViewChange }) => {
                 password: formData.password
             };
 
-            if (window.electronAPI && window.electronAPI.register) {
-                const result = await window.electronAPI.register(registrationData);
+            // CALL THE IMPORTED API FUNCTION
+            const result = await registerUser(registrationData);
 
-                if (result.status === 'SUCCESS') {
-                    // Login the user with the returned user data
-                    if (result.data && result.data.user) {
-                        login(result.data.user);
-                        onViewChange('profile');
-                    } else {
-                        onViewChange('login');
-                    }
+            // Normalize different result shapes (Axios response vs direct)
+            // If using axios, registerUser likely returns response object with .data
+            const res = result?.data ?? result;
+
+            // Expecting { status: 'SUCCESS', data: { user, ... } } per your earlier examples
+            if (res && (res.status === 'SUCCESS' || res.status === 'success' || res.success === true)) {
+                const user = res.data?.user ?? res.user ?? null;
+
+                if (user) {
+                    login(user);
+                    onViewChange('profile');
                 } else {
-                    setError(result.error || 'Registration failed. Please try again.');
+                    // If server didn't return user but registration succeeded, go to login view
+                    onViewChange('login');
                 }
             } else {
-                setError('Electron API not available');
+                // Prefer structured server error message if present
+                const serverMessage = res?.error || res?.message || (res && JSON.stringify(res)) || 'Registration failed. Please try again.';
+                setError(serverMessage);
             }
         } catch (err) {
-            setError(err.message || 'Registration failed. Please try again.');
+            // Handle axios-style errors and others
+            const serverErrMsg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Registration failed. Please try again.';
+            setError(serverErrMsg);
             console.error('Registration error:', err);
         } finally {
             setLoading(false);

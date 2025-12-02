@@ -1,7 +1,7 @@
 const httpClient = require("./httpClient")
 
 const registerUser = async (userData) => {
-    const url = `/auth/register`;
+    const url = `/users/register`;
     return await httpClient.post(url, userData);
 };
 

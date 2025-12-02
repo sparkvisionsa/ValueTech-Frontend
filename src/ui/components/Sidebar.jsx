@@ -21,6 +21,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
     const { isAuthenticated, user } = useSession();
 
     const authMenuItems = [
+        { id: 'taqeem-login', label: 'Taqeem Login ', icon: User },
         { id: 'profile', label: 'My Profile', icon: User },
         { id: 'check-status', label: 'Check Browser', icon: Activity },
         { id: 'validate-report', label: 'Validate Report', icon: Search },
@@ -33,8 +34,6 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'get-companies', label: 'Get Companies', icon: CompassIcon },
         { id: 'packages', label: 'Packages', icon: Package },
         { id: 'recharge-balance', label: 'Recharge Balance', icon: CreditCard },
-        { id: 'taqeem-login', label: 'Recharge ', icon: CreditCard },
-
         
     ];
 

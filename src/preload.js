@@ -16,6 +16,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     navigateToCompany: (url) => safeInvoke('navigate-to-company', url),
     register: (userData) => safeInvoke('register', userData),
 
+    // Set refresh token (main process will store this as HttpOnly cookie)
+    // opts: { baseUrl, name, path, maxAgeDays, sameSite, secure, httpOnly }
+    setRefreshToken: (token, opts = {}) => {
+        const payload = Object.assign({
+            baseUrl: opts.baseUrl || 'http://localhost:3000',
+            token,
+            name: opts.name || 'refreshToken',
+            path: opts.path || '/',
+            maxAgeDays: opts.maxAgeDays || 7,
+            sameSite: opts.sameSite || 'lax',
+            secure: typeof opts.secure === 'boolean' ? opts.secure : (process.env.NODE_ENV === 'production'),
+            httpOnly: typeof opts.httpOnly === 'boolean' ? opts.httpOnly : true
+        }, opts);
+        return safeInvoke('auth-set-refresh-token', payload);
+    },
+
+    // (optional) remove cookie helper
+    clearRefreshToken: (opts = {}) => {
+        const payload = {
+            baseUrl: opts.baseUrl || 'http://localhost:3000',
+            name: opts.name || 'refreshToken'
+        };
+        return safeInvoke('auth-clear-refresh-token', payload);
+    },
+
     // Reports
     validateReport: (reportId) => safeInvoke('validate-report', reportId),
     createMacros: (reportId, macroCount, tabsNum, batchSize) => safeInvoke('create-macros', reportId, macroCount, tabsNum, batchSize),
@@ -35,6 +60,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteIncompleteAssets: (reportId, maxRounds) => safeInvoke('delete-incomplete-assets', reportId, maxRounds),
     handleCancelledReport: (reportId) => safeInvoke('handle-cancelled-report', reportId),
 
+
+    getToken: () => safeInvoke('get-token'),
     // Progress listener for macro fill
     onMacroFillProgress: (callback) => {
         const subscription = (event, data) => callback(data);

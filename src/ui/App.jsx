@@ -18,6 +18,7 @@ import DeleteReport from './screens/DeleteReport';
 import GetCompanies from './screens/GetCompanies';
 import Packages from './screens/Packages';
 import RechargeBalance from './screens/RechargeBalance';
+import TaqeemAuth from './screens/TaqeemAuth';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState('registration');
@@ -33,8 +34,9 @@ const AppContent = () => {
 
             case 'login':
                 return <LoginForm onViewChange={setCurrentView} />;
-            // case 'taqeem-login ': 
-            //     return < taqeen onViewChange={setCurrentView} />;
+
+            case 'taqeem-login':
+                return <TaqeemAuth/>
 
             case 'check-status':
                 return <CheckBrowser />;
