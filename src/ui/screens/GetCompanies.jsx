@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 export default function GetCompanies() {
     const [companies, setCompanies] = useState([]);
@@ -28,6 +28,11 @@ export default function GetCompanies() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        handleGetCompanies();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleNavigateToCompany = async () => {
         if (!selectedCompany) return;
@@ -94,7 +99,7 @@ export default function GetCompanies() {
                                     Loading...
                                 </>
                             ) : (
-                                "Get Companies"
+                                "Refresh"
                             )}
                         </button>
                     </div>

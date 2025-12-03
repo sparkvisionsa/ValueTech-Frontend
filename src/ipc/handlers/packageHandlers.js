@@ -61,7 +61,7 @@ const setElectronCookieForBaseUrl = async (baseUrl, cookieObj) => {
 };
 
 const packageHandlers = {
-  async handleApiRequest(event, { method, url, data }) {
+  async handleApiRequest(event, { method, url, data, headers = {} }) {
     // Try multiple backend candidates: env var first, then local, then deployed
     const candidates = [];
 
@@ -87,6 +87,7 @@ const packageHandlers = {
           url: fullUrl,
           headers: {
             'Content-Type': 'application/json',
+            ...headers
           },
           data: data,
           timeout: 10000,

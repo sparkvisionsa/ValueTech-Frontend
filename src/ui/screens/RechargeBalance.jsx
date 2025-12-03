@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useSession } from '../context/SessionContext';
 
 const RechargeBalance = () => {
+    const { token } = useSession();
     const [totalPoints, setTotalPoints] = useState(0);
     const [subscriptions, setSubscriptions] = useState([]);
 
@@ -10,10 +12,8 @@ const RechargeBalance = () => {
 
     const fetchSubscriptions = async () => {
         try {
-            const response = await window.electronAPI.ipcRenderer.invoke('api-request', {
-                method: 'GET',
-                url: '/api/packages/subscriptions',
-            });
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const response = await window.electronAPI.apiRequest('GET', '/api/packages/subscriptions', {}, headers);
             setTotalPoints(response.totalPoints);
             setSubscriptions(response.subscriptions);
         } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css'; // Add this line
 import Layout from './components/Layout';
@@ -21,8 +21,20 @@ import RechargeBalance from './screens/RechargeBalance';
 import TaqeemAuth from './screens/TaqeemAuth';
 
 const AppContent = () => {
-    const [currentView, setCurrentView] = useState('registration');
-    const { isAuthenticated, user } = useSession();
+    const [currentView, setCurrentView] = useState(null);
+    const { isAuthenticated, isLoading } = useSession();
+
+    // Choose initial page based on existing session
+    useEffect(() => {
+        if (!isLoading && currentView === null) {
+            // If a session exists, resume at Taqeem login; otherwise go to app login
+            setCurrentView(isAuthenticated ? 'taqeem-login' : 'login');
+        }
+    }, [isLoading, isAuthenticated, currentView]);
+
+    if (currentView === null) {
+        return null;
+    }
 
     const renderCurrentView = () => {
         switch (currentView) {
@@ -36,7 +48,7 @@ const AppContent = () => {
                 return <LoginForm onViewChange={setCurrentView} />;
 
             case 'taqeem-login':
-                return <TaqeemAuth/>
+                return <TaqeemAuth onViewChange={setCurrentView} />
 
             case 'check-status':
                 return <CheckBrowser />;
@@ -72,7 +84,7 @@ const AppContent = () => {
                 return <RechargeBalance />;
 
             default:
-                return <Registration onViewChange={setCurrentView} />;
+                return <LoginForm onViewChange={setCurrentView} />;
         }
     };
 

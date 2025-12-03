@@ -66,13 +66,13 @@ const LoginForm = ({ onViewChange }) => {
             await setRefreshCookieIfPresent(result);
 
             if (result && result.user) {
-                login(result.user);
+                login(result.user, result.token);
                 setMessage({
                     text: '✅ Login successful!',
                     type: 'success'
                 });
                 setTimeout(() => {
-                    if (onViewChange) onViewChange('profile');
+                    if (onViewChange) onViewChange('taqeem-login');
                 }, 500);
             } else {
                 throw new Error(result?.error || result?.message || 'Login failed');
@@ -137,7 +137,7 @@ const LoginForm = ({ onViewChange }) => {
                         type: 'success'
                     });
                     setTimeout(() => {
-                        if (onViewChange) onViewChange('profile');
+                        if (onViewChange) onViewChange('taqeem-login');
                     }, 500);
                 } else {
                     throw new Error(result.error || 'Login failed');
@@ -169,7 +169,7 @@ const LoginForm = ({ onViewChange }) => {
                         type: 'success'
                     });
                     setTimeout(() => {
-                        if (onViewChange) onViewChange('profile');
+                        if (onViewChange) onViewChange('taqeem-login');
                     }, 500);
                 } else {
                     throw new Error(result.error || 'OTP verification failed');
@@ -278,6 +278,17 @@ const LoginForm = ({ onViewChange }) => {
                                 className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-200"
                             >
                                 Legacy
+                            </button>
+                        </div>
+
+                        <div className="text-center text-sm text-gray-600">
+                            Don't have an account?{' '}
+                            <button
+                                type="button"
+                                onClick={() => onViewChange && onViewChange('registration')}
+                                className="text-blue-600 hover:underline"
+                            >
+                                Register
                             </button>
                         </div>
                     </form>
