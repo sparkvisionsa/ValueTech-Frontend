@@ -31,9 +31,9 @@ async def get_browser(force_new=False):
             user_data_dir=profile_path,
             browser_args=[
                 f"--user-agent={user_agent}",
-                "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-popup-blocking",
                 "--disable-features=VizDisplayCompositor",
                 "--disable-blink-features=AutomationControlled",
                 "--lang=en-US",

@@ -863,6 +863,7 @@ async def _has_any_assets(page) -> bool:
 
 
 async def delete_report_flow(report_id: str, max_rounds: int = 10):
+    page = None
     try:
         def _load_template():
             try:
@@ -887,6 +888,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
             log(f"Report {report_id}: checking for Delete Report button…", "INFO")
             if await try_delete_report(page):
                 log(f"Report {report_id}: Delete Report button clicked in round #{round_idx}.", "OK")
+                await page.close()
                 return {
                     "status": "SUCCESS",
                     "message": f"Report deleted in round {round_idx}",
@@ -935,6 +937,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
                     f"Stopping cleanup loop.",
                     "INFO",
                 )
+                await page.close()
                 return {
                     "status": "PARTIAL",
                     "message": "Assets exist but none are incomplete/deletable",
@@ -952,6 +955,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
                     f"Stopping cleanup loop.",
                     "ERR",
                 )
+                await page.close()
                 return {
                     "status": "FAILED",
                     "message": "Failed to create new asset",
@@ -972,6 +976,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
                     f"Stopping cleanup loop.",
                     "ERR",
                 )
+                await page.close()
                 return {
                     "status": "FAILED",
                     "message": f"Failed to fill/save asset {macro_id}",
@@ -995,6 +1000,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
             f"appearing or stable terminal state. Manual check recommended.",
             "WARN",
         )
+        await page.close()
         return {
             "status": "MAX_ROUNDS_REACHED",
             "message": f"Reached max rounds ({max_rounds}) without completing deletion",
@@ -1005,6 +1011,8 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
         
     except Exception as e:
         log(f"Report {report_id}: Exception in delete_report_flow: {e}", "ERR")
+        if page:
+            await page.close()
         return {
             "status": "FAILED",
             "error": str(e),

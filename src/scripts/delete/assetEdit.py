@@ -1,8 +1,44 @@
-import asyncio
-import json
+import asyncio, json, sys
 from scripts.core.utils import log, wait_for_element
 from scripts.core.browser import new_tab
 
+_location_cache = {}
+async def set_location(page, country_code, region_code, city_code):
+    try:
+        async def set_field(selector, value):
+            if not value:
+                return
+            args = json.dumps({"selector": selector, "value": value})
+            await page.evaluate(f"""
+                (function() {{
+                    const args = {args};
+                    if (window.$) {{
+                        window.$(args.selector).val(args.value).trigger("change");
+                    }} else {{
+                        const el = document.querySelector(args.selector);
+                        if (!el) return;
+                        if (el.value !== args.value) {{
+                            el.value = args.value;
+                            el.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                            el.dispatchEvent(new Event("change", {{ bubbles: true }}));
+                        }}
+                    }}
+                }})();
+            """)
+
+        # Set the location fields with the provided codes
+        await set_field("#country_id", country_code)
+        await asyncio.sleep(0.5)
+        await set_field("#region", region_code)
+        await asyncio.sleep(0.5)
+        await set_field("#city", city_code)
+        await asyncio.sleep(0.5)
+
+        return True
+
+    except Exception as e:
+        print(f"Location injection failed: {e}", file=sys.stderr)
+        return False
 
 def _js(val):
     return json.dumps(val, ensure_ascii=False)
@@ -344,7 +380,7 @@ async def edit_macro_and_save(page, macro_id: str, values: dict):
     await set_in("approach[3][value]", "approach3_value", "approach3_value")
 
     # Location (hard-coded values)
-    await set_location_select2s(page, values)
+    await set_location(page, 1, 1, 3)
 
     # Submit & wait
     mode = await _submit_via_save(page)

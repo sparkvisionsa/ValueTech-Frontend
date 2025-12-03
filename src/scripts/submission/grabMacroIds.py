@@ -6,7 +6,6 @@ from scripts.core.utils import wait_for_element, safe_query_selector_all, wait_f
 
 # MongoDB connection setup
 def get_motor_client():
-    """Initialize Motor async MongoDB client"""
     MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
     return AsyncIOMotorClient(MONGO_URI)
 
@@ -113,18 +112,7 @@ def get_balanced_page_distribution(total_pages, num_tabs):
     return distribution
 
 async def get_macro_ids_from_page(page, base_url, page_num, tab_id):
-    """
-    Extract all macro IDs from a single page and its sub-pages
-    
-    Args:
-        page: Browser page object
-        base_url: Base URL of the report
-        page_num: Page number to process
-        tab_id: Tab identifier for logging
-    
-    Returns:
-        List of tuples (macro_id, page_number) found on this page
-    """
+
     local_macro_ids = []
     print(f"[MACRO_ID-TAB-{tab_id}] Processing page {page_num}", file=sys.stderr)
     

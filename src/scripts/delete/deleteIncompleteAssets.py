@@ -500,7 +500,7 @@ async def _has_any_assets(page) -> bool:
         return False
 
 async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_rounds: int = 10) -> dict:
-
+    page = None
     try:
         from scripts.core.browser import new_window
         url = f"https://qima.taqeem.sa/report/{report_id}?office=487"
@@ -542,6 +542,7 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
                     f"Report {report_id}: Assets still exist but none were deleted. Stopping cleanup loop.",
                     "INFO",
                 )
+                await page.close()
                 return {
                     "status": "ASSETS_REMAIN",
                     "reportId": report_id,
@@ -551,6 +552,7 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
 
             # No assets at all: cleanup complete
             log(f"Report {report_id}: No assets remain. Cleanup complete.", "INFO")
+            await page.close()
             return {
                 "status": "SUCCESS",
                 "reportId": report_id,
@@ -563,6 +565,7 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
             f"Report {report_id}: Reached max_rounds={max_rounds} without emptying assets or stable terminal state. Manual check recommended.",
             "WARN",
         )
+        await page.close()
         return {
             "status": "MAX_ROUNDS_REACHED",
             "reportId": report_id,
@@ -573,6 +576,7 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
     except Exception as e:
         log(f"Error deleting incomplete assets for report {report_id}: {e}", "ERR")
         import traceback
+        await page.close()
         return {
             "status": "FAILED",
             "reportId": report_id,
