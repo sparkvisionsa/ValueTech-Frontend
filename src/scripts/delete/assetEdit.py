@@ -1,9 +1,8 @@
 import asyncio
 import json
-from scripts.core.utils import log
+from scripts.core.utils import log, wait_for_element
 from scripts.core.browser import new_tab
 
-# ---------- helpers ----------
 
 def _js(val):
     return json.dumps(val, ensure_ascii=False)
@@ -302,15 +301,12 @@ async def set_location_select2s(page, values: dict) -> None:
 
 # ---------- Main entry ----------
 
-async def edit_macro_and_save(macro_id: str, values: dict):
-    """
-    Open macro edit page in a new tab, fill fields (including Location),
-    submit form, and wait for server-side save/redirect/flash.
-    """
+async def edit_macro_and_save(page, macro_id: str, values: dict):
     url = f"https://qima.taqeem.sa/report/macro/{macro_id}/edit"
     log(f"Editing macro #{macro_id} -> {url}", "STEP")
-    page = await new_tab(url)
-    await asyncio.sleep(1.0)
+    await page.get(url)
+    await wait_for_element(page, "#region", timeout=60)
+    
 
     # Neutralize dialogs
     try:

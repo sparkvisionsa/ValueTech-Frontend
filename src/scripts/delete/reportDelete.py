@@ -1,5 +1,6 @@
-# report_actions.py
 import asyncio, re, json
+from pathlib import Path
+
 from scripts.core.utils import log
 from scripts.core.browser import new_tab, new_window  # reliable new-tab open in nodriver
 from .assetEdit import edit_macro_and_save
@@ -861,11 +862,12 @@ async def _has_any_assets(page) -> bool:
         return False
 
 
-async def delete_report_flow(report_id: str, template_path: str = "./asset_template.json", max_rounds: int = 10):
+async def delete_report_flow(report_id: str, max_rounds: int = 10):
     try:
         def _load_template():
             try:
-                with open(template_path, "r", encoding="utf-8") as f:
+                template_path = Path.cwd() / "scripts" / "delete" / "asset_template.json"
+                with template_path.open("r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 log(f"Could not load template {template_path}: {e}", "ERR")
@@ -923,10 +925,10 @@ async def delete_report_flow(report_id: str, template_path: str = "./asset_templ
             )
 
             # Re-open to check asset presence cleanly
-            page2 = await page.get(report_url)
+            await page.get(report_url)
             await asyncio.sleep(1.0)
             
-            if await _has_any_assets(page2):
+            if await _has_any_assets(page):
                 # There ARE assets, but none were incomplete (or deletable).
                 log(
                     f"Report {report_id}: Assets still exist but none appear incomplete/deletable. "
@@ -943,7 +945,7 @@ async def delete_report_flow(report_id: str, template_path: str = "./asset_templ
 
             # 👉 No assets at all: create ONE asset and then fill it using template
             log(f"Report {report_id}: No assets remain. Creating one new asset…", "INFO")
-            macro_id = await create_one_asset_and_get_macro(page2, report_id)
+            macro_id = await create_one_asset_and_get_macro(page, report_id)
             if not macro_id:
                 log(
                     f"Report {report_id}: Failed to create or detect new asset macro id. "
@@ -961,7 +963,7 @@ async def delete_report_flow(report_id: str, template_path: str = "./asset_templ
             log(f"Report {report_id}: New asset created with macro_id={macro_id}. Filling details…", "INFO")
 
             values = _load_template()
-            ok_fill = await edit_macro_and_save(macro_id, values)
+            ok_fill = await edit_macro_and_save(page, macro_id, values)
             log(f"Report {report_id}: edit_macro_and_save(macro_id={macro_id}) -> ok={ok_fill}", "INFO")
 
             if not ok_fill:
@@ -978,12 +980,13 @@ async def delete_report_flow(report_id: str, template_path: str = "./asset_templ
                     "deletedAssets": total_deleted_overall,
                     "macroId": macro_id
                 }
-
             log(
                 f"Report {report_id}: New asset {macro_id} created and filled. "
                 f"Next round will re-open the report and try Delete button again.",
                 "INFO",
             )
+            await page.get(report_url)
+            await asyncio.sleep(1.0)
             # Continue to next loop round
 
         # Safety exit - reached max_rounds
