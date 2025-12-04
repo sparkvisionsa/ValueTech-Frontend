@@ -20,7 +20,7 @@ def log(msg: str, level: str = "INFO"):
 
 async def safe_query_selector_all(page, selector, timeout=100, interval=0.5):
     start = time.time()
-    
+
     while True:
         try:
             elements = await page.query_selector_all(selector)
@@ -34,6 +34,7 @@ async def safe_query_selector_all(page, selector, timeout=100, interval=0.5):
             print(f"Timeout: No elements matched '{selector}' after {timeout} seconds", file=sys.stderr)
             return []
 
+        # waiting before retry
         await asyncio.sleep(interval)
 
 async def wait_for_table_rows(page, timeout=100):
