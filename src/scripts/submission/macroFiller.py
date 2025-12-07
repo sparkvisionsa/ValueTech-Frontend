@@ -66,10 +66,9 @@ def balanced_chunks(lst, n):
     return chunks
 
 async def fill_macro_form(page, macro_id, macro_data, field_map, field_types, report_id=None):
-    """Fill and submit a single macro edit form"""
     await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
-    
-    await wait_for_element(page, "#value_base_id", timeout=30)
+    await wait_for_element(page, "#asset_usage_id", timeout=30)
+    await asyncio.sleep(0.5)
 
     try:
         result = await fill_form(

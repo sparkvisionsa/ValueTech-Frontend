@@ -34,7 +34,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'get-companies', label: 'Get Companies', icon: CompassIcon },
         { id: 'packages', label: 'Packages', icon: Package },
         { id: 'recharge-balance', label: 'Recharge Balance', icon: CreditCard },
-        
+        { id: 'upload-report-elrajhi', label: 'Upload Report Elrahi', icon: CreditCard },
     ];
 
     const publicMenuItems = [

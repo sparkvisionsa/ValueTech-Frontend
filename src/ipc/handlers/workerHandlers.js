@@ -35,6 +35,21 @@ const workerHandlers = {
             console.error('[MAIN] Open dialog error:', error);
             return { status: 'ERROR', error: error.message };
         }
+    },
+
+    async showOpenDialogPdfs() {
+        try {
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                properties: ['openFile', 'multiSelections'], // ✅ Allow multiple files
+                filters: [
+                    { name: 'PDF Files', extensions: ['pdf'] }
+                ]
+            });
+            return { status: 'SUCCESS', filePaths, canceled };
+        } catch (error) {
+            console.error('[MAIN] Open PDF dialog error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
     }
 };
 

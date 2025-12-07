@@ -1,7 +1,7 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { registerIpcHandlers, unregisterIpcHandlers } = require('./ipc');
+const { registerIpcHandlers, unregisterIpcHandlers } = require('./ipc/index');
 const pythonAPI = require('./services/python/PythonAPI');
 
 let mainWindow;

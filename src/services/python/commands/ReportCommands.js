@@ -27,6 +27,14 @@ class ReportCommands {
         });
     }
 
+    async ElRajhiUploadReport(batchId, tabsNum) {
+        return this._sendCommand({
+            action: 'elrajhi-filler',
+            batchId,
+            tabsNum
+        });
+    }
+
     async grabMacroIds(reportId, tabsNum) {
         return this._sendCommand({
             action: 'grab-macro-ids',

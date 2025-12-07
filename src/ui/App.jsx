@@ -19,6 +19,7 @@ import GetCompanies from './screens/GetCompanies';
 import Packages from './screens/Packages';
 import RechargeBalance from './screens/RechargeBalance';
 import TaqeemAuth from './screens/TaqeemAuth';
+import UploadReportElrajhi from './screens/ElRajhiUploadReport';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState(null);
@@ -82,6 +83,9 @@ const AppContent = () => {
 
             case 'recharge-balance':
                 return <RechargeBalance />;
+
+            case 'upload-report-elrajhi':
+                return <UploadReportElrajhi />;
 
             default:
                 return <LoginForm onViewChange={setCurrentView} />;

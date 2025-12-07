@@ -21,6 +21,7 @@ function registerIpcHandlers() {
     ipcMain.handle('grab-macro-ids', reportHandlers.handleGrabMacroIds);
     ipcMain.handle('retry-macro-ids', reportHandlers.handleRetryMacroIds);
     ipcMain.handle('macro-fill', reportHandlers.handleMacroFill);
+    ipcMain.handle('elrajhi-filler', reportHandlers.handleElRajhiUploadReport);
 
     ipcMain.handle('pause-macro-fill', reportHandlers.handlePauseMacroFill);
     ipcMain.handle('resume-macro-fill', reportHandlers.handleResumeMacroFill);
@@ -37,6 +38,7 @@ function registerIpcHandlers() {
     ipcMain.handle('ping-worker', workerHandlers.handlePing);
     ipcMain.handle('worker-status', workerHandlers.handleWorkerStatus);
     ipcMain.handle('show-open-dialog', workerHandlers.showOpenDialog);
+    ipcMain.handle('show-open-dialog-pdfs', workerHandlers.showOpenDialogPdfs);
 
     //Health handlers
     ipcMain.handle('check-server-health', healthHandlers.handleHealth);
@@ -65,6 +67,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('grab-macro-ids');
     ipcMain.removeAllListeners('retry-macro-ids');
     ipcMain.removeAllListeners('macro-fill');
+    ipcMain.removeAllListeners('elrajhi-filler');
 
     ipcMain.removeAllListeners('pause-macro-fill');
     ipcMain.removeAllListeners('resume-macro-fill');

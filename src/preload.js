@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     grabMacroIds: (reportId, tabsNum) => safeInvoke('grab-macro-ids', reportId, tabsNum),
     retryMacroIds: (reportId, tabsNum) => safeInvoke('retry-macro-ids', reportId, tabsNum),
     macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
+    elrajhiUploadReport: (batchId, tabsNum) => safeInvoke('elrajhi-filler', batchId, tabsNum),
 
     // Pause/Resume/Stop controls
     pauseMacroFill: (reportId) => safeInvoke('pause-macro-fill', reportId),
@@ -76,6 +77,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Worker
     showOpenDialog: () => safeInvoke('show-open-dialog'),
+    showOpenDialogPdfs: () => safeInvoke('show-open-dialog-pdfs'),
 
     // Health
     checkHealth: () => safeInvoke('check-server-health'),

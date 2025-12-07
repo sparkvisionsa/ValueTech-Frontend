@@ -11,9 +11,9 @@ field_map_1 = {
     "submitted_at": "[name='submitted_at']",
     "assumptions": "[name='assumptions']",
     "special_assumptions": "[name='special_assumptions']",
-    "value": "[name='value']",
+    "final_value": "[name='value']",
     "valuation_currency": "[name='currency_id']",
-    "report_asset_file": "[name='report_file']",
+    "pdf_path": "[name='report_file']",
     "has_other_users": "[name='has_user']",
 }
 
@@ -32,7 +32,7 @@ field_types_1 = {
     "special_assumptions": "text",
     "final_value": "text",
     "valuation_currency": "select",
-    "report_asset_file": "file",
+    "pdf_path": "file",
     "has_other_users": "checkbox",
 }
 
@@ -47,7 +47,7 @@ field_types_2 = {
 field_map_3 = {
     "asset_type": "[name='asset_type']",
     "asset_name": "[name='asset_name']",
-    "asset_usage_id": "[name='asset_usage_id']",
+    "asset_usage_id": "[id='asset_usage_id']",
     "value_base": "[id='value_base_id']",
     "inspection_date": "[name='inspected_at']",
     "final_value": "[name='value']",

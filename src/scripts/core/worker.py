@@ -14,6 +14,7 @@ from scripts.submission.macroFiller import (
     resume_macro_edit, 
     stop_macro_edit
 )
+from scripts.submission.ElRajhiFiller import ElRajhiFiller
 
 from scripts.submission.checkMacroStatus import RunCheckMacroStatus, RunHalfCheckMacroStatus
 
@@ -161,10 +162,16 @@ async def handle_command(cmd):
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
         
-        # If there's a running task, we could optionally cancel it
-        # (though the stop flag in pause_states will make it exit naturally)
-        # if report_id in running_tasks:
-        #     running_tasks[report_id].cancel()
+    elif action == "elrajhi-filler":
+        browser = await get_browser()
+        
+        batch_id = cmd.get("batchId")
+        tabs_num = int(cmd.get("tabsNum", 3))
+        
+        result = await ElRajhiFiller(browser, batch_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+        
+        print(json.dumps(result), flush=True)
 
     elif action == "full-check":
         browser = await get_browser()

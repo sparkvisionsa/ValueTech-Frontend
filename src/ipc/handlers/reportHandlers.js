@@ -106,6 +106,15 @@ const reportHandlers = {
         }
     },
 
+    async handleElRajhiUploadReport(event, batchId, tabsNum) {
+        try {
+            return await pythonAPI.report.ElRajhiUploadReport(batchId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] ElRajhiUploadReport error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handleRetryMacroIds(event, reportId, tabsNum) {
         try {
             return await pythonAPI.report.retryMacroIds(reportId, tabsNum);
