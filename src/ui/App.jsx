@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './index.css'; // Add this line
 import Layout from './components/Layout';
 import { SessionProvider, useSession } from './context/SessionContext';
+import { SystemControlProvider } from './context/SystemControlContext';
 
 import Registration from './screens/Registration';
 import LoginForm from './screens/LoginForm';
 import Profile from './screens/Profile';
 import CheckBrowser from './screens/CheckBrowser';
 import ValidateReport from './screens/ValidateReport';
+import CompanyMembers from './screens/CompanyMembers';
 import AssetCreate from './screens/AssetCreate';
 import UploadExcel from './screens/UploadExcel';
 import AddCommonFields from './screens/AddCommonFields';
@@ -17,9 +19,10 @@ import SubmitMacro from './screens/MacroEdits';
 import DeleteReport from './screens/DeleteReport';
 import GetCompanies from './screens/GetCompanies';
 import Packages from './screens/Packages';
-import RechargeBalance from './screens/RechargeBalance';
 import TaqeemAuth from './screens/TaqeemAuth';
-import UploadReportElrajhi from './screens/ElRajhiUploadReport';
+import SystemOperatingStatus from './screens/SystemOperatingStatus';
+import SystemUpdates from './screens/SystemUpdates';
+import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState(null);
@@ -60,6 +63,9 @@ const AppContent = () => {
             case 'asset-create':
                 return <AssetCreate />;
 
+            case 'company-members':
+                return <CompanyMembers />;
+
             case 'upload-excel':
                 return <UploadExcel />;
 
@@ -76,16 +82,19 @@ const AppContent = () => {
                 return <DeleteReport />;
 
             case 'get-companies':
-                return <GetCompanies />
+                return <GetCompanies onViewChange={setCurrentView} />
 
             case 'packages':
-                return <Packages onViewChange={setCurrentView} />;
+                return <Packages />;
 
-            case 'recharge-balance':
-                return <RechargeBalance />;
+            case 'system-status':
+                return <SystemOperatingStatus />;
+
+            case 'system-updates':
+                return <SystemUpdates />;
 
             case 'upload-report-elrajhi':
-                return <UploadReportElrajhi />;
+                return <ElRajhiUploadReport />;
 
             default:
                 return <LoginForm onViewChange={setCurrentView} />;
@@ -102,7 +111,9 @@ const AppContent = () => {
 const App = () => {
     return (
         <SessionProvider>
-            <AppContent />
+            <SystemControlProvider>
+                <AppContent />
+            </SystemControlProvider>
         </SessionProvider>
     );
 };

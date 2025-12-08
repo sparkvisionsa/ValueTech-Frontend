@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from '../context/SessionContext';
 
-const Packages = ({ onViewChange }) => {
+const Packages = () => {
     const { user, token } = useSession();
     const isAdmin = user?.phone === '011111';
     const [packages, setPackages] = useState([]);
     const [formData, setFormData] = useState({ name: '', points: '', price: '' });
     const [editingPackage, setEditingPackage] = useState(null);
+    const [totalPoints, setTotalPoints] = useState(0);
+    const [subscriptions, setSubscriptions] = useState([]);
 
     useEffect(() => {
         fetchPackages();
+        fetchSubscriptions();
     }, []);
 
     const fetchPackages = async () => {
@@ -19,6 +22,19 @@ const Packages = ({ onViewChange }) => {
         } catch (error) {
             console.error('Error fetching packages:', error);
             setPackages([]);
+        }
+    };
+
+    const fetchSubscriptions = async () => {
+        try {
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const response = await window.electronAPI.apiRequest('GET', '/api/packages/subscriptions', {}, headers);
+            setTotalPoints(response.totalPoints);
+            setSubscriptions(response.subscriptions);
+        } catch (error) {
+            console.error('Error fetching subscriptions:', error);
+            setTotalPoints(0);
+            setSubscriptions([]);
         }
     };
 
@@ -47,7 +63,7 @@ const Packages = ({ onViewChange }) => {
             const headers = token ? { Authorization: `Bearer ${token}` } : {};
             await window.electronAPI.apiRequest('POST', '/api/packages/subscribe', { packageId }, headers);
             alert('Subscribed successfully!');
-            onViewChange('recharge-balance'); // Navigate to recharge balance after subscribe
+            fetchSubscriptions();
         } catch (error) {
             console.error('Error subscribing to package:', error);
             const errorMsg = error.response?.data?.message || error.message || 'Subscription failed';
@@ -98,12 +114,58 @@ const Packages = ({ onViewChange }) => {
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-4">Packages</h1>
+            <h1 className="text-3xl font-bold mb-6 text-gray-900">Packages & Balance</h1>
+
+            {/* Balance full width */}
+            <div className="mb-6 p-6 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Current Balance</h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                        <p className="text-sm text-gray-500">Total Number of Points</p>
+                        <p className="text-2xl font-semibold text-gray-900">{totalPoints}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                        <p className="text-sm text-gray-500">Total Balance</p>
+                        <p className="text-2xl font-semibold text-gray-900">{totalPoints}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Subscriptions full width */}
+            <div className="mb-8 p-6 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <h2 className="text-xl font-semibold mb-3 text-gray-900">Your Subscriptions</h2>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full bg-white border border-gray-200">
+                        <thead>
+                            <tr className="bg-gray-50">
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Package Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Points</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {subscriptions.length === 0 ? (
+                                <tr>
+                                    <td colSpan="2" className="px-4 py-3 text-sm text-gray-500">
+                                        No subscriptions yet.
+                                    </td>
+                                </tr>
+                            ) : (
+                                subscriptions.map((sub) => (
+                                    <tr key={sub._id} className="border-t">
+                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{sub.packageId.name}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{sub.packageId.points}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             {/* Add/Edit Package Form - Only for Admin */}
             {isAdmin && (
-                <div className="mb-8 p-4 border border-gray-300 rounded-lg">
-                    <h2 className="text-xl font-semibold mb-4">{editingPackage ? 'Edit Package' : 'Add New Package'}</h2>
+                <div className="mb-10 p-5 bg-white border border-gray-200 rounded-xl shadow-sm w-full">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-900">{editingPackage ? 'Edit Package' : 'Add New Package'}</h2>
                     <form onSubmit={editingPackage ? handleUpdatePackage : handleAddPackage} className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Name</label>
@@ -161,36 +223,43 @@ const Packages = ({ onViewChange }) => {
             )}
 
             {/* Packages Table */}
-            <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border border-gray-300">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-x-auto">
+                <h2 className="px-6 pt-5 pb-2 text-xl font-semibold text-gray-900">Packages</h2>
+                <table className="min-w-full">
                     <thead>
-                        <tr className="bg-gray-50">
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">Name</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">Points</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">Price</th>
+                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-200 text-base">
                         {packages.map((pkg) => (
-                            <tr key={pkg._id}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{pkg.name}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.points}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${pkg.price}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <tr key={pkg._id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900 text-lg">{pkg.name}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-gray-800 text-lg">{pkg.points}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-gray-800 text-lg">${pkg.price}</td>
+                                <td className="px-6 py-4 whitespace-nowrap font-medium">
                                     {isAdmin ? (
-                                        <div className="flex space-x-2">
+                                        <div className="flex flex-wrap gap-2">
                                             <button
                                                 onClick={() => handleEdit(pkg)}
-                                                className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 text-xs"
+                                                className="bg-yellow-500 text-white px-3 py-2 rounded hover:bg-yellow-600 text-xs"
                                             >
                                                 Edit
                                             </button>
                                             <button
                                                 onClick={() => handleDelete(pkg._id)}
-                                                className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-xs"
+                                                className="bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600 text-xs"
                                             >
                                                 Delete
+                                            </button>
+                                            <button
+                                                onClick={() => handleSubscribe(pkg._id)}
+                                                className="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-xs"
+                                            >
+                                                Subscribe
                                             </button>
                                         </div>
                                     ) : (

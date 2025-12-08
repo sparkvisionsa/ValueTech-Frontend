@@ -7,7 +7,7 @@ const Profile = ({ onViewChange }) => {
 
     const handleLogout = () => {
         logout();
-        onViewChange('registration');
+        onViewChange('login');
     };
 
     if (!user) {
