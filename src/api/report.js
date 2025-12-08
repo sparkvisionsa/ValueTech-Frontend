@@ -20,9 +20,36 @@ const checkMissingPages = async (reportId) => {
     return await httpClient.get(url);
 }
 
+const uploadElrajhiBatch = async (validationExcelFile, validationPdfFiles) => {
+    const formData = new FormData();
+
+    // field name MUST match Multer config: 'excel'
+    formData.append("excel", validationExcelFile);
+
+    // field name MUST match Multer config: 'pdfs'
+    (validationPdfFiles || []).forEach((file) => {
+        formData.append("pdfs", file);
+    });
+
+    const response = await httpClient.post(
+        "/elrajhi-upload",
+        formData,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        }
+    );
+
+    return response.data;
+};
+
+
+
 module.exports = {
     uploadAssetDataToDatabase,
     reportExistenceCheck,
     addCommonFields,
-    checkMissingPages
+    checkMissingPages,
+    uploadElrajhiBatch
 };

@@ -27,11 +27,12 @@ class ReportCommands {
         });
     }
 
-    async ElRajhiUploadReport(batchId, tabsNum) {
+    async ElRajhiUploadReport(batchId, tabsNum, pdfOnly) {
         return this._sendCommand({
             action: 'elrajhi-filler',
             batchId,
-            tabsNum
+            tabsNum,
+            pdfOnly
         });
     }
 

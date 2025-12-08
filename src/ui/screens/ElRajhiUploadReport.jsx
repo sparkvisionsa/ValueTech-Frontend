@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
+import { uploadElrajhiBatch } from "../../api/report";
 
 import {
     FileSpreadsheet,
@@ -194,10 +195,124 @@ const UploadReportElrajhi = () => {
     const [savingValidation, setSavingValidation] = useState(false);
     const [sendingValidation, setSendingValidation] = useState(false);
     const [loadingValuers, setLoadingValuers] = useState(false);
+    const [pdfOnlySending, setPdfOnlySending] = useState(false);
 
     // --- existing helpers (not used in new flow, but kept as requested) ---
     const uploadExcelOnly = async () => {
         throw new Error("uploadExcelOnly is deprecated in this flow.");
+    };
+
+    const handleSubmitElrajhi = async () => {
+        try {
+            setSendingValidation(true);
+            setValidationMessage({
+                type: "info",
+                text: "Saving reports to database..."
+            });
+
+            if (!validationExcelFile) {
+                throw new Error("Select a folder with Excel file before sending.");
+            }
+
+            // Upload to backend
+            const data = await uploadElrajhiBatch(
+                validationExcelFile,
+                validationPdfFiles
+            );
+
+            console.log("ELRAJHI BATCH:", data);
+
+            const batchIdFromData = data.batchId;
+            const insertedCount = data.inserted || 0;
+
+            // Update UI
+            setValidationMessage({
+                type: "success",
+                text: `Reports saved (${insertedCount} assets). Sending to Taqeem...`
+            });
+
+            // Send to Electron with pdfOnly = false (send all)
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, false);
+
+            if (electronResult?.status === "SUCCESS") {
+                setValidationMessage({
+                    type: "success",
+                    text: `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
+                });
+            } else {
+                setValidationMessage({
+                    type: "error",
+                    text: electronResult?.error || "Upload to Taqeem failed"
+                });
+            }
+        } catch (err) {
+            console.error("Upload failed", err);
+            setValidationMessage({
+                type: "error",
+                text: err.message || "Failed to upload reports"
+            });
+        } finally {
+            setSendingValidation(false);
+        }
+    };
+
+    // New function for sending only reports with PDFs
+    const handleSubmitPdfOnly = async () => {
+        try {
+            setPdfOnlySending(true);
+            setValidationMessage({
+                type: "info",
+                text: "Saving PDF reports to database..."
+            });
+
+            if (!validationExcelFile) {
+                throw new Error("Select a folder with Excel file before sending.");
+            }
+
+            // Upload to backend
+            const data = await uploadElrajhiBatch(
+                validationExcelFile,
+                validationPdfFiles
+            );
+
+            console.log("ELRAJHI BATCH (PDF Only):", data);
+
+            const batchIdFromData = data.batchId;
+            const insertedCount = data.inserted || 0;
+
+            // Filter reports to only include those with PDFs
+            const pdfReports = validationReports.filter(report => report.pdf_name);
+            const pdfCount = pdfReports.length;
+
+            // Update UI
+            setValidationMessage({
+                type: "success",
+                text: `PDF reports saved (${pdfCount} assets with PDFs). Sending to Taqeem...`
+            });
+
+            // Send to Electron with pdfOnly = true
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, true);
+
+            if (electronResult?.status === "SUCCESS") {
+                setValidationMessage({
+                    type: "success",
+                    text: `PDF-only upload succeeded. ${pdfCount} assets with PDFs sent to Taqeem browser.`
+                });
+            } else {
+                setValidationMessage({
+                    type: "error",
+                    text: electronResult?.error || "PDF-only upload to Taqeem failed"
+                });
+            }
+        } catch (err) {
+            console.error("PDF-only upload failed", err);
+            setValidationMessage({
+                type: "error",
+                text: err.message || "Failed to upload PDF reports"
+            });
+        } finally {
+            setPdfOnlySending(false);
+        }
     };
 
     const uploadPdfsOnly = async () => {
@@ -398,7 +513,7 @@ const UploadReportElrajhi = () => {
                 `Upload complete. Inserted ${insertedCount} urgent assets into DB. Now sending to Taqeem...`
             );
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, 1);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, 1, false);
 
             if (electronResult?.status === "SUCCESS") {
                 setSuccess(
@@ -427,7 +542,6 @@ const UploadReportElrajhi = () => {
         const pdfList = incomingFiles.filter((file) => /\.pdf$/i.test(file.name));
         setValidationExcelFile(excel || null);
         setValidationPdfFiles(pdfList);
-        // Parsing will run when user clicks "Save folder for validation"
     };
 
     const totalContribution = valuationTeam.reduce(
@@ -510,65 +624,6 @@ const UploadReportElrajhi = () => {
             });
         } finally {
             setSavingValidation(false);
-        }
-    };
-
-    const guardBeforeSend = () => {
-        if (!valuationTeam.length || !allAssetsTotalsValid) {
-            setValidationMessage({
-                type: "error",
-                text: "No valuers detected or totals are not 100% for all assets.",
-            });
-            return false;
-        }
-        if (!contributionIsComplete) {
-            setValidationMessage({
-                type: "error",
-                text: "Contribution total must equal 100% before sending to Taqeem.",
-            });
-            return false;
-        }
-        if (!validationReports.length) {
-            setValidationMessage({
-                type: "error",
-                text: "Save the folder first so reports are available to send.",
-            });
-            return false;
-        }
-        return true;
-    };
-
-    const sendAllReportsToTaqeem = async () => {
-        if (!guardBeforeSend()) return;
-        setSendingValidation(true);
-        try {
-            setValidationMessage({
-                type: "success",
-                text: "Ready to send all reports to Taqeem. Wire this button to the backend when available.",
-            });
-        } finally {
-            setSendingValidation(false);
-        }
-    };
-
-    const sendOnlyPdfReportsToTaqeem = async () => {
-        if (!guardBeforeSend()) return;
-        const withPdf = validationReports.filter((report) => report.pdf_name);
-        if (!withPdf.length) {
-            setValidationMessage({
-                type: "error",
-                text: "No PDF files found to send.",
-            });
-            return;
-        }
-        setSendingValidation(true);
-        try {
-            setValidationMessage({
-                type: "success",
-                text: "Ready to send only reports that include PDFs. Hook navigation to Taqeem home here.",
-            });
-        } finally {
-            setSendingValidation(false);
         }
     };
 
@@ -772,13 +827,17 @@ const UploadReportElrajhi = () => {
                 <div
                     className={`rounded-lg p-3 flex items-start gap-2 ${validationMessage.type === "error"
                         ? "bg-red-50 text-red-700 border border-red-100"
-                        : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                        : validationMessage.type === "success"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                            : "bg-blue-50 text-blue-700 border border-blue-100"
                         }`}
                 >
                     {validationMessage.type === "error" ? (
                         <AlertTriangle className="w-4 h-4 mt-0.5" />
-                    ) : (
+                    ) : validationMessage.type === "success" ? (
                         <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                    ) : (
+                        <Info className="w-4 h-4 mt-0.5" />
                     )}
                     <div className="text-sm">{validationMessage.text}</div>
                 </div>
@@ -810,8 +869,6 @@ const UploadReportElrajhi = () => {
                             type="file"
                             multiple
                             webkitdirectory="true"
-                            directory="true"
-                            accept=".xlsx,.xls,.pdf"
                             className="hidden"
                             onChange={handleValidationFolderChange}
                         />
@@ -937,20 +994,20 @@ const UploadReportElrajhi = () => {
                 </div>
             </div>
 
-                <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div className="px-4 py-3 border-b flex items-center gap-2">
-                        <Files className="w-5 h-5 text-blue-600" />
-                        <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                                Reports staged from folder
-                            </p>
-                            <p className="text-xs text-gray-500">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-4 py-3 border-b flex items-center gap-2">
+                    <Files className="w-5 h-5 text-blue-600" />
+                    <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                            Reports staged from folder
+                        </p>
+                        <p className="text-xs text-gray-500">
                             After the folder is saved to the database, PDFs will appear here with asset and client info.
-                            </p>
-                        </div>
+                        </p>
                     </div>
-                    {validationReports.length ? (
-                        <div className="overflow-x-auto">
+                </div>
+                {validationReports.length ? (
+                    <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-gray-50 text-gray-600">
                                 <tr>
@@ -1035,14 +1092,11 @@ const UploadReportElrajhi = () => {
                 <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
-                        onClick={sendAllReportsToTaqeem}
-                        disabled={
-                            sendingValidation ||
-                            !valuationTeam.length ||
-                            !contributionIsComplete ||
-                            !validationReports.length
-                        }
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                        onClick={handleSubmitElrajhi}
+                        className="inline-flex items-center gap-2 
+                        px-3 py-2 rounded-md bg-emerald-600 
+                        text-white text-sm font-semibold 
+                        hover:bg-emerald-700 disabled:opacity-50"
                     >
                         {sendingValidation ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -1053,16 +1107,10 @@ const UploadReportElrajhi = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={sendOnlyPdfReportsToTaqeem}
-                        disabled={
-                            sendingValidation ||
-                            !valuationTeam.length ||
-                            !contributionIsComplete ||
-                            !validationReports.length
-                        }
+                        onClick={handleSubmitPdfOnly}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
                     >
-                        {sendingValidation ? (
+                        {pdfOnlySending ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                             <Files className="w-4 h-4" />

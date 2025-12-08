@@ -39,6 +39,8 @@ function registerIpcHandlers() {
     ipcMain.handle('worker-status', workerHandlers.handleWorkerStatus);
     ipcMain.handle('show-open-dialog', workerHandlers.showOpenDialog);
     ipcMain.handle('show-open-dialog-pdfs', workerHandlers.showOpenDialogPdfs);
+    ipcMain.handle('select-folder', workerHandlers.selectFolder);
+    ipcMain.handle('read-folder', workerHandlers.readFolder);
 
     //Health handlers
     ipcMain.handle('check-server-health', healthHandlers.handleHealth);
@@ -60,6 +62,12 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('ping-worker');
     ipcMain.removeAllListeners('worker-status');
     ipcMain.removeAllListeners('show-open-dialog');
+    ipcMain.removeAllListeners('show-open-dialog-pdfs');
+    ipcMain.removeAllListeners('select-folder');
+    ipcMain.removeAllListeners('read-folder');
+    ipcMain.removeAllListeners('read-file');
+
+    ipcMain.removeAllListeners('api-request');
 
     ipcMain.removeAllListeners('validate-report');
     ipcMain.removeAllListeners('create-macros');

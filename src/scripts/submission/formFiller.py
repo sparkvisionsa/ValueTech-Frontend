@@ -2,6 +2,44 @@ import asyncio, json, sys
 from scripts.core.utils import wait_for_element
 from datetime import datetime
 
+async def fill_valuers(page, valuers):
+    try:
+        if len(valuers) > 1:
+            for _ in range(len(valuers) - 1):
+                try:
+                    add_btn = await wait_for_element(page, "#duplicateValuer", timeout=30)
+                except Exception:
+                    add_btn = None
+                if add_btn:
+                    await add_btn.click()
+                    await asyncio.sleep(0.5)
+
+        for idx, valuer in enumerate(valuers):
+            name_sel = f"[name='valuer[{idx}][id]']"
+            contrib_sel = f"[name='valuer[{idx}][contribution]']"
+
+            for sel, val in [
+                (name_sel, valuer.get("valuerName", "")),
+                (contrib_sel, str(valuer.get("percentage", ""))),
+            ]:
+                try:
+                    select_element = await wait_for_element(page, sel, timeout=30)
+                except Exception:
+                    select_element = None
+
+                if not select_element:
+                    continue
+
+                options = getattr(select_element, "children", []) or []
+                for opt in options:
+                    text = (opt.text or "").strip()
+                    if val.lower() in text.lower():
+                        await opt.select_option()
+                        break
+    except Exception as e:
+        print(f"[WARNING] fill_valuers failed: {e}", file=sys.stderr)
+
+
 _location_cache = {}
 async def set_location(page, country_name, region_name, city_name):
     try:
@@ -158,16 +196,24 @@ async def bulk_inject_inputs(page, record, field_map, field_types):
 
     await page.evaluate(js)
 
-async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, skip_special_fields=False, report_id=None):
+async def fill_form(page, record, field_map, field_types, is_last_step=False, retries=0, max_retries=2, is_valuers=False):
     try:
         
+        if is_valuers:
+            try:
+                await fill_valuers(page, record.get("valuers"))
+            except Exception as e:
+                print(f"Error filling valuers: {e}", file=sys.stderr)
+
         await bulk_inject_inputs(page, record, field_map, field_types)
+
 
         for key, selector in field_map.items():
             if key not in record: continue
             value = str(record[key] or "")
             ftype = field_types.get(key,"text")
             try:
+
                 if ftype == "location":
                     country_name = record.get("country","")
                     region_name = record.get("region","")
@@ -200,7 +246,7 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
                     return await fill_form(
                         page, record, field_map, 
                         field_types, is_last_step, retries+1, 
-                        max_retries, skip_special_fields, report_id)
+                        max_retries)
         else:
             save_btn = await wait_for_element(page, "input[type='submit']", timeout=10)
             if save_btn:

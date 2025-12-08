@@ -90,11 +90,12 @@ field_types_3 = {
 }
 
 form_steps = [
-    {"field_map": field_map_1, "field_types": field_types_1},
-    {"field_map": field_map_2, "field_types": field_types_2},
+    {"field_map": field_map_1, "field_types": field_types_1, "is_valuers_step": True},
+    {"field_map": field_map_2, "field_types": field_types_2, "is_valuers_step": False},
 ]
 
 macro_form_config = {
     "field_map": field_map_3,
     "field_types": field_types_3,
+    "is_valuers_step": False
 }

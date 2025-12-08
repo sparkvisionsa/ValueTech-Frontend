@@ -106,9 +106,9 @@ const reportHandlers = {
         }
     },
 
-    async handleElRajhiUploadReport(event, batchId, tabsNum) {
+    async handleElRajhiUploadReport(event, batchId, tabsNum, pdfOnly) {
         try {
-            return await pythonAPI.report.ElRajhiUploadReport(batchId, tabsNum);
+            return await pythonAPI.report.ElRajhiUploadReport(batchId, tabsNum, pdfOnly);
         } catch (err) {
             console.error('[MAIN] ElRajhiUploadReport error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };

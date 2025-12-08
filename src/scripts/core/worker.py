@@ -167,8 +167,9 @@ async def handle_command(cmd):
         
         batch_id = cmd.get("batchId")
         tabs_num = int(cmd.get("tabsNum", 3))
+        pdf_only = bool(cmd.get("pdfOnly", False))
         
-        result = await ElRajhiFiller(browser, batch_id, tabs_num)
+        result = await ElRajhiFiller(browser, batch_id, tabs_num, pdf_only)
         result["commandId"] = cmd.get("commandId")
         
         print(json.dumps(result), flush=True)

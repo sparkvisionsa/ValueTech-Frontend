@@ -128,16 +128,26 @@ async def fill_single_report(page, report_record, batch_id=None):
         # Fill form steps with report data
         for step_num, step_config in enumerate(form_steps, 1):
             is_last = step_num == len(form_steps)
+            valuers = report_record.get("valuers")
+            is_valuers_step = bool(valuers) and step_config.get("is_valuers_step", False)
 
-            result = await fill_form(
-                page, 
-                report_record, 
-                step_config["field_map"], 
-                step_config["field_types"], 
-                is_last, 
-                skip_special_fields=True,
-                report_id=batch_id
-            )
+            if valuers:
+                result = await fill_form(
+                    page, 
+                    report_record, 
+                    step_config["field_map"], 
+                    step_config["field_types"], 
+                    is_last, 
+                    is_valuers=is_valuers_step,
+                )
+            else:
+                result = await fill_form(
+                    page, 
+                    report_record, 
+                    step_config["field_map"], 
+                    step_config["field_types"], 
+                    is_last
+                )
 
             if isinstance(result, dict) and result.get("status") == "FAILED":
                 return {
@@ -191,7 +201,6 @@ async def fill_single_report(page, report_record, batch_id=None):
                     macro_data=macro_data, 
                     field_map=macro_form_config["field_map"], 
                     field_types=macro_form_config["field_types"], 
-                    report_id=batch_id
                 )
                 
                 if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
@@ -218,8 +227,16 @@ async def fill_single_report(page, report_record, batch_id=None):
             "traceback": tb,
             "record_id": str(report_record["_id"])
         }
+    
+DUMMY_PDF_NAME = "dummy_placeholder.pdf"
 
-async def ElRajhiFiller(browser, batch_id, tabs_num=3):
+def is_dummy_pdf(report_record):
+    """Return True if this report is using the dummy placeholder PDF."""
+    pdf_path = report_record.get("pdf_path") or ""
+    return isinstance(pdf_path, str) and pdf_path.endswith(DUMMY_PDF_NAME)
+
+
+async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False):
     try:
         # Fetch all report records with this batch_id
         cursor = db.urgentreports.find({"batch_id": batch_id})
@@ -228,6 +245,12 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3):
         if not report_records:
             return {"status": "FAILED", "error": f"No reports found for batch_id: {batch_id}"}
         
+        if pdf_only:
+            report_records = [
+                report for report in report_records
+                if not is_dummy_pdf(report)
+            ]
+
         total_reports = len(report_records)
         
         # Update start time for all reports in batch

@@ -65,7 +65,7 @@ def balanced_chunks(lst, n):
         start += size
     return chunks
 
-async def fill_macro_form(page, macro_id, macro_data, field_map, field_types, report_id=None):
+async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
     await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
     await wait_for_element(page, "#asset_usage_id", timeout=30)
     await asyncio.sleep(0.5)
@@ -77,8 +77,6 @@ async def fill_macro_form(page, macro_id, macro_data, field_map, field_types, re
             field_map, 
             field_types, 
             is_last_step=True, 
-            skip_special_fields=True, 
-            report_id=report_id
         )
         return result
     except Exception as e:
