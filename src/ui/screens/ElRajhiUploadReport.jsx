@@ -72,26 +72,55 @@ const detectValuerColumnsOrThrow = (exampleRow) => {
     const nameKeys = [];
     const pctKeys = [];
 
-    for (const k of keys) {
-        const base = k.split("_")[0];
-        const lowerBase = base.toLowerCase();
+    const pushIfUnique = (arr, key) => {
+        if (!arr.includes(key)) arr.push(key);
+    };
 
-        if (lowerBase === "valuerid") idKeys.push(k);
-        else if (lowerBase === "valuername") nameKeys.push(k);
-        else if (lowerBase === "percentage") pctKeys.push(k);
-    }
+    const extractIndex = (normalizedKey, base) => {
+        const num = normalizedKey.slice(base.length).match(/^(\d+)/);
+        return num ? Number(num[1]) : 0;
+    };
 
-    idKeys.sort();
-    nameKeys.sort();
-    pctKeys.sort();
+    keys.forEach((originalKey) => {
+        const normalized = normalizeKey(originalKey);
 
-    const hasBaseId = idKeys.some((k) => k.split("_")[0] === "valuerId");
-    const hasBaseName = nameKeys.some((k) => k.split("_")[0] === "valuerName");
-    const hasBasePct = pctKeys.some((k) => k.split("_")[0] === "percentage");
+        const isIdKey =
+            normalized.startsWith("valuerid") ||
+            /^valuer\d+id/.test(normalized);
+        const isNameKey =
+            normalized.startsWith("valuername") ||
+            /^valuer\d+name/.test(normalized);
+        const isPctKey =
+            normalized.startsWith("percentage") ||
+            normalized.startsWith("percent") ||
+            /^valuer\d+(percentage|percent)/.test(normalized);
 
-    if (!hasBaseId || !hasBaseName || !hasBasePct) {
+        if (isIdKey) {
+            pushIfUnique(idKeys, originalKey);
+        } else if (isNameKey) {
+            pushIfUnique(nameKeys, originalKey);
+        } else if (isPctKey) {
+            pushIfUnique(pctKeys, originalKey);
+        }
+    });
+
+    const sortValuerKeys = (arr, base) =>
+        arr.sort((a, b) => {
+            const aIdx = extractIndex(normalizeKey(a), base);
+            const bIdx = extractIndex(normalizeKey(b), base);
+            return aIdx - bIdx || a.localeCompare(b);
+        });
+
+    sortValuerKeys(idKeys, "valuerid");
+    sortValuerKeys(nameKeys, "valuername");
+    sortValuerKeys(pctKeys, "percentage");
+
+    const hasBaseName = nameKeys.length > 0;
+    const hasBasePct = pctKeys.length > 0;
+
+    if (!hasBaseName || !hasBasePct) {
         throw new Error(
-            "Market sheet must contain headers 'valuerId', 'valuerName', and 'percentage' (with optional _1, _2)."
+            "Market sheet must contain headers 'valuerName' and 'percentage' (with optional 1, 2, etc.)."
         );
     }
 
@@ -127,11 +156,24 @@ const buildValuersForAsset = (assetRow, valuerCols) => {
                 .trim();
         }
 
+        const hasPct =
+            rawPct !== null &&
+            rawPct !== undefined &&
+            String(rawPct).toString().trim() !== "";
+
+        if (!hasPct) {
+            // Skip valuers that don't provide a percentage
+            continue;
+        }
+
         const pctNum = Number(pctValue);
         let percentage = 0;
 
         if (!Number.isNaN(pctNum)) {
             percentage = pctNum >= 0 && pctNum <= 1 ? pctNum * 100 : pctNum;
+        } else {
+            // Skip valuers with invalid/non-numeric percentages
+            continue;
         }
 
         valuers.push({
@@ -148,13 +190,21 @@ const worksheetToObjects = (worksheet) => {
     const headerRow = worksheet.getRow(1);
     const headerMap = [];
     const maxCol = worksheet.columnCount || (headerRow.values.length - 1);
+    const headerCounts = {};
+
+    const nextHeaderName = (rawHeader, fallback) => {
+        const base = (String(rawHeader || fallback || "").trim()) || fallback;
+        const count = (headerCounts[base] || 0) + 1;
+        headerCounts[base] = count;
+        return count === 1 ? base : `${base}_${count}`;
+    };
 
     for (let col = 1; col <= maxCol; col++) {
         const header = String(
             normalizeCellValue(headerRow.getCell(col).value) || `col_${col}`
         )
             .trim() || `col_${col}`;
-        headerMap[col] = header;
+        headerMap[col] = nextHeaderName(header, `col_${col}`);
     }
 
     const rows = [];
@@ -189,7 +239,6 @@ const UploadReportElrajhi = () => {
     const [validationExcelFile, setValidationExcelFile] = useState(null);
     const [validationPdfFiles, setValidationPdfFiles] = useState([]);
     const [validationReports, setValidationReports] = useState([]);
-    const [valuationTeam, setValuationTeam] = useState([]);
     const [marketAssets, setMarketAssets] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
     const [savingValidation, setSavingValidation] = useState(false);
@@ -340,7 +389,6 @@ const UploadReportElrajhi = () => {
         const { silent = false } = options;
 
         if (!excel) {
-            setValuationTeam([]);
             setMarketAssets([]);
             setValidationReports([]);
             if (!silent) {
@@ -378,6 +426,7 @@ const UploadReportElrajhi = () => {
             });
 
             const assets = [];
+            const invalidTotals = [];
 
             for (let i = 0; i < marketRows.length; i++) {
                 const row = marketRows[i];
@@ -397,9 +446,11 @@ const UploadReportElrajhi = () => {
                 const roundedTotal = Math.round(total * 100) / 100;
 
                 if (Math.abs(roundedTotal - 100) > 0.001) {
-                    throw new Error(
-                        `Asset "${row.asset_name}" (row ${i + 2}) valuers total ${roundedTotal}%. Must be 100%.`
-                    );
+                    invalidTotals.push({
+                        assetName: row.asset_name,
+                        rowNumber: i + 2,
+                        total: roundedTotal,
+                    });
                 }
 
                 const pdf_name = pdfMap[normalizeKey(row.asset_name)] || null;
@@ -426,22 +477,28 @@ const UploadReportElrajhi = () => {
                 totalPercentage: asset.totalPercentage,
             }));
 
-            setValuationTeam(assets[0].valuers);
             setMarketAssets(assets);
             setValidationReports(reports);
 
             const matchedCount = reports.filter((r) => !!r.pdf_name).length;
 
             if (!silent) {
-                setValidationMessage({
-                    type: "success",
-                    text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.`,
-                });
+                if (invalidTotals.length) {
+                    const firstInvalid = invalidTotals[0];
+                    setValidationMessage({
+                        type: "error",
+                        text: `Found ${invalidTotals.length} asset(s) with invalid totals. Example: Asset "${firstInvalid.assetName}" (row ${firstInvalid.rowNumber}) totals ${firstInvalid.total}%. Must be 100%.`,
+                    });
+                } else {
+                    setValidationMessage({
+                        type: "success",
+                        text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.`,
+                    });
+                }
             }
 
-            return { assets, matchedCount };
+            return { assets, matchedCount, invalidTotals };
         } catch (err) {
-            setValuationTeam([]);
             setMarketAssets([]);
             setValidationReports([]);
             if (!silent) {
@@ -544,16 +601,26 @@ const UploadReportElrajhi = () => {
         setValidationPdfFiles(pdfList);
     };
 
-    const totalContribution = valuationTeam.reduce(
-        (sum, member) =>
-            sum + Number(member.percentage ?? member.contribution ?? 0),
-        0
-    );
-    const roundedContribution = Math.round(totalContribution * 100) / 100;
-    const contributionIsComplete = Math.abs(roundedContribution - 100) < 0.001;
     const allAssetsTotalsValid = marketAssets.every(
         (a) => Math.abs((a.totalPercentage || 0) - 100) < 0.001
     );
+    const canSendReports = marketAssets.length > 0 && allAssetsTotalsValid && !loadingValuers;
+    const maxValuerSlots = Math.max(
+        1,
+        marketAssets.reduce(
+            (max, asset) => Math.max(max, (asset.valuers || []).length),
+            0
+        )
+    );
+
+    const calculateAssetTotal = (asset) => {
+        const total = (asset?.valuers || []).reduce(
+            (sum, member) =>
+                sum + Number(member.percentage ?? member.contribution ?? 0),
+            0
+        );
+        return Math.round(total * 100) / 100;
+    };
 
     const resetValidationSection = () => {
         setValidationFolderFiles([]);
@@ -561,7 +628,6 @@ const UploadReportElrajhi = () => {
         setValidationPdfFiles([]);
         setValidationReports([]);
         setValidationMessage(null);
-        setValuationTeam([]);
         setMarketAssets([]);
     };
 
@@ -610,7 +676,11 @@ const UploadReportElrajhi = () => {
                 return;
             }
 
-            if (!valuationTeam.length || !contributionIsComplete || !allAssetsTotalsValid) {
+            const totalsValid = assets.every(
+                (asset) => Math.abs((asset.totalPercentage || 0) - 100) < 0.001
+            );
+
+            if (!totalsValid) {
                 setValidationMessage({
                     type: "error",
                     text: "Valuer percentages must total 100% for every asset before saving.",
@@ -917,7 +987,7 @@ const UploadReportElrajhi = () => {
                                 Valuer contributions
                             </p>
                             <p className="text-xs text-gray-500">
-                                Pulled from the Excel &quot;market&quot; sheet. Each asset row must have valuers totaling 100%. Showing the first asset&rsquo;s valuers below.
+                                Pulled from the Excel &quot;market&quot; sheet. Each asset row must have valuers totaling 100%. Listing all assets and their valuers below.
                             </p>
                             {marketAssets.length > 1 && (
                                 <p className="text-[11px] text-gray-500">
@@ -930,40 +1000,62 @@ const UploadReportElrajhi = () => {
                         <table className="min-w-full text-sm">
                             <thead className="bg-gray-50 text-gray-600">
                                 <tr>
-                                    <th className="px-3 py-2 text-left">Valuer ID</th>
-                                    <th className="px-3 py-2 text-left">Valuer Name</th>
-                                    <th className="px-3 py-2 text-left">Contribution (%)</th>
+                                    <th className="px-3 py-2 text-left">Asset</th>
+                                    {Array.from({ length: maxValuerSlots }).map((_, idx) => (
+                                        <th key={`valuer-col-${idx}`} className="px-3 py-2 text-left">
+                                            Valuer {idx + 1}
+                                        </th>
+                                    ))}
+                                    <th className="px-3 py-2 text-left">Total (%)</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {valuationTeam.map((member, idx) => (
-                                    <tr key={`${member.valuerId || member.valuerName}-${idx}`} className="border-t">
-                                        <td className="px-3 py-2 text-gray-900 font-medium">
-                                            {member.valuerId || "—"}
-                                        </td>
-                                        <td className="px-3 py-2 text-gray-800">
-                                            {member.valuerName || "—"}
-                                        </td>
-                                        <td className="px-3 py-2 text-right text-gray-800">
-                                            {Number(member.percentage ?? 0)}
-                                        </td>
-                                    </tr>
-                                ))}
-                                <tr className="bg-gray-50 border-t">
-                                    <td className="px-3 py-2 font-semibold text-gray-800">
-                                        Total
-                                    </td>
-                                    <td className="px-3 py-2 font-semibold text-right" colSpan={2}>
-                                        <span
-                                            className={`${contributionIsComplete
-                                                ? "text-emerald-600"
-                                                : "text-red-600"
-                                                }`}
+                                {marketAssets.map((asset, assetIdx) => {
+                                    const assetTotal = calculateAssetTotal(asset);
+                                    const isComplete = Math.abs(assetTotal - 100) < 0.001;
+
+                                    return (
+                                        <tr
+                                            key={`${asset.asset_name || "asset"}-${assetIdx}`}
+                                            className="border-t align-top"
                                         >
-                                            {roundedContribution}%
-                                        </span>
-                                    </td>
-                                </tr>
+                                            <td className="px-3 py-2 text-gray-900 font-medium">
+                                                {asset.asset_name || `Asset ${assetIdx + 1}`}
+                                            </td>
+                                            {Array.from({ length: maxValuerSlots }).map((_, valIdx) => {
+                                                const valuer = (asset.valuers || [])[valIdx];
+
+                                                return (
+                                                    <td
+                                                        key={`asset-${assetIdx}-valuer-${valIdx}`}
+                                                        className="px-3 py-2 text-gray-800"
+                                                    >
+                                                        {valuer ? (
+                                                            <div className="space-y-0.5">
+                                                                <div className="text-xs text-gray-500">
+                                                                    ID: {valuer.valuerId || "—"}
+                                                                </div>
+                                                                <div className="text-sm font-semibold text-gray-800">
+                                                                    {valuer.valuerName || "—"}
+                                                                </div>
+                                                                <div className="text-sm text-gray-700">
+                                                                    {Number(valuer.percentage ?? valuer.contribution ?? 0)}%
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">—</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td className="px-3 py-2 font-semibold text-right">
+                                                <span className={isComplete ? "text-emerald-600" : "text-red-600"}>
+                                                    {assetTotal}%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -973,19 +1065,19 @@ const UploadReportElrajhi = () => {
                             Reading valuers from Excel...
                         </div>
                     )}
-                    {!loadingValuers && !valuationTeam.length && (
+                    {!loadingValuers && !marketAssets.length && (
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                             <Info className="w-4 h-4" />
                             Select a folder with an Excel file to load valuers.
                         </div>
                     )}
-                    {!loadingValuers && valuationTeam.length > 0 && (!contributionIsComplete || !allAssetsTotalsValid) && (
+                    {!loadingValuers && marketAssets.length > 0 && !allAssetsTotalsValid && (
                         <div className="flex items-center gap-2 text-xs text-red-600">
                             <AlertTriangle className="w-4 h-4" />
                             Every asset row must total 100% to enable sending to Taqeem.
                         </div>
                     )}
-                    {!loadingValuers && valuationTeam.length > 0 && contributionIsComplete && allAssetsTotalsValid && (
+                    {!loadingValuers && marketAssets.length > 0 && allAssetsTotalsValid && (
                         <div className="flex items-center gap-2 text-xs text-emerald-600">
                             <CheckCircle2 className="w-4 h-4" />
                             Contributions are balanced. You can proceed to send.
@@ -1093,6 +1185,7 @@ const UploadReportElrajhi = () => {
                     <button
                         type="button"
                         onClick={handleSubmitElrajhi}
+                        disabled={sendingValidation || !canSendReports}
                         className="inline-flex items-center gap-2 
                         px-3 py-2 rounded-md bg-emerald-600 
                         text-white text-sm font-semibold 
@@ -1108,6 +1201,7 @@ const UploadReportElrajhi = () => {
                     <button
                         type="button"
                         onClick={handleSubmitPdfOnly}
+                        disabled={pdfOnlySending || !canSendReports}
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
                     >
                         {pdfOnlySending ? (
