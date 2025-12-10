@@ -1,5 +1,6 @@
 import asyncio, sys
 from scripts.core.browser import navigate
+from scripts.core.company_context import parse_company_url
 
 async def get_companies():
     try:
@@ -47,11 +48,15 @@ async def get_companies():
                 # If we're between the markers, check if it's a company link
                 if reports_link_found and not join_partner_found:
                     if "organization/show/" in href and text:
+                        parsed = parse_company_url(href)
                         companies.append({
                             "name": text,
-                            "url": href
+                            "url": parsed.get("url") or href,
+                            "officeId": parsed.get("office_id"),
+                            "sectorId": parsed.get("sector_id")
                         })
-                        print(f"[INFO] Found company: {text}", file=sys.stderr)
+                        office_log = parsed.get("office_id") or "unknown"
+                        print(f"[INFO] Found company: {text} (office={office_log})", file=sys.stderr)
 
         print(f"[INFO] Total companies found: {len(companies)}", file=sys.stderr)
         return {"status": "SUCCESS", "data": companies}

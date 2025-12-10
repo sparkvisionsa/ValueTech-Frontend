@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     submitOtp: (otp) => safeInvoke('submit-otp', otp),
     checkStatus: () => safeInvoke('check-status'),
     getCompanies: () => safeInvoke('get-companies'),
-    navigateToCompany: (url) => safeInvoke('navigate-to-company', url),
+    navigateToCompany: (company) => safeInvoke('navigate-to-company', company),
     register: (userData) => safeInvoke('register', userData),
 
     // Set refresh token (main process will store this as HttpOnly cookie)
@@ -48,7 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     grabMacroIds: (reportId, tabsNum) => safeInvoke('grab-macro-ids', reportId, tabsNum),
     retryMacroIds: (reportId, tabsNum) => safeInvoke('retry-macro-ids', reportId, tabsNum),
     macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
-    elrajhiUploadReport: (batchId, tabsNum, pdfOnly) => safeInvoke('elrajhi-filler', batchId, tabsNum, pdfOnly),
+    elrajhiUploadReport: (batchId, tabsNum, pdfOnly, finalizeSubmission = true) => safeInvoke('elrajhi-filler', batchId, tabsNum, pdfOnly, finalizeSubmission),
+    duplicateReportNavigate: (recordId, company) => safeInvoke('duplicate-report', recordId, company),
 
     // Pause/Resume/Stop controls
     pauseMacroFill: (reportId) => safeInvoke('pause-macro-fill', reportId),

@@ -38,10 +38,10 @@ class AuthCommands {
         });
     }
 
-    async navigateToCompany(url) {
+    async navigateToCompany(company) {
         return this._sendCommand({
             action: 'navigate-to-company',
-            url
+            company
         });
     }
 

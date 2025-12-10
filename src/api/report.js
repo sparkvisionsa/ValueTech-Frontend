@@ -51,5 +51,19 @@ module.exports = {
     reportExistenceCheck,
     addCommonFields,
     checkMissingPages,
-    uploadElrajhiBatch
+    uploadElrajhiBatch,
+    fetchLatestUserReport: async () => {
+        const url = `/duplicate-report/latest`;
+        const response = await httpClient.get(url);
+        return response.data;
+    },
+    createDuplicateReport: async (payload) => {
+        const url = `/duplicate-report`;
+        const response = await httpClient.post(url, payload, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
+        return response.data;
+    }
 };

@@ -6,13 +6,13 @@ export default function GetCompanies() {
     const [navigating, setNavigating] = useState(false);
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
-    const [selectedCompany, setSelectedCompany] = useState("");
+    const [selectedCompany, setSelectedCompany] = useState(null);
 
     const handleGetCompanies = async () => {
         setLoading(true);
         setError("");
         setSuccessMessage("");
-        setSelectedCompany("");
+        setSelectedCompany(null);
         try {
             const data = await window.electronAPI.getCompanies();
 
@@ -41,10 +41,19 @@ export default function GetCompanies() {
         setError("");
         setSuccessMessage("");
         try {
-            const data = await window.electronAPI.navigateToCompany(selectedCompany);
+            const payload = {
+                name: selectedCompany.name,
+                url: selectedCompany.url,
+                officeId: selectedCompany.officeId,
+                sectorId: selectedCompany.sectorId
+            };
+            const data = await window.electronAPI.navigateToCompany(payload);
 
             if (data.status === "SUCCESS") {
-                setSuccessMessage("Navigation completed successfully!");
+                const chosen = data.selectedCompany || payload;
+                setSelectedCompany({ ...selectedCompany, ...chosen });
+                const officeText = chosen.office_id || chosen.officeId || "unknown";
+                setSuccessMessage(`Navigation completed successfully! Office ID: ${officeText}`);
             } else {
                 setError(data.error || 'Failed to navigate to company');
             }
@@ -129,14 +138,17 @@ export default function GetCompanies() {
                                 </h3>
                                 <div className="space-y-3">
                                     <select
-                                        value={selectedCompany}
-                                        onChange={(e) => setSelectedCompany(e.target.value)}
+                                        value={selectedCompany?.url || ""}
+                                        onChange={(e) => {
+                                            const next = companies.find((company) => company.url === e.target.value);
+                                            setSelectedCompany(next || null);
+                                        }}
                                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
                                         <option value="">-- Select Company --</option>
                                         {companies.map((company, index) => (
                                             <option key={index} value={company.url}>
-                                                {company.name}
+                                                {company.name} {company.officeId ? `(Office ${company.officeId})` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -182,9 +194,9 @@ export default function GetCompanies() {
                                 {companies.map((company, index) => (
                                     <div
                                         key={index}
-                                        className={`bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300 cursor-pointer ${selectedCompany === company.url ? 'border-green-500 ring-2 ring-green-200' : 'border-blue-100'
+                                        className={`bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300 cursor-pointer ${selectedCompany?.url === company.url ? 'border-green-500 ring-2 ring-green-200' : 'border-blue-100'
                                             }`}
-                                        onClick={() => setSelectedCompany(company.url)}
+                                        onClick={() => setSelectedCompany(company)}
                                     >
                                         <div className="flex items-center mb-3">
                                             <div className="bg-blue-500 p-2 rounded-lg mr-3">
@@ -195,6 +207,9 @@ export default function GetCompanies() {
                                             <h3 className="font-semibold text-gray-900 text-lg">{company.name}</h3>
                                         </div>
                                         <p className="text-sm text-gray-600 mb-3 break-all">{company.url}</p>
+                                        <p className="text-sm text-gray-700 mb-1">
+                                            Office ID: {company.officeId || 'Unknown'}{company.sectorId ? ` • Sector: ${company.sectorId}` : ''}
+                                        </p>
                                         <div className="flex items-center text-xs text-gray-500">
                                             <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />

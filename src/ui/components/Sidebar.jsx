@@ -16,7 +16,8 @@ import {
     MonitorDot,
     Wrench,
     Users,
-    UploadCloud
+    UploadCloud,
+    Files
 } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
@@ -44,6 +45,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'get-companies', label: 'Get Companies', icon: CompassIcon },
         { id: 'packages', label: 'Packages', icon: Package },
         { id: 'upload-report-elrajhi', label: 'Upload Report Elrajhi', icon: UploadCloud },
+        { id: 'duplicate-report', label: 'Duplicate report & send new', icon: Files },
     ];
 
     if (isCompanyHead) {

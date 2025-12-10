@@ -1,11 +1,10 @@
 import asyncio
 from scripts.core.utils import log, wait_for_element
 from scripts.core.browser import new_tab
+from scripts.core.company_context import build_report_url, require_selected_company
 from .reportInfo import extract_report_info
 from .pagination import go_to_last_asset_page
 from .assetDelete import delete_latest_asset
-
-OFFICE_ID = "487"  # TODO: Move to config
 MACROS_INPUT_SEL = "#macros"
 SAVE_BTN_SEL = "input.btn.btn-primary.btn-lg.mt-2[type='submit'][value='Save']"
 CANCELLED_VALUES = {"ملغى", "ملغي", "Canceled", "Cancelled"}
@@ -134,8 +133,18 @@ async def handle_cancelled_report(report_id: str, control_state=None) -> dict:
         }
     """
     try:
+        try:
+            require_selected_company()
+        except Exception as ctx_err:
+            return {
+                "status": "FAILED",
+                "reportId": report_id,
+                "wasCancelled": False,
+                "error": str(ctx_err)
+            }
+
         # Open report page
-        url = f"https://qima.taqeem.sa/report/{report_id}?office={OFFICE_ID}"
+        url = build_report_url(report_id)
         log(f"Opening report: {url}", "STEP")
         page = await new_tab(url)
         await asyncio.sleep(2.0)

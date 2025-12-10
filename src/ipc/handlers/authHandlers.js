@@ -103,17 +103,20 @@ const authHandlers = {
         }
     },
 
-    async handleNavigateToCompany(event, url) {
+    async handleNavigateToCompany(event, company) {
         try {
-            console.log('[MAIN] Received navigate to company request:', url);
-            const result = await pythonAPI.auth.navigateToCompany(url);
+            console.log('[MAIN] Received navigate to company request:', company);
+            const result = await pythonAPI.auth.navigateToCompany(company);
             if (!result) return { status: 'ERROR', error: 'Failed to navigate to company' };
 
             console.log("Result at handler:", result);
 
             return {
                 status: result.status,
-                data: result.data
+                message: result.message,
+                url: result.url,
+                selectedCompany: result.selectedCompany,
+                error: result.error
             };
 
         } catch (error) {

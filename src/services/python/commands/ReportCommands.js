@@ -27,12 +27,13 @@ class ReportCommands {
         });
     }
 
-    async ElRajhiUploadReport(batchId, tabsNum, pdfOnly) {
+    async ElRajhiUploadReport(batchId, tabsNum, pdfOnly, finalizeSubmission = true) {
         return this._sendCommand({
             action: 'elrajhi-filler',
             batchId,
             tabsNum,
-            pdfOnly
+            pdfOnly,
+            finalizeSubmission
         });
     }
 
@@ -117,6 +118,14 @@ class ReportCommands {
         return this._sendCommand({
             action: 'handle-cancelled-report',
             reportId
+        });
+    }
+
+    async duplicateReport(recordId, company) {
+        return this._sendCommand({
+            action: 'duplicate-report',
+            recordId,
+            company
         });
     }
 }

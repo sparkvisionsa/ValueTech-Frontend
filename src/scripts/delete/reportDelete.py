@@ -3,9 +3,8 @@ from pathlib import Path
 
 from scripts.core.utils import log
 from scripts.core.browser import new_tab, new_window  # reliable new-tab open in nodriver
+from scripts.core.company_context import build_report_url, require_selected_company
 from .assetEdit import edit_macro_and_save
-
-OFFICE_ID = 487
 
 # ==============================
 # Selectors / Constants
@@ -216,7 +215,7 @@ async def create_one_asset_and_get_macro(page, report_id: str) -> str | None:
 
     # 4) Fallback: open report page and parse first/last asset row
     try:
-        report_url = f"https://qima.taqeem.sa/report/{report_id}?office={OFFICE_ID}"
+        report_url = build_report_url(report_id)
         log(f"[create-asset] Opening report page to discover macro id: {report_url}", "INFO")
         page2 = await page.get(report_url)
         await asyncio.sleep(1.0)
@@ -865,6 +864,15 @@ async def _has_any_assets(page) -> bool:
 async def delete_report_flow(report_id: str, max_rounds: int = 10):
     page = None
     try:
+        try:
+            require_selected_company()
+        except Exception as ctx_err:
+            return {
+                "status": "FAILED",
+                "reportId": report_id,
+                "error": str(ctx_err)
+            }
+
         def _load_template():
             try:
                 template_path = Path.cwd() / "scripts" / "delete" / "asset_template.json"
@@ -876,7 +884,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
 
         total_deleted_overall = 0
 
-        report_url= f"https://qima.taqeem.sa/report/{report_id}?office={OFFICE_ID}"
+        report_url = build_report_url(report_id)
         page = await new_window(report_url)
         for round_idx in range(1, max_rounds + 1):
             log(f"Report {report_id}: cleanup round #{round_idx}", "STEP")

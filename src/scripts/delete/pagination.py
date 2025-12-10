@@ -1,8 +1,7 @@
 import asyncio
 from scripts.core.utils import log
 from scripts.core.browser import new_tab
-
-OFFICE_ID = "487"  # TODO: Move to config
+from scripts.core.company_context import build_report_url, require_selected_company
 MAIN_PAGER_SEL = "ul.pagination"
 DATATABLE_PAGER_SEL = "#m-table_paginate"
 DATATABLE_NEXT_BTN = "a.paginate_button.next#m-table_next, a.paginate_button.next[aria-controls='m-table']"
@@ -123,6 +122,11 @@ async def go_to_last_asset_page(report_id: str, page) -> bool:
         bool: True if navigation occurred, False if already at last page(s)
     """
     moved = False
+    try:
+        require_selected_company()
+    except Exception as ctx_err:
+        log(str(ctx_err), "ERR")
+        return False
 
     # 1) Ensure we're on the correct report URL
     try:
@@ -131,7 +135,7 @@ async def go_to_last_asset_page(report_id: str, page) -> bool:
         href = ""
     expected_prefix = f"https://qima.taqeem.sa/report/{report_id}"
     if not href or expected_prefix not in href:
-        url = f"https://qima.taqeem.sa/report/{report_id}?office={OFFICE_ID}"
+        url = build_report_url(report_id)
         log(f"Re-opening report to paginate: {url}", "STEP")
         page = await new_tab(url)
         await asyncio.sleep(1.2)

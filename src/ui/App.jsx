@@ -23,6 +23,7 @@ import TaqeemAuth from './screens/TaqeemAuth';
 import SystemOperatingStatus from './screens/SystemOperatingStatus';
 import SystemUpdates from './screens/SystemUpdates';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
+import DuplicateReport from './screens/DuplicateReport';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState(null);
@@ -95,6 +96,9 @@ const AppContent = () => {
 
             case 'upload-report-elrajhi':
                 return <ElRajhiUploadReport />;
+
+            case 'duplicate-report':
+                return <DuplicateReport />;
 
             default:
                 return <LoginForm onViewChange={setCurrentView} />;

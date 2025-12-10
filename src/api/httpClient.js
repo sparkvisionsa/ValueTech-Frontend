@@ -13,8 +13,8 @@ httpClient.interceptors.request.use(async (config) => {
   const refreshToken = tokenObj?.refreshToken || tokenObj?.token;
 
   if (refreshToken) {
-    // Attach as a cookie header because backend expects req.cookies.refreshToken
-    config.headers['Cookie'] = `refreshToken=${refreshToken}`;
+    // Send as Bearer so it works even when the browser blocks manual Cookie headers
+    config.headers['Authorization'] = `Bearer ${refreshToken}`;
   }
 
   return config;

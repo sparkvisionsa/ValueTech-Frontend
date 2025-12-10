@@ -12,6 +12,11 @@ from .formSteps import form_steps, macro_form_config
 from .formFiller import fill_form
 from .macroFiller import fill_macro_form
 from scripts.core.utils import wait_for_element, wait_for_table_rows
+from scripts.core.company_context import (
+    build_report_create_url,
+    require_selected_company,
+    set_selected_company,
+)
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -117,12 +122,68 @@ def extract_asset_from_report(report_record):
         "city": report_record.get("city"),
     }
 
+async def finalize_elrajhi_submission(page, report_id):
+    """Navigate to report page, agree to policy, and submit the report."""
+    report_url = f"https://qima.taqeem.sa/report/{report_id}"
+    await page.get(report_url)
+    await asyncio.sleep(1)
 
-async def fill_single_report(page, report_record, batch_id=None):
+    checkbox = await wait_for_element(page, "#agree", timeout=20)
+    if not checkbox:
+        return {
+            "status": "FAILED",
+            "error": "Policy checkbox not found",
+            "report_id": report_id
+        }
+
+    try:
+        await checkbox.click()
+    except Exception:
+        # Ensure checkbox is checked even if click fails
+        await page.evaluate("""
+            () => {
+                const cb = document.querySelector('#agree');
+                if (cb && !cb.checked) {
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        """)
+
+    # Make sure the send button is enabled before clicking
+    await page.evaluate("""
+        () => {
+            const sendBtn = document.querySelector('#send');
+            if (sendBtn) sendBtn.disabled = false;
+        }
+    """)
+
+    send_btn = await wait_for_element(page, "#send", timeout=10)
+    if not send_btn:
+        return {
+            "status": "FAILED",
+            "error": "Send button not found",
+            "report_id": report_id
+        }
+
+    try:
+        await send_btn.click()
+        await asyncio.sleep(1)
+    except Exception as e:
+        return {
+            "status": "FAILED",
+            "error": f"Could not click send button: {e}",
+            "report_id": report_id
+        }
+
+    return {"status": "SUCCESS", "report_id": report_id}
+
+
+async def fill_single_report(page, report_record, create_url, batch_id=None, finalize_submission=True):
     """Fill a single report with its asset data"""
     try:
         # Navigate to create report page
-        await page.get("https://qima.taqeem.sa/report/create/4/487")
+        await page.get(create_url)
         await asyncio.sleep(1)
 
         # Fill form steps with report data
@@ -212,11 +273,22 @@ async def fill_single_report(page, report_record, batch_id=None):
                         "record_id": str(report_record["_id"])
                     }
 
+                if finalize_submission:
+                    finalize_result = await finalize_elrajhi_submission(page, form_id)
+                    if finalize_result.get("status") == "FAILED":
+                        return {
+                            "status": "FAILED",
+                            "step": "finalize_submission",
+                            "error": finalize_result.get("error"),
+                            "report_id": form_id,
+                            "record_id": str(report_record["_id"])
+                        }
+
                 return {
                     "status": "SUCCESS",
                     "report_id": form_id,
                     "record_id": str(report_record["_id"]),
-                    "message": "Report and macro filled successfully"
+                    "message": "Report and macro filled successfully" if finalize_submission else "Report and macro filled (submission skipped)"
                 }
 
     except Exception as e:
@@ -236,11 +308,21 @@ def is_dummy_pdf(report_record):
     return isinstance(pdf_path, str) and pdf_path.endswith(DUMMY_PDF_NAME)
 
 
-async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False):
+async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=True):
     try:
         # Fetch all report records with this batch_id
         cursor = db.urgentreports.find({"batch_id": batch_id})
-        report_records = await cursor.to_list(length=None)
+        raw_records = await cursor.to_list(length=None)
+
+        # Deduplicate in case the batch contains repeated IDs
+        seen_ids = set()
+        report_records = []
+        for rec in raw_records:
+            rec_id = str(rec.get("_id"))
+            if rec_id in seen_ids:
+                continue
+            seen_ids.add(rec_id)
+            report_records.append(rec)
         
         if not report_records:
             return {"status": "FAILED", "error": f"No reports found for batch_id: {batch_id}"}
@@ -250,6 +332,25 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False):
                 report for report in report_records
                 if not is_dummy_pdf(report)
             ]
+
+        # Cap tabs to the number of reports (no need to open extra tabs)
+        tabs_num = max(1, min(int(tabs_num or 1), len(report_records)))
+
+        try:
+            if company_url:
+                if isinstance(company_url, dict):
+                    set_selected_company(
+                        company_url.get("url"),
+                        name=company_url.get("name"),
+                        office_id=company_url.get("officeId") or company_url.get("office_id"),
+                        sector_id=company_url.get("sectorId") or company_url.get("sector_id"),
+                    )
+                else:
+                    set_selected_company(company_url)
+            require_selected_company()
+            create_url = build_report_create_url()
+        except Exception as ctx_err:
+            return {"status": "FAILED", "error": str(ctx_err)}
 
         total_reports = len(report_records)
         
@@ -266,8 +367,10 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False):
         main_page = browser.tabs[0]
         pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
 
-        # Split reports into balanced chunks
-        report_chunks = balanced_chunks(report_records, tabs_num)
+        # Split reports in round-robin order so tabs process alternating reports
+        report_chunks = [[] for _ in range(tabs_num)]
+        for idx, report in enumerate(report_records):
+            report_chunks[idx % tabs_num].append(report)
 
         completed = 0
         failed = 0
@@ -324,7 +427,9 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False):
                     result = await fill_single_report(
                         page,
                         report_record,
-                        batch_id=batch_id
+                        create_url,
+                        batch_id=batch_id,
+                        finalize_submission=finalize_submission
                     )
                     
                     async with completed_lock:

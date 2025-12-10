@@ -262,7 +262,6 @@ const UploadReportElrajhi = () => {
             if (!validationExcelFile) {
                 throw new Error("Select a folder with Excel file before sending.");
             }
-
             // Upload to backend
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
@@ -281,7 +280,7 @@ const UploadReportElrajhi = () => {
             });
 
             // Send to Electron with pdfOnly = false (send all)
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, false);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, false, true);
 
             if (electronResult?.status === "SUCCESS") {
                 setValidationMessage({
@@ -291,7 +290,7 @@ const UploadReportElrajhi = () => {
             } else {
                 setValidationMessage({
                     type: "error",
-                    text: electronResult?.error || "Upload to Taqeem failed"
+                    text: electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company."
                 });
             }
         } catch (err) {
@@ -317,7 +316,6 @@ const UploadReportElrajhi = () => {
             if (!validationExcelFile) {
                 throw new Error("Select a folder with Excel file before sending.");
             }
-
             // Upload to backend
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
@@ -340,7 +338,7 @@ const UploadReportElrajhi = () => {
             });
 
             // Send to Electron with pdfOnly = true
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, true);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, true, true);
 
             if (electronResult?.status === "SUCCESS") {
                 setValidationMessage({
@@ -350,7 +348,7 @@ const UploadReportElrajhi = () => {
             } else {
                 setValidationMessage({
                     type: "error",
-                    text: electronResult?.error || "PDF-only upload to Taqeem failed"
+                    text: electronResult?.error || "PDF-only upload to Taqeem failed. Make sure you selected a company."
                 });
             }
         } catch (err) {
@@ -525,7 +523,6 @@ const UploadReportElrajhi = () => {
             if (!pdfFiles.length) {
                 throw new Error("Please select PDF files before sending.");
             }
-
             // ---- Build multipart/form-data ----
             const formData = new FormData();
             formData.append("excel", excelFile); // MUST be "excel"
@@ -570,12 +567,15 @@ const UploadReportElrajhi = () => {
                 `Upload complete. Inserted ${insertedCount} urgent assets into DB. Now sending to Taqeem...`
             );
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, 1, false);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, 1, false, false);
 
             if (electronResult?.status === "SUCCESS") {
                 setSuccess(
                     `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
                 );
+            } else {
+                const errMsg = electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+                setError(errMsg);
             }
 
         } catch (err) {

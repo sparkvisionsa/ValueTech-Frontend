@@ -1,5 +1,6 @@
 import asyncio, re, json
 from scripts.core.utils import log
+from scripts.core.company_context import build_report_url, require_selected_company
 
 TABLE_CSS = "#m-table"
 ROW_CSS   = "#m-table tbody tr"
@@ -503,7 +504,15 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
     page = None
     try:
         from scripts.core.browser import new_window
-        url = f"https://qima.taqeem.sa/report/{report_id}?office=487"
+        try:
+            require_selected_company()
+        except Exception as ctx_err:
+            return {
+                "status": "FAILED",
+                "reportId": report_id,
+                "error": str(ctx_err)
+            }
+        url = build_report_url(report_id)
             
         # Open report page
         log(f"Opening report: {url}", "STEP")
@@ -576,7 +585,8 @@ async def delete_incomplete_assets_flow(report_id: str, control_state=None, max_
     except Exception as e:
         log(f"Error deleting incomplete assets for report {report_id}: {e}", "ERR")
         import traceback
-        await page.close()
+        if page:
+            await page.close()
         return {
             "status": "FAILED",
             "reportId": report_id,

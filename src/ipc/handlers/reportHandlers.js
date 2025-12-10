@@ -106,9 +106,9 @@ const reportHandlers = {
         }
     },
 
-    async handleElRajhiUploadReport(event, batchId, tabsNum, pdfOnly) {
+    async handleElRajhiUploadReport(event, batchId, tabsNum, pdfOnly, finalizeSubmission = true) {
         try {
-            return await pythonAPI.report.ElRajhiUploadReport(batchId, tabsNum, pdfOnly);
+            return await pythonAPI.report.ElRajhiUploadReport(batchId, tabsNum, pdfOnly, finalizeSubmission);
         } catch (err) {
             console.error('[MAIN] ElRajhiUploadReport error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
@@ -230,6 +230,15 @@ const reportHandlers = {
             return await pythonAPI.report.handleCancelledReport(reportId);
         } catch (err) {
             console.error('[MAIN] Handle cancelled report error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleDuplicateReport(event, recordId, company) {
+        try {
+            return await pythonAPI.report.duplicateReport(recordId, company);
+        } catch (err) {
+            console.error('[MAIN] Duplicate report navigation error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },
