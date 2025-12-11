@@ -15,11 +15,8 @@ from scripts.submission.macroFiller import (
     stop_macro_edit
 )
 from scripts.submission.ElRajhiFiller import ElRajhiFiller
-<<<<<<< HEAD
 from scripts.submission.duplicateReport import run_duplicate_report
-=======
 from scripts.submission.mutliReportFiller import create_reports_by_batch
->>>>>>> 61fafd9 (midway)
 
 from scripts.submission.checkMacroStatus import RunCheckMacroStatus, RunHalfCheckMacroStatus
 
