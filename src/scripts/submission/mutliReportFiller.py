@@ -7,7 +7,7 @@ from scripts.core.utils import wait_for_element
 from .formSteps import form_steps
 from .formFiller import fill_form
 from .macroFiller import handle_macro_edits
-from .createMacros import run_create_assets
+from .createMacros import run_create_assets_by_count
 from .grabMacroIds import update_report_pg_count, get_balanced_page_distribution, get_macro_ids_from_page, update_report_with_macro_ids
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
@@ -136,10 +136,9 @@ async def create_report_for_record(browser, record, tabs_num=3):
             })
 
             if step_num == 2 and len(record.get("asset_data", [])) > 10:
-                # NOTE: assuming run_create_assets signature accepts (browser, record, tabs_num, batch_size)
-                result = await run_create_assets(
+                result = await run_create_assets_by_count(
                     browser,
-                    record,
+                    len(record.get("asset_data")),
                     tabs_num=tabs_num,
                     batch_size=10
                 )

@@ -268,3 +268,160 @@ async def run_create_assets(browser, report_id, macro_count, tabs_num=3, batch_s
 
     # return the actual result from create_macros_multi_tab (success or failure payload)
     return result
+
+async def run_create_assets_by_count(browser, num_macros, macro_data_template=None, tabs_num=3, batch_size=10):
+    """
+    Create and fill assets distributed across multiple tabs without requiring a report_id.
+    
+    Args:
+        browser: Browser instance
+        num_macros: Total number of macros/assets to create
+        macro_data_template: Template data for macros (dict or list)
+        tabs_num: Number of tabs to use for parallel processing (default: 3)
+        batch_size: Number of assets to process per batch (default: 10)
+    
+    Returns:
+        dict: Result with status and details
+    """
+    try:
+        print(f"[CREATE_ASSETS_BY_COUNT] Starting to create {num_macros} assets using {tabs_num} tabs", file=sys.stderr)
+        
+        if num_macros <= 0:
+            return {"status": "FAILED", "error": "num_macros must be greater than 0"}
+        
+        # Get field_map and field_types from form_steps
+        try:
+            from scripts.submission.formSteps import form_steps
+            step_one = form_steps[1] if len(form_steps) > 1 else form_steps[0]
+            field_map = step_one.get("field_map", {}) if isinstance(step_one, dict) else {}
+            field_types = step_one.get("field_types", {}) if isinstance(step_one, dict) else {}
+        except Exception:
+            field_map = {}
+            field_types = {}
+        
+        # Default macro data template
+        if macro_data_template is None:
+            macro_data_template = {}
+        
+        # Get main page (should already be on asset creation page)
+        main_page = browser.tabs[0]
+        current_url = await main_page.evaluate("window.location.href")
+        
+        if "asset/create" not in current_url:
+            return {"status": "FAILED", "error": "Not on asset creation page"}
+        
+        # Calculate distribution using the existing function
+        tab_distributions = calculate_tab_batches(num_macros, tabs_num, batch_size)
+        
+        print(f"[CREATE_ASSETS_BY_COUNT] Distribution: {tab_distributions} assets per tab", file=sys.stderr)
+        
+        # Open additional tabs if needed
+        pages = [main_page]
+        for _ in range(len(tab_distributions) - 1):
+            new_page = await browser.get(current_url, new_tab=True)
+            pages.append(new_page)
+            await asyncio.sleep(1)
+        
+        # Wait for all pages to be ready
+        for page in pages:
+            for _ in range(20):
+                ready_state = await page.evaluate("document.readyState")
+                key_el = await wait_for_element(page, "#macros", timeout=0.5)
+                if ready_state == "complete" and key_el:
+                    break
+                await asyncio.sleep(0.5)
+        
+        # Track results
+        completed = 0
+        total_created = 0
+        results_lock = asyncio.Lock()
+        
+        async def process_tab_assets(page, start_index, asset_count, tab_id):
+            """Process assets for a single tab"""
+            nonlocal completed, total_created
+            
+            print(f"[CREATE_ASSETS_BY_COUNT-TAB-{tab_id}] Processing {asset_count} assets", file=sys.stderr)
+            
+            # Process assets in batches
+            for batch_start in range(0, asset_count, batch_size):
+                batch_count = min(batch_size, asset_count - batch_start)
+                
+                print(f"[CREATE_ASSETS_BY_COUNT-TAB-{tab_id}] Processing batch: {start_index + batch_start} to {start_index + batch_start + batch_count - 1}", file=sys.stderr)
+                
+                # Prepare macro data for this batch
+                batch_data = {
+                    "number_of_macros": str(batch_count),
+                    "asset_data": []
+                }
+                
+                # If macro_data_template is a list, use it; otherwise replicate the template
+                if isinstance(macro_data_template, list):
+                    for i in range(batch_count):
+                        idx = start_index + batch_start + i
+                        if idx < len(macro_data_template):
+                            batch_data["asset_data"].append(macro_data_template[idx])
+                        else:
+                            batch_data["asset_data"].append(macro_data_template[-1])
+                else:
+                    batch_data["asset_data"] = [macro_data_template] * batch_count
+                
+                form_data = {**batch_data, **macro_data_template} if isinstance(macro_data_template, dict) else batch_data
+                
+                # Use the existing save_macros function
+                result = await save_macros(page, form_data, field_map, field_types)
+                
+                if result.get("status") == "FAILED":
+                    print(f"[CREATE_ASSETS_BY_COUNT-TAB-{tab_id}] Failed to save batch: {result.get('error')}", file=sys.stderr)
+                    return result
+                
+                async with results_lock:
+                    completed += batch_count
+                    total_created += batch_count
+                
+                print(f"[CREATE_ASSETS_BY_COUNT-TAB-{tab_id}] Progress: {completed}/{num_macros} macros created ({round((completed/num_macros)*100, 2)}%)", file=sys.stderr)
+                
+                # Navigate back to asset creation page for next batch
+                if batch_start + batch_size < asset_count:
+                    await page.get(current_url)
+                    await asyncio.sleep(1)
+            
+            return {"status": "SUCCESS"}
+        
+        # Process all tabs in parallel
+        tasks = []
+        idx = 0
+        for i, (page, count) in enumerate(zip(pages, tab_distributions)):
+            if count > 0:
+                tasks.append(process_tab_assets(page, idx, count, i))
+                idx += count
+        
+        results = await asyncio.gather(*tasks)
+        
+        # Check for failures
+        for result in results:
+            if isinstance(result, dict) and result.get("status") == "FAILED":
+                print(f"[CREATE_ASSETS_BY_COUNT] Task failed: {result.get('error', 'unknown')}", file=sys.stderr)
+                return result
+        
+        # Close extra tabs
+        for page in pages[1:]:
+            await page.close()
+        
+        print(f"[CREATE_ASSETS_BY_COUNT] Completed: {total_created} successful", file=sys.stderr)
+        
+        return {
+            "status": "SUCCESS",
+            "total_assets": num_macros,
+            "successful": total_created,
+            "failed": 0,
+            "completion_time": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"[CREATE_ASSETS_BY_COUNT] Error: {str(e)}", file=sys.stderr)
+        traceback.print_exc()
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
