@@ -3,7 +3,6 @@ import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { uploadElrajhiBatch } from "../../api/report";
 import httpClient from "../../api/httpClient";
-import usePersistentState from "../hooks/usePersistentState";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 
 import {
@@ -232,6 +231,8 @@ const UploadReportElrajhi = () => {
     const {
         activeTab,
         setActiveTab,
+        numTabs,
+        setNumTabs,
         excelFile,
         setExcelFile,
         pdfFiles,
@@ -243,33 +244,45 @@ const UploadReportElrajhi = () => {
         validationPdfFiles,
         setValidationPdfFiles,
         resetAllFiles,
+        batchId,
+        setBatchId,
+        excelResult,
+        setExcelResult,
+        downloadPath,
+        setDownloadPath,
+        error,
+        setError,
+        success,
+        setSuccess,
+        validationReports,
+        setValidationReports,
+        marketAssets,
+        setMarketAssets,
+        validationMessage,
+        setValidationMessage,
+        validationDownloadPath,
+        setValidationDownloadPath,
+        rememberedFiles,
+        setRememberedFiles,
+        resetMainFlow,
+        resetValidationFlow,
+        sendingTaqeem,
+        setSendingTaqeem,
+        sendingValidation,
+        setSendingValidation,
+        pdfOnlySending,
+        setPdfOnlySending,
+        loadingValuers,
+        setLoadingValuers,
     } = useElrajhiUpload();
 
-    const [numTabs, setNumTabs] = usePersistentState("elrajhi:numTabs", 1, { storage: 'session' });
-    const [batchId, setBatchId, resetBatchId] = usePersistentState("elrajhi:batchId", "");
-    const [excelResult, setExcelResult, resetExcelResult] = usePersistentState("elrajhi:excelResult", null);
-    const [downloadPath, setDownloadPath, resetDownloadPath] = usePersistentState("elrajhi:downloadPath", null);
     const [downloadingExcel, setDownloadingExcel] = useState(false);
     const [loadingExcel, setLoadingExcel] = useState(false);
     const [loadingPdf, setLoadingPdf] = useState(false);
-    const [sendingTaqeem, setSendingTaqeem] = useState(false);
-    const [error, setError] = usePersistentState("elrajhi:error", "");
-    const [success, setSuccess] = usePersistentState("elrajhi:success", "");
-    const [validationReports, setValidationReports, resetValidationReports] = usePersistentState("elrajhi:validationReports", []);
-    const [marketAssets, setMarketAssets, resetMarketAssets] = usePersistentState("elrajhi:marketAssets", []);
-    const [validationMessage, setValidationMessage, resetValidationMessage] = usePersistentState("elrajhi:validationMessage", null);
     const [savingValidation, setSavingValidation] = useState(false);
-    const [sendingValidation, setSendingValidation] = useState(false);
-    const [loadingValuers, setLoadingValuers] = useState(false);
-    const [pdfOnlySending, setPdfOnlySending] = useState(false);
-    const [validationDownloadPath, setValidationDownloadPath, resetValidationDownloadPath] = usePersistentState("elrajhi:validationDownloadPath", null);
     const [downloadingValidationExcel, setDownloadingValidationExcel] = useState(false);
-    const [rememberedFiles, setRememberedFiles] = usePersistentState("elrajhi:fileSummary", {
-        mainExcel: null,
-        mainPdfs: [],
-        validationExcel: null,
-        validationPdfs: [],
-    });
+    const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
+    const [sendToConfirmerValidation, setSendToConfirmerValidation] = useState(false);
 
     // --- existing helpers (not used in new flow, but kept as requested) ---
     const uploadExcelOnly = async () => {
@@ -326,11 +339,11 @@ const UploadReportElrajhi = () => {
             // Update UI
             setValidationMessage({
                 type: "success",
-                text: `Reports saved (${insertedCount} assets). Sending to Taqeem...`
+                text: `Reports saved (${insertedCount} assets). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
             });
 
             // Send to Electron with pdfOnly = false (send all)
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, false, true);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, numTabs, false, sendToConfirmerValidation);
 
             if (electronResult?.status === "SUCCESS") {
                 const resultMap = (electronResult.results || []).reduce((acc, res) => {
@@ -427,11 +440,11 @@ const UploadReportElrajhi = () => {
             // Update UI
             setValidationMessage({
                 type: "success",
-                text: `PDF reports saved (${pdfCount} assets with PDFs). Sending to Taqeem...`
+                text: `PDF reports saved (${pdfCount} assets with PDFs). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
             });
 
             // Send to Electron with pdfOnly = true
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, 1, true, true);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, numTabs, true, sendToConfirmerValidation);
 
             if (electronResult?.status === "SUCCESS") {
                 const resultMap = (electronResult.results || []).reduce((acc, res) => {
@@ -533,6 +546,8 @@ const UploadReportElrajhi = () => {
             mainPdfs: files.map((f) => f.name),
         }));
     };
+
+    const resetValidationBanner = () => setValidationMessage(null);
 
     const parseExcelForValidation = async (excel, pdfList = [], options = {}) => {
         const { silent = false } = options;
@@ -718,10 +733,11 @@ const UploadReportElrajhi = () => {
             setDownloadPath(`/elrajhi-upload/export/${batchIdFromApi}`);
 
             setSuccess(
-                `Upload complete. Inserted ${insertedCount} urgent assets into DB. Now sending to Taqeem...`
+                `Upload complete. Inserted ${insertedCount} urgent assets into DB. ${sendToConfirmerMain ? "Sending to Taqeem..." : "Final submission skipped."}`
             );
+            setDownloadPath(`/elrajhi-upload/export/${batchIdFromApi}`);
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, numTabs, false, false);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, numTabs, false, sendToConfirmerMain);
 
             if (electronResult?.status === "SUCCESS") {
                 // Attach report IDs returned from Taqeem to the table rows
@@ -749,9 +765,8 @@ const UploadReportElrajhi = () => {
                 }
 
                 setSuccess(
-                    `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
+                    `Upload succeeded. ${insertedCount} assets saved and dispatched to Taqeem tabs${sendToConfirmerMain ? "" : " (final submit skipped)"}.`
                 );
-                setDownloadPath(`/elrajhi-upload/export/${batchIdFromApi}`);
             } else {
                 const errMsg = electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company.";
                 setError(errMsg);
@@ -767,8 +782,6 @@ const UploadReportElrajhi = () => {
             setSendingTaqeem(false);
         }
     };
-
-    const resetValidationBanner = () => resetValidationMessage();
 
     const handleValidationFolderChange = (e) => {
         resetValidationBanner();
@@ -807,18 +820,11 @@ const UploadReportElrajhi = () => {
     };
 
     const resetValidationSection = () => {
+        resetValidationFlow();
         setValidationFolderFiles([]);
         setValidationExcelFile(null);
         setValidationPdfFiles([]);
-        resetValidationReports();
-        resetValidationMessage();
-        resetMarketAssets();
-        resetValidationDownloadPath();
-        setRememberedFiles((prev) => ({
-            ...prev,
-            validationExcel: null,
-            validationPdfs: [],
-        }));
+        setSendToConfirmerValidation(false);
     };
 
     const registerValidationFolder = async () => {
@@ -889,34 +895,40 @@ const UploadReportElrajhi = () => {
 
     const clearAll = () => {
         resetAllFiles();
-        resetBatchId();
-        resetExcelResult();
-        resetDownloadPath();
-        setNumTabs(1);
-        setRememberedFiles((prev) => ({
-            ...prev,
-            mainExcel: null,
-            mainPdfs: [],
-        }));
+        resetMainFlow();
+        setSendToConfirmerMain(false);
         resetMessages();
     };
 
     const noValidationContent = (
         <div className="space-y-6">
+            <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center">
+                    <Info className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="space-y-1">
+                    <p className="text-sm font-semibold text-slate-900">Quick upload without validation</p>
+                    <p className="text-xs text-slate-600">
+                        Step 1: Add Excel and PDFs. Step 2: Choose tabs and optionally send to confirmer. We create reports and
+                        fill assets; final send depends on your checkbox.
+                    </p>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">Step 1</span>
                         <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">
+                        <h3 className="text-sm font-semibold text-gray-900">
                             Upload Excel (Report Info + market)
                         </h3>
                     </div>
-                    <p className="text-xs text-gray-500 mb-3">
-                        Only sheets "Report Info" and "market" are read. One report is
-                        created per market row.
+                    <p className="text-xs text-gray-600">
+                        Only sheets &quot;Report Info&quot; and &quot;market&quot; are read. One report is created per market row.
                     </p>
-                    <label className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
+                        <div className="flex items-center gap-2 text-sm text-gray-800">
                             <FolderOpen className="w-4 h-4" />
                             <span>
                                 {excelFile
@@ -932,15 +944,13 @@ const UploadReportElrajhi = () => {
                             className="hidden"
                             onChange={handleExcelChange}
                         />
-                        <span className="text-xs text-blue-600">Browse</span>
+                        <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-                    <p className="text-xs text-gray-500 mt-2">
-                        Excel will be uploaded when you click &quot;Send to Taqeem&quot;.
-                    </p>
-                    <div className="mt-3 flex gap-2">
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                        <span>Excel uploads when you click &quot;Send to Taqeem&quot;.</span>
                         <button
                             onClick={clearAll}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-100 text-gray-700 text-xs font-semibold hover:bg-slate-200"
                         >
                             <RefreshCw className="w-4 h-4" />
                             Reset
@@ -948,22 +958,20 @@ const UploadReportElrajhi = () => {
                     </div>
                 </div>
 
-                <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
+                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-purple-50 text-purple-700 border border-purple-100">Step 2</span>
                         <Files className="w-5 h-5 text-purple-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">
+                        <h3 className="text-sm font-semibold text-gray-900">
                             Upload PDFs (match by asset_name)
                         </h3>
                     </div>
-                    <p className="text-xs text-gray-500 mb-1">
-                        Filenames should equal asset_name + ".pdf"
-                    </p>
-                    <p className="text-xs text-gray-500 mb-3">
-                        Current Batch ID:{" "}
-                        <span className="font-mono text-gray-800">{batchId || "—"}</span>
-                    </p>
-                    <label className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <div className="text-xs text-gray-600 space-y-1">
+                        <p>Filenames should equal asset_name + &quot;.pdf&quot;</p>
+                        <p>Current Batch ID: <span className="font-mono text-gray-800">{batchId || "—"}</span></p>
+                    </div>
+                    <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
+                        <div className="flex items-center gap-2 text-sm text-gray-800">
                             <FolderOpen className="w-4 h-4" />
                             <span>
                                 {pdfFiles.length
@@ -980,16 +988,12 @@ const UploadReportElrajhi = () => {
                             className="hidden"
                             onChange={handlePdfsChange}
                         />
-                        <span className="text-xs text-blue-600">Browse</span>
+                        <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-                    <p className="text-xs text-gray-500 mt-2">
-                        PDFs will be uploaded when you click &quot;Send to Taqeem&quot;.
-                    </p>
 
-                    {/* NEW: Tab number selector */}
-                    <div className="mt-4 space-y-2">
-                        <label className="text-xs font-semibold text-gray-700">
-                            Number of tabs to open in Taqeem:
+                    <div className="grid grid-cols-[auto,1fr] gap-y-2 gap-x-3 items-center">
+                        <label className="text-xs font-semibold text-gray-700 col-span-2">
+                            Number of tabs to open in Taqeem
                         </label>
                         <div className="flex items-center gap-2">
                             <button
@@ -1021,22 +1025,19 @@ const UploadReportElrajhi = () => {
                             >
                                 +
                             </button>
-                            <span className="text-xs text-gray-500 ml-2">
-                                (1-10)
-                            </span>
                         </div>
-                        <p className="text-xs text-gray-500">
-                            Each tab will process a portion of the reports
+                        <p className="text-[11px] text-gray-500 col-span-2">
+                            Each tab will process a portion of the reports.
                         </p>
                     </div>
 
-                    <div className="mt-3 flex gap-2">
+                    <div className="flex gap-2">
                         <button
                             onClick={() => {
                                 setPdfFiles([]);
                                 resetMessages();
                             }}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-slate-100 text-gray-700 text-sm hover:bg-slate-200"
                         >
                             <RefreshCw className="w-4 h-4" />
                             Clear PDFs
@@ -1047,9 +1048,9 @@ const UploadReportElrajhi = () => {
 
             {(error || success) && (
                 <div
-                    className={`rounded-lg p-3 flex items-start gap-2 ${error
-                        ? "bg-red-50 text-red-700 border border-red-100"
-                        : "bg-green-50 text-green-700 border border-green-100"
+                    className={`rounded-xl p-3 flex items-start gap-2 border ${error
+                        ? "bg-red-50 text-red-700 border-red-100"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-100"
                         }`}
                 >
                     {error ? (
@@ -1061,24 +1062,34 @@ const UploadReportElrajhi = () => {
                 </div>
             )}
 
-            <div className="mt-3">
+            <div className="mt-3 space-y-3">
+                <label className="inline-flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 text-amber-600 border-amber-400 focus:ring-amber-500"
+                        checked={sendToConfirmerMain}
+                        onChange={(e) => setSendToConfirmerMain(e.target.checked)}
+                    />
+                    <span className="text-sm text-gray-800 font-semibold leading-5">
+                        Do you want to send the report to the confirmer? / هل تريد ارسال التقرير الي المعتمد ؟
+                    </span>
+                </label>
                 <button
                     type="button"
                     onClick={sendToTaqeem}
                     disabled={sendingTaqeem || !excelFile || !pdfFiles.length}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                 >
                     {sendingTaqeem ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                         <Send className="w-4 h-4" />
                     )}
-                    Send to Taqeem ({numTabs} tab{numTabs !== 1 ? 's' : ''})
+                    Send to Taqeem
                 </button>
-                {/* Old message kept, though batch is now internal */}
                 {!batchId && (
-                    <p className="text-xs text-gray-500 mt-1">
-                        Upload Excel and PDFs, then click &quot;Send to Taqeem&quot;.
+                    <p className="text-xs text-gray-500">
+                        Upload Excel and PDFs, then click &quot;Send to Taqeem&quot;. Toggle the checkbox if you want to finalize.
                     </p>
                 )}
             </div>
@@ -1204,11 +1215,11 @@ const UploadReportElrajhi = () => {
         <div className="space-y-5">
             {validationMessage && (
                 <div
-                    className={`rounded-lg p-3 flex items-start gap-2 ${validationMessage.type === "error"
-                        ? "bg-red-50 text-red-700 border border-red-100"
+                    className={`rounded-xl p-3 flex items-start gap-2 border ${validationMessage.type === "error"
+                        ? "bg-red-50 text-red-700 border-red-100"
                         : validationMessage.type === "success"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                            : "bg-blue-50 text-blue-700 border border-blue-100"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                            : "bg-blue-50 text-blue-700 border-blue-100"
                         }`}
                 >
                     {validationMessage.type === "error" ? (
@@ -1222,21 +1233,34 @@ const UploadReportElrajhi = () => {
                 </div>
             )}
 
+            <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                    <Info className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="space-y-1">
+                    <p className="text-sm font-semibold text-slate-900">Validated folder flow</p>
+                    <p className="text-xs text-slate-600">
+                        Add a folder, review valuers, choose tabs, then decide if you want to send to confirmer. PDFs can be sent selectively.
+                    </p>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 border border-gray-200 rounded-lg bg-white shadow-sm space-y-3">
+                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">Step 1</span>
                         <Upload className="w-5 h-5 text-blue-600" />
                         <div>
                             <p className="text-sm font-semibold text-gray-900">
                                 Upload folder (Excel + PDFs)
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-600">
                                 Choose the folder that contains the Excel report file and all related PDFs.
                             </p>
                         </div>
                     </div>
-                    <label className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
+                        <div className="flex items-center gap-2 text-sm text-gray-800">
                             <FolderOpen className="w-4 h-4" />
                             <span>
                                 {validationFolderFiles.length
@@ -1251,11 +1275,11 @@ const UploadReportElrajhi = () => {
                             className="hidden"
                             onChange={handleValidationFolderChange}
                         />
-                        <span className="text-xs text-blue-600">Browse</span>
+                        <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                        <div className="p-2 rounded bg-gray-50 border border-gray-100">
-                            <p className="font-semibold text-gray-800">Excel detected</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                            <p className="font-semibold text-gray-900">Excel detected</p>
                             <p>
                                 {validationExcelFile
                                     ? validationExcelFile.name
@@ -1264,8 +1288,8 @@ const UploadReportElrajhi = () => {
                                         : "—"}
                             </p>
                         </div>
-                        <div className="p-2 rounded bg-gray-50 border border-gray-100">
-                            <p className="font-semibold text-gray-800">PDFs detected</p>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+                            <p className="font-semibold text-gray-900">PDFs detected</p>
                             <p>
                                 {validationPdfFiles.length
                                     ? `${validationPdfFiles.length} file(s)`
@@ -1300,7 +1324,7 @@ const UploadReportElrajhi = () => {
                     </div>
                 </div>
 
-                <div className="p-4 border border-gray-200 rounded-lg bg-white shadow-sm space-y-3">
+                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <Info className="w-5 h-5 text-emerald-600" />
                         <div>
@@ -1520,7 +1544,7 @@ const UploadReportElrajhi = () => {
                 )}
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3">
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-4">
                 <div className="flex items-center gap-2">
                     <Send className="w-5 h-5 text-emerald-600" />
                     <div>
@@ -1530,36 +1554,92 @@ const UploadReportElrajhi = () => {
                         </p>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <button
-                        type="button"
-                        onClick={handleSubmitElrajhi}
-                        disabled={sendingValidation || !canSendReports}
-                        className="inline-flex items-center gap-2 
-                        px-3 py-2 rounded-md bg-emerald-600 
-                        text-white text-sm font-semibold 
-                        hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                        {sendingValidation ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Send className="w-4 h-4" />
-                        )}
-                        Send all reports to Taqeem
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleSubmitPdfOnly}
-                        disabled={pdfOnlySending || !canSendReports}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {pdfOnlySending ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Files className="w-4 h-4" />
-                        )}
-                        Send only reports with PDFs
-                    </button>
+                <div className="flex flex-wrap items-start gap-4">
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold text-gray-700">
+                            Number of tabs to open in Taqeem:
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setNumTabs((prev) => Math.max(1, prev - 1))}
+                                disabled={numTabs <= 1}
+                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                -
+                            </button>
+                            <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={numTabs}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10);
+                                    if (!Number.isNaN(value) && value >= 1 && value <= 10) {
+                                        setNumTabs(value);
+                                    }
+                                }}
+                                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setNumTabs((prev) => Math.min(10, prev + 1))}
+                                disabled={numTabs >= 10}
+                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                +
+                            </button>
+                            <span className="text-xs text-gray-500 ml-1">
+                                (1-10)
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Each tab will process a portion of the reports.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <label className="inline-flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
+                            <input
+                                type="checkbox"
+                                className="h-4 w-4 text-amber-600 border-amber-400 focus:ring-amber-500"
+                                checked={sendToConfirmerValidation}
+                                onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
+                            />
+                            <span className="text-sm text-gray-800 font-semibold">
+                                Do you want to send the report to the confirmer? / هل تريد ارسال التقرير الي المعتمد ؟
+                            </span>
+                        </label>
+                        <button
+                            type="button"
+                            onClick={handleSubmitElrajhi}
+                            disabled={sendingValidation || !canSendReports}
+                            className="inline-flex items-center gap-2 
+                            px-3 py-2 rounded-md bg-emerald-600 
+                            text-white text-sm font-semibold 
+                            hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                            {sendingValidation ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Send className="w-4 h-4" />
+                            )}
+                        Send all reports ({numTabs} tab{numTabs !== 1 ? "s" : ""})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSubmitPdfOnly}
+                            disabled={pdfOnlySending || !canSendReports}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            {pdfOnlySending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Files className="w-4 h-4" />
+                            )}
+                            Send only reports with PDFs ({numTabs} tab{numTabs !== 1 ? "s" : ""})
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

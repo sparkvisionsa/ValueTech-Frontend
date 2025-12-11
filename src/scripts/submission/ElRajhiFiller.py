@@ -103,7 +103,7 @@ def extract_asset_from_report(report_record):
         formatted_date = ""
     
     return {
-        "asset_type": "0",
+        "asset_type": "مركبه",
         "production_capacity": "0",
         "production_capacity_measuring_unit": "0",
         "product_type": "0",
@@ -220,6 +220,59 @@ def is_dummy_pdf(report_record):
     return isinstance(pdf_path, str) and pdf_path.endswith(DUMMY_PDF_NAME)
 
 
+async def finalize_report_submission(page, report_id):
+    """Open the report page, accept policy checkbox, and send the report."""
+    try:
+        report_url = f"https://qima.taqeem.sa/report/{report_id}"
+        await page.get(report_url)
+        await asyncio.sleep(1)
+
+        checkbox_selector = "input#agree"
+        agree_checkbox = await wait_for_element(page, checkbox_selector, timeout=20)
+        if not agree_checkbox:
+            return {"status": "FAILED", "error": "Agree checkbox not found"}
+
+        try:
+            await page.evaluate(
+                """(selector) => {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        el.checked = true;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }""",
+                checkbox_selector
+            )
+        except Exception:
+            try:
+                await agree_checkbox.click()
+            except Exception:
+                return {"status": "FAILED", "error": "Could not toggle agree checkbox"}
+
+        send_selector = "input#send"
+        send_button = await wait_for_element(page, send_selector, timeout=15)
+        if not send_button:
+            return {"status": "FAILED", "error": "Send button not found"}
+
+        try:
+            await page.evaluate(
+                """(selector) => { 
+                    const btn = document.querySelector(selector); 
+                    if (btn) btn.disabled = false; 
+                }""",
+                send_selector
+            )
+        except Exception:
+            pass
+
+        await send_button.click()
+        await asyncio.sleep(2)
+
+        return {"status": "SUCCESS", "report_id": report_id}
+    except Exception as e:
+        return {"status": "FAILED", "error": str(e)}
+
+
 async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=True):
     try:
         # Fetch all report records with this batch_id
@@ -281,6 +334,8 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
         
         completed_reports = 0
         failed_reports = 0
+        finalized_reports = 0
+        finalization_failed = 0
 
         # Send initial progress
         initial_progress = {
@@ -424,7 +479,7 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
             print(json.dumps(macro_phase_progress), flush=True)
             
             async def process_macro_chunk(macro_chunk, page, chunk_index):
-                nonlocal completed_macros, failed_macros
+                nonlocal completed_macros, failed_macros, finalized_reports, finalization_failed
                 print(f"Processing macro chunk {chunk_index} with {len(macro_chunk)} macros")
                 
                 for macro_info in macro_chunk:
@@ -463,6 +518,20 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
                             field_map=macro_form_config["field_map"],
                             field_types=macro_form_config["field_types"],
                         )
+
+                        # Immediately finalize this report in the same tab after filling its macro
+                        finalization_result = None
+                        if finalize_submission:
+                            report_id_for_macro = macro_info.get("report_id")
+                            if report_id_for_macro:
+                                finalization_result = await finalize_report_submission(page, report_id_for_macro)
+                                if finalization_result.get("status") == "SUCCESS":
+                                    finalized_reports += 1
+                                else:
+                                    finalization_failed += 1
+                            else:
+                                finalization_failed += 1
+                                finalization_result = {"status": "FAILED", "error": "Missing report_id"}
                         
                         async with completed_lock:
                             if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
@@ -484,7 +553,10 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
                             "percentage": round((current_completed / total_macros) * 100, 2),
                             "paused": pause_state.get("paused", False),
                             "message": f"Filled macro {current_completed}/{total_macros}",
-                            "status": macro_result.get("status") if isinstance(macro_result, dict) else "SUCCESS"
+                            "status": macro_result.get("status") if isinstance(macro_result, dict) else "SUCCESS",
+                            "finalizationStatus": finalization_result.get("status") if finalization_result else None,
+                            "finalizationError": finalization_result.get("error") if finalization_result else None,
+                            "report_id": macro_info.get("report_id")
                         }
                         print(json.dumps(progress_data), flush=True)
                         
@@ -526,16 +598,6 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
             
             print(f"Phase 2 complete: Filled {completed_macros} macros ({failed_macros} failed)")
 
-        # Phase 3: Finalize submissions if requested
-        if finalize_submission and macros_to_fill:
-            finalization_progress = {
-                "type": "progress",
-                "batchId": batch_id,
-                "phase": "finalization",
-                "message": "Starting finalization phase..."
-            }
-            print(json.dumps(finalization_progress), flush=True)
-            
         # Clear pause state after completion
         clear_pause_state(batch_id)
 
@@ -546,6 +608,8 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
             "reports_failed": failed_reports,
             "macros_filled": completed_macros if macros_to_fill else 0,
             "macros_failed": failed_macros if macros_to_fill else 0,
+            "reports_finalized": finalized_reports if finalize_submission and macros_to_fill else 0,
+            "finalization_failed": finalization_failed if finalize_submission and macros_to_fill else 0,
             "total_reports": total_reports,
             "results": report_creation_results
         }
