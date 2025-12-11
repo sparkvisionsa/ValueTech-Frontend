@@ -227,6 +227,7 @@ const worksheetToObjects = (worksheet) => {
 const UploadReportElrajhi = () => {
     const [activeTab, setActiveTab] = useState("no-validation");
     const [excelFile, setExcelFile] = useState(null);
+    const [numTabs, setNumTabs] = useState(1);
     const [pdfFiles, setPdfFiles] = useState([]);
     const [batchId, setBatchId] = useState("");
     const [excelResult, setExcelResult] = useState(null);
@@ -567,7 +568,7 @@ const UploadReportElrajhi = () => {
                 `Upload complete. Inserted ${insertedCount} urgent assets into DB. Now sending to Taqeem...`
             );
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, 1, false, false);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, numTabs, false, false);
 
             if (electronResult?.status === "SUCCESS") {
                 setSuccess(
@@ -781,6 +782,51 @@ const UploadReportElrajhi = () => {
                     <p className="text-xs text-gray-500 mt-2">
                         PDFs will be uploaded when you click &quot;Send to Taqeem&quot;.
                     </p>
+
+                    {/* NEW: Tab number selector */}
+                    <div className="mt-4 space-y-2">
+                        <label className="text-xs font-semibold text-gray-700">
+                            Number of tabs to open in Taqeem:
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setNumTabs(prev => Math.max(1, prev - 1))}
+                                disabled={numTabs <= 1}
+                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                -
+                            </button>
+                            <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={numTabs}
+                                onChange={(e) => {
+                                    const value = parseInt(e.target.value);
+                                    if (!isNaN(value) && value >= 1 && value <= 10) {
+                                        setNumTabs(value);
+                                    }
+                                }}
+                                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center text-sm"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setNumTabs(prev => Math.min(10, prev + 1))}
+                                disabled={numTabs >= 10}
+                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                +
+                            </button>
+                            <span className="text-xs text-gray-500 ml-2">
+                                (1-10)
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Each tab will process a portion of the reports
+                        </p>
+                    </div>
+
                     <div className="mt-3 flex gap-2">
                         <button
                             onClick={() => {
@@ -824,7 +870,7 @@ const UploadReportElrajhi = () => {
                     ) : (
                         <Send className="w-4 h-4" />
                     )}
-                    Send to Taqeem
+                    Send to Taqeem ({numTabs} tab{numTabs !== 1 ? 's' : ''})
                 </button>
                 {/* Old message kept, though batch is now internal */}
                 {!batchId && (
