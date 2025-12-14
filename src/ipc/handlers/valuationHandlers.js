@@ -11,7 +11,7 @@ const MAIN_FOLDERS = [
 ];
 
 const LOCATION_FOLDER_INDEX = 1; // second folder
-const CALC_SOURCE_PATH = '/home/mostafa-hosny/Desktop/Electron/Future_Electron/excelfile_calc/calc.xlsx';
+const CALC_SOURCE_PATH = '/Electron/Future_Electron/excelfile_calc/calc.xlsx';
 const CALC_TARGET_NAME = 'calc.xlsx';
 
 const sanitizeName = (name) => {

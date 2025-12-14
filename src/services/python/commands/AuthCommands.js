@@ -45,6 +45,13 @@ class AuthCommands {
         });
     }
 
+    async getReportsByBatch(batchId) {
+        return this._sendCommand({
+            action: 'get-reports-by-batch',
+            batchId
+        });
+    }
+
     async ping() {
         return this._sendCommand({
             action: 'ping'

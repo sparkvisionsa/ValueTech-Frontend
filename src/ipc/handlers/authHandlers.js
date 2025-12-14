@@ -1,5 +1,77 @@
-const { session } = require('electron');
+const { session, BrowserWindow } = require('electron');
 const pythonAPI = require('../../services/python/PythonAPI');
+
+let secondaryLoginWindow = null;
+const SECONDARY_PARTITION = 'persist:taqeem-secondary';
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function confirmSingleReport(win, reportId) {
+    const targetUrl = `https://qima.taqeem.sa/report/${reportId}`;
+    try {
+        await win.loadURL(targetUrl);
+    } catch (err) {
+        return { status: 'FAILED', error: `Failed to load report ${reportId}: ${err?.message || err}` };
+    }
+
+    const result = await win.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+            const deadline = Date.now() + 60000; // 60s to allow manual login if needed
+            const attempt = () => {
+                const checkbox = document.querySelector('input#agree, input[name="policy"]');
+                const confirmBtn = document.querySelector('input#confirm[type="submit"]');
+                if (checkbox && confirmBtn) {
+                    try {
+                        checkbox.checked = true;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        confirmBtn.disabled = false;
+                        confirmBtn.removeAttribute('disabled');
+                        confirmBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                        resolve({ ok: true });
+                        return;
+                    } catch (err) {
+                        resolve({ ok: false, error: err?.message || 'Failed clicking confirm' });
+                        return;
+                    }
+                }
+                if (Date.now() > deadline) {
+                    resolve({ ok: false, error: 'Timeout waiting for checkbox/button (login required?)' });
+                    return;
+                }
+                setTimeout(attempt, 750);
+            };
+            attempt();
+        });
+    `, true);
+
+    await delay(1200); // brief pause after submit
+    return result?.ok ? { status: 'SUCCESS' } : { status: 'FAILED', error: result?.error || 'Unknown error' };
+}
+
+async function confirmReportsBatch(win, reportIds = []) {
+    if (!win || win.isDestroyed()) {
+        return { total: reportIds.length, succeeded: 0, failed: reportIds.length, results: reportIds.map((id) => ({ reportId: id, status: 'FAILED', error: 'Secondary window not available' })) };
+    }
+
+    const results = [];
+    for (const reportId of reportIds) {
+        try {
+            const res = await confirmSingleReport(win, reportId);
+            results.push({ reportId, status: res.status, error: res.error });
+        } catch (error) {
+            results.push({ reportId, status: 'FAILED', error: error.message || String(error) });
+        }
+    }
+    const summary = {
+        total: reportIds.length,
+        succeeded: results.filter((r) => r.status === 'SUCCESS').length,
+        failed: results.filter((r) => r.status !== 'SUCCESS').length,
+        results
+    };
+    return summary;
+}
 
 const authHandlers = {
     async handleLogin(event, credentials) {
@@ -209,6 +281,73 @@ const authHandlers = {
             return { status: 'SUCCESS' };
         } catch (error) {
             console.error('[MAIN] Failed to clear cookie:', error);
+            return { status: 'ERROR', error: error.message || String(error) };
+        }
+    },
+
+    /**
+     * Opens the Taqeem login page in a dedicated browser window with an isolated session.
+     * This keeps the main automation session intact while allowing a second login.
+     */
+    async handleOpenTaqeemLogin(event, opts = {}) {
+        const loginUrl = opts.url || (
+            'https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth'
+            + '?client_id=cli-qima-valuers'
+            + '&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback'
+            + '&scope=openid&response_type=code'
+        );
+        const batchId = opts.batchId;
+
+        let reportIds = [];
+        if (batchId) {
+            try {
+                const batchResult = await pythonAPI.auth.getReportsByBatch(batchId);
+                if (batchResult?.status === 'SUCCESS' && Array.isArray(batchResult.reports)) {
+                    reportIds = batchResult.reports.filter(Boolean);
+                } else {
+                    return { status: 'ERROR', error: batchResult?.error || `No reports found for batch ${batchId}` };
+                }
+            } catch (err) {
+                return { status: 'ERROR', error: err.message || String(err) };
+            }
+        }
+
+        try {
+            if (secondaryLoginWindow && !secondaryLoginWindow.isDestroyed()) {
+                secondaryLoginWindow.show();
+                secondaryLoginWindow.focus();
+                await secondaryLoginWindow.loadURL(loginUrl);
+            } else {
+                secondaryLoginWindow = new BrowserWindow({
+                    width: 1200,
+                    height: 800,
+                    webPreferences: {
+                        partition: SECONDARY_PARTITION,
+                        nodeIntegration: false,
+                        contextIsolation: true
+                    },
+                    title: 'Taqeem - Secondary Login'
+                });
+
+                secondaryLoginWindow.on('closed', () => {
+                    secondaryLoginWindow = null;
+                });
+
+                await secondaryLoginWindow.loadURL(loginUrl);
+            }
+
+            let batchSummary = null;
+            if (reportIds.length > 0) {
+                batchSummary = await confirmReportsBatch(secondaryLoginWindow, reportIds);
+            }
+
+            return {
+                status: 'SUCCESS',
+                message: 'Opened Taqeem login in a separate browser window',
+                batch: batchSummary
+            };
+        } catch (error) {
+            console.error('[MAIN] Failed to open Taqeem login window:', error);
             return { status: 'ERROR', error: error.message || String(error) };
         }
     }

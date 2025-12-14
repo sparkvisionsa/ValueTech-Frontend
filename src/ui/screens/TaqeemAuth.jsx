@@ -12,6 +12,9 @@ const TaqeemAuth = ({ onViewChange }) => {
     const [showOtp, setShowOtp, resetShowOtp] = usePersistentState('taqeem-auth:showOtp', false, { storage: 'session' });
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage, resetMessage] = usePersistentState('taqeem-auth:message', { text: '', type: '' }, { storage: 'session' });
+    const [secondaryStatus, setSecondaryStatus] = useState({ text: '', type: '' });
+    const [secondaryLoading, setSecondaryLoading] = useState(false);
+    const [secondaryBatchId, setSecondaryBatchId] = useState('');
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
     useEffect(() => {
@@ -122,6 +125,39 @@ const TaqeemAuth = ({ onViewChange }) => {
         setTaqeemStatus('info', 'Taqeem login is required to proceed');
     };
 
+    const handleOpenSecondaryLogin = async () => {
+        if (!secondaryBatchId.trim()) {
+            setSecondaryStatus({
+                text: 'Please enter a batch ID before opening the secondary login.',
+                type: 'error'
+            });
+            return;
+        }
+        setSecondaryLoading(true);
+        setSecondaryStatus({ text: '', type: '' });
+
+        try {
+            if (!window.electronAPI?.openTaqeemLogin) {
+                throw new Error('Cannot open external browser from this environment');
+            }
+            const result = await window.electronAPI.openTaqeemLogin({ batchId: secondaryBatchId.trim() });
+            setSecondaryStatus({
+                text: [
+                    result?.message || 'Opened Taqeem login in a separate browser window.',
+                    result?.batch ? `Processed reports: ${result.batch.succeeded}/${result.batch.total} succeeded, ${result.batch.failed} failed.` : 'Sign in with the alternate account there; batch will process automatically.'
+                ].filter(Boolean).join(' '),
+                type: result?.status === 'SUCCESS' ? 'success' : 'error'
+            });
+        } catch (error) {
+            setSecondaryStatus({
+                text: '❌ Unable to open a new login tab: ' + error.message,
+                type: 'error'
+            });
+        } finally {
+            setSecondaryLoading(false);
+        }
+    };
+
     const getMessageStyles = (type) => {
         const baseStyles = "p-4 rounded-lg border";
         switch (type) {
@@ -151,13 +187,52 @@ const TaqeemAuth = ({ onViewChange }) => {
                             <p className="text-sm text-green-800">Move straight to selecting companies or keep this form for re-authentication.</p>
                         </div>
                         <button
-                            onClick={() => onViewChange && onViewChange('get-companies')}
-                            className="text-sm font-semibold text-green-900 bg-white border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100"
+            onClick={() => onViewChange && onViewChange('get-companies')}
+            className="text-sm font-semibold text-green-900 bg-white border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100"
+        >
+            Go to companies
+        </button>
+    </div>
+)}
+
+                <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 space-y-2">
+                            <p className="font-semibold text-indigo-900">Login with another account</p>
+                            <p className="text-sm text-indigo-800">
+                                Opens Taqeem login in a separate browser window (isolated session) so you can sign in with a second user while keeping this session active. Provide the batch ID to auto-open each report and submit the confirmation step.
+                            </p>
+                            <div>
+                                <label htmlFor="secondaryBatchId" className="block text-xs font-semibold text-indigo-900 uppercase tracking-wide mb-1">
+                                    Batch ID
+                                </label>
+                                <input
+                                    id="secondaryBatchId"
+                                    name="secondaryBatchId"
+                                    value={secondaryBatchId}
+                                    onChange={(e) => setSecondaryBatchId(e.target.value)}
+                                    placeholder="Enter batch ID to confirm reports"
+                                    className="w-full px-3 py-2 rounded-md border border-indigo-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                    disabled={secondaryLoading}
+                                />
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleOpenSecondaryLogin}
+                            disabled={secondaryLoading}
+                            className={`px-4 py-2 rounded-lg font-medium text-white transition-colors ${secondaryLoading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                                }`}
                         >
-                            Go to companies
+                            {secondaryLoading ? 'Opening...' : 'Open new login'}
                         </button>
                     </div>
-                )}
+                    {secondaryStatus.text && (
+                        <div className={`${getMessageStyles(secondaryStatus.type)} mt-3`}>
+                            {secondaryStatus.text}
+                        </div>
+                    )}
+                </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Email Field */}
                     <div>

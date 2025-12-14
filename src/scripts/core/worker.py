@@ -6,6 +6,7 @@ from scripts.loginFlow.login import startLogin, submitOtp
 from scripts.loginFlow.register import register_user
 
 from scripts.submission.validateReport import validate_report
+from motor.motor_asyncio import AsyncIOMotorClient
 from scripts.submission.createMacros import run_create_assets
 from scripts.submission.grabMacroIds import get_all_macro_ids_parallel, retry_get_missing_macro_ids
 from scripts.submission.macroFiller import (
@@ -32,8 +33,37 @@ if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+# Mongo connection (shared with submission flows)
+MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
+mongo_client = AsyncIOMotorClient(MONGO_URI)
+mongo_db = mongo_client["test"]
+
 # Track running macro-edit tasks
 running_tasks = {}
+
+async def get_reports_by_batch(batch_id):
+    if not batch_id:
+        return {"status": "FAILED", "error": "Missing batchId"}
+
+    try:
+        cursor = mongo_db.urgentreports.find({"batch_id": batch_id})
+        docs = await cursor.to_list(length=None)
+        if not docs:
+            return {"status": "FAILED", "error": f"No reports found for batchId {batch_id}", "reports": []}
+
+        report_ids = []
+        for doc in docs:
+            rid = doc.get("report_id") or doc.get("reportId") or doc.get("reportid")
+            if rid:
+                report_ids.append(str(rid))
+
+        return {
+            "status": "SUCCESS" if report_ids else "FAILED",
+            "message": f"Fetched {len(report_ids)} report ids for batch {batch_id}",
+            "reports": report_ids
+        }
+    except Exception as e:
+        return {"status": "FAILED", "error": str(e), "reports": []}
 
 async def handle_command(cmd):
     """Handle a single command"""
@@ -287,6 +317,12 @@ async def handle_command(cmd):
 
         print(json.dumps(result), flush=True)
 
+    elif action == "get-reports-by-batch":
+        batch_id = cmd.get("batchId") or cmd.get("batch_id")
+        result = await get_reports_by_batch(batch_id)
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
     elif action == "create-reports-by-batch":
         browser = await get_browser()
 
@@ -336,7 +372,7 @@ async def handle_command(cmd):
                 "create-macros", "grab-macro-ids", "macro-edit",
                 "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
                 "full-check", "half-check", "register", "close", "ping",
-                "duplicate-report"
+                "duplicate-report", "get-reports-by-batch"
             ],
             "commandId": cmd.get("commandId")
         }

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCompanies: () => safeInvoke('get-companies'),
     navigateToCompany: (company) => safeInvoke('navigate-to-company', company),
     register: (userData) => safeInvoke('register', userData),
+    openTaqeemLogin: (opts = {}) => safeInvoke('open-taqeem-login', opts),
 
     // Set refresh token (main process will store this as HttpOnly cookie)
     // opts: { baseUrl, name, path, maxAgeDays, sameSite, secure, httpOnly }

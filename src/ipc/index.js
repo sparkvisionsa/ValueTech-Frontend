@@ -11,8 +11,8 @@ function registerIpcHandlers() {
     ipcMain.handle('register', authHandlers.handleRegister);
     ipcMain.handle('auth-set-refresh-token', authHandlers.handleSetRefreshToken);
     ipcMain.handle('auth-clear-refresh-token', authHandlers.handleClearRefreshToken);
-    ipcMain.handle('get-token', authHandlers.getRefreshToken);
-
+    ipcMain.handle('get-token', authHandlers.getRefreshToken)
+    ipcMain.handle('open-taqeem-login', authHandlers.handleOpenTaqeemLogin);
 
 
     // Report handlers
@@ -71,6 +71,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('get-companies');
     ipcMain.removeAllListeners('navigate-to-company');
     ipcMain.removeAllListeners('register');
+    ipcMain.removeAllListeners('open-taqeem-login');
 
     ipcMain.removeAllListeners('ping-worker');
     ipcMain.removeAllListeners('worker-status');
