@@ -124,6 +124,24 @@ const reportHandlers = {
         }
     },
 
+    async handleCheckElRajhiBatches(event, batchId, tabsNum) {
+        try {
+            return await pythonAPI.report.checkElrajhiBatches(batchId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Check ElRajhi batches error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleReuploadElRajhiReport(event, reportId) {
+        try {
+            return await pythonAPI.report.reuploadElrajhiReport(reportId);
+        } catch (err) {
+            console.error('[MAIN] Reupload ElRajhi report error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handleRetryMacroIds(event, reportId, tabsNum) {
         try {
             return await pythonAPI.report.retryMacroIds(reportId, tabsNum);

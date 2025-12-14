@@ -37,6 +37,21 @@ class ReportCommands {
         });
     }
 
+    async checkElrajhiBatches(batchId, tabsNum) {
+        return this._sendCommand({
+            action: 'elrajhi-check-batches',
+            batchId,
+            tabsNum
+        });
+    }
+
+    async reuploadElrajhiReport(reportId) {
+        return this._sendCommand({
+            action: 'elrajhi-reupload-report',
+            reportId
+        });
+    }
+
     async grabMacroIds(reportId, tabsNum) {
         return this._sendCommand({
             action: 'grab-macro-ids',

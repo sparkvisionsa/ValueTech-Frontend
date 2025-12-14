@@ -18,7 +18,8 @@ import {
     Wrench,
     Users,
     UploadCloud,
-    Files
+    Files,
+    TreePine
 } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
@@ -48,6 +49,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'upload-report-elrajhi', label: 'Upload Report Elrajhi', icon: UploadCloud },
         { id: 'duplicate-report', label: 'Duplicate report & send new', icon: Files },
         { id: 'multi-excel-upload', label: 'Multi-Excel Upload', icon: File },
+        { id: 'valuation-system', label: 'نظام التقييم', icon: TreePine },
     ];
 
     if (isCompanyHead) {

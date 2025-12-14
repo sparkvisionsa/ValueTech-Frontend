@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Sidebar from './Sidebar';
-import { AlertTriangle, Bell, Download, RefreshCcw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Bell, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useNavStatus } from '../context/NavStatusContext';
@@ -30,6 +30,9 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const mode = systemState?.mode || 'active';
     const [downtimeParts, setDowntimeParts] = useState(null);
     const [hideUpdateNotice, setHideUpdateNotice] = useState(false);
+    const [ramInfo, setRamInfo] = useState(null);
+    const [readingRam, setReadingRam] = useState(false);
+    const ramInFlight = useRef(false);
 
     useEffect(() => {
         // Reset notice dismissal whenever a new update arrives
@@ -131,6 +134,46 @@ const Layout = ({ children, currentView, onViewChange }) => {
             alert(msg);
         }
     };
+
+    const handleReadRam = async () => {
+        if (ramInFlight.current) return;
+        if (!window?.electronAPI?.readRam) {
+            setRamInfo({ error: 'RAM reader not available in this build.' });
+            return;
+        }
+
+        setReadingRam(true);
+        ramInFlight.current = true;
+        try {
+            const result = await window.electronAPI.readRam();
+            if (result?.ok) {
+                setRamInfo({
+                    usedGb: result.usedGb,
+                    totalGb: result.totalGb,
+                    freeGb: result.freeGb,
+                    readAt: Date.now()
+                });
+            } else {
+                setRamInfo({ error: result?.error || 'Unable to read RAM.' });
+            }
+        } catch (err) {
+            setRamInfo({ error: err?.message || 'Failed to read RAM.' });
+        } finally {
+            setReadingRam(false);
+            ramInFlight.current = false;
+        }
+    };
+
+    useEffect(() => {
+        // Auto-refresh RAM usage without manual clicks
+        const pollRam = () => {
+            handleReadRam();
+        };
+
+        pollRam();
+        const id = setInterval(pollRam, 5000);
+        return () => clearInterval(id);
+    }, []);
 
     const isMandatoryUpdate = latestUpdate?.rolloutType === 'mandatory';
     const shouldShowUpdateNotice = isAuthenticated && !isAdmin && latestUpdate && userUpdateState?.status !== 'applied' && !hideUpdateNotice;
@@ -241,11 +284,44 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             <h1 className="text-2xl font-bold text-gray-900">
                                 {getViewTitle(currentView)}
                             </h1>
-                            {statusBanner}
+                            <div className="flex items-center gap-3">
+                                {statusBanner}
+                                <button
+                                    type="button"
+                                    onClick={handleReadRam}
+                                    disabled={readingRam}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-60"
+                                >
+                                    {readingRam ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <HardDrive className="w-4 h-4" />
+                                    )}
+                                    Read RAM
+                                </button>
+                            </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
                             {renderStatusPill('Taqeem', taqeemStatus)}
                             {renderStatusPill('Company', companyStatus)}
+                            {ramInfo && (
+                                <div
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm shadow-sm ${ramInfo.error
+                                        ? 'border-red-200 bg-red-50 text-red-800'
+                                        : 'border-slate-200 bg-slate-50 text-gray-800'
+                                        }`}
+                                >
+                                    <HardDrive className="w-4 h-4" />
+                                    {ramInfo.error ? (
+                                        <span>{ramInfo.error}</span>
+                                    ) : (
+                                        <span>
+                                            Used {ramInfo.usedGb} GB of {ramInfo.totalGb} GB
+                                            {typeof ramInfo.freeGb === 'number' ? ` (Free ${ramInfo.freeGb} GB)` : ''}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         {isAuthenticated && !isAdmin && mode === 'inactive' && (
                             <div className="flex items-center gap-2 text-sm text-red-800 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
@@ -341,7 +417,8 @@ const getViewTitle = (view) => {
         login: 'Authentication',
         dashboard: 'Dashboard',
         automation: 'Automation Control',
-        settings: 'Settings'
+        settings: 'Settings',
+        'valuation-system': 'نظام التقييم'
     };
     return titles[view] || 'AutoBot';
 };

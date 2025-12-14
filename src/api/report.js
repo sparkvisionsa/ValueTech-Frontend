@@ -81,6 +81,16 @@ const createDuplicateReport = async (payload) => {
     return response.data;
 }
 
+const fetchElrajhiBatches = async () => {
+    const response = await httpClient.get("/elrajhi-upload/batches");
+    return response.data;
+};
+
+const fetchElrajhiBatchReports = async (batchId) => {
+    const response = await httpClient.get(`/elrajhi-upload/batches/${batchId}/reports`);
+    return response.data;
+};
+
 
 module.exports = {
     uploadAssetDataToDatabase,
@@ -90,5 +100,7 @@ module.exports = {
     uploadElrajhiBatch,
     multiExcelUpload,
     fetchLatestUserReport,
-    createDuplicateReport
+    createDuplicateReport,
+    fetchElrajhiBatches,
+    fetchElrajhiBatchReports
 };

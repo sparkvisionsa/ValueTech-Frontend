@@ -1,5 +1,5 @@
 const { ipcMain } = require('electron');
-const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers } = require('./handlers');
+const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers, systemHandlers, valuationHandlers } = require('./handlers');
 
 function registerIpcHandlers() {
     // Auth handlers
@@ -22,6 +22,8 @@ function registerIpcHandlers() {
     ipcMain.handle('retry-macro-ids', reportHandlers.handleRetryMacroIds);
     ipcMain.handle('macro-fill', reportHandlers.handleMacroFill);
     ipcMain.handle('elrajhi-filler', reportHandlers.handleElRajhiUploadReport);
+    ipcMain.handle('elrajhi-check-batches', reportHandlers.handleCheckElRajhiBatches);
+    ipcMain.handle('elrajhi-reupload-report', reportHandlers.handleReuploadElRajhiReport);
     ipcMain.handle('duplicate-report', reportHandlers.handleDuplicateReport);
     ipcMain.handle('create-reports-by-batch', reportHandlers.handleCreateReportsByBatch);
 
@@ -49,6 +51,13 @@ function registerIpcHandlers() {
 
     // Package handlers
     ipcMain.handle('api-request', packageHandlers.handleApiRequest);
+
+    // System info handlers
+    ipcMain.handle('read-ram', systemHandlers.handleReadRam);
+
+    // Valuation system
+    ipcMain.handle('valuation-create-folders', valuationHandlers.handleCreateFolders);
+    ipcMain.handle('valuation-update-calc', valuationHandlers.handleUpdateCalc);
 
     console.log('[IPC] All handlers registered');
 }
@@ -78,6 +87,8 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('retry-macro-ids');
     ipcMain.removeAllListeners('macro-fill');
     ipcMain.removeAllListeners('elrajhi-filler');
+    ipcMain.removeAllListeners('elrajhi-check-batches');
+    ipcMain.removeAllListeners('elrajhi-reupload-report');
     ipcMain.removeAllListeners('duplicate-report');
     ipcMain.removeAllListeners('create-reports-by-batch');
 
@@ -93,6 +104,11 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('handle-cancelled-report');
 
     ipcMain.removeAllListeners('check-server-health');
+
+    ipcMain.removeAllListeners('read-ram');
+
+    ipcMain.removeAllListeners('valuation-create-folders');
+    ipcMain.removeAllListeners('valuation-update-calc');
 
     console.log('[IPC] All handlers unregistered');
 }

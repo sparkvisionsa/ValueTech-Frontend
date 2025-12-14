@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
-import { uploadElrajhiBatch } from "../../api/report";
+import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } from "../../api/report";
 import httpClient from "../../api/httpClient";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 
@@ -18,6 +18,10 @@ import {
     Info,
     Send,
     Download,
+    ChevronDown,
+    ChevronRight,
+    Trash2,
+    RotateCw,
 } from "lucide-react";
 
 const TabButton = ({ active, onClick, children }) => (
@@ -283,6 +287,13 @@ const UploadReportElrajhi = () => {
     const [downloadingValidationExcel, setDownloadingValidationExcel] = useState(false);
     const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
     const [sendToConfirmerValidation, setSendToConfirmerValidation] = useState(false);
+    const [batchList, setBatchList] = useState([]);
+    const [batchReports, setBatchReports] = useState({});
+    const [expandedBatch, setExpandedBatch] = useState(null);
+    const [checkingBatchId, setCheckingBatchId] = useState(null);
+    const [checkingAllBatches, setCheckingAllBatches] = useState(false);
+    const [batchLoading, setBatchLoading] = useState(false);
+    const [batchMessage, setBatchMessage] = useState(null);
 
     // --- existing helpers (not used in new flow, but kept as requested) ---
     const uploadExcelOnly = async () => {
@@ -489,6 +500,152 @@ const UploadReportElrajhi = () => {
 
     const uploadPdfsOnly = async () => {
         throw new Error("uploadPdfsOnly is deprecated in this flow.");
+    };
+
+    const loadBatchList = async () => {
+        try {
+            setBatchLoading(true);
+            setBatchMessage(null);
+            const data = await fetchElrajhiBatches();
+            setBatchList(Array.isArray(data?.batches) ? data.batches : []);
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err?.response?.data?.error || err.message || "Failed to load batches",
+            });
+        } finally {
+            setBatchLoading(false);
+        }
+    };
+
+    const loadBatchReports = async (batchId) => {
+        if (!batchId) return;
+        try {
+            setBatchLoading(true);
+            const data = await fetchElrajhiBatchReports(batchId);
+            setBatchReports((prev) => ({
+                ...prev,
+                [batchId]: Array.isArray(data?.reports) ? data.reports : [],
+            }));
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err?.response?.data?.error || err.message || "Failed to load batch reports",
+            });
+        } finally {
+            setBatchLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === "check-reports") {
+            loadBatchList();
+        }
+    }, [activeTab]);
+
+    const toggleBatchExpand = async (batchId) => {
+        if (expandedBatch === batchId) {
+            setExpandedBatch(null);
+            return;
+        }
+        setExpandedBatch(batchId);
+        if (!batchReports[batchId]) {
+            await loadBatchReports(batchId);
+        }
+    };
+
+    const runBatchCheck = async (batchId = null) => {
+        if (!window?.electronAPI?.checkElrajhiBatches) {
+            setBatchMessage({
+                type: "error",
+                text: "Desktop integration unavailable. Restart the app.",
+            });
+            return;
+        }
+        if (batchId) {
+            setCheckingBatchId(batchId);
+        } else {
+            setCheckingAllBatches(true);
+        }
+        setBatchMessage({
+            type: "info",
+            text: batchId ? `Checking batch ${batchId}...` : "Checking all batches...",
+        });
+
+        try {
+            const result = await window.electronAPI.checkElrajhiBatches(batchId || null, numTabs);
+            if (result?.status !== "SUCCESS") {
+                throw new Error(result?.error || "Check failed");
+            }
+
+            setBatchMessage({
+                type: "success",
+                text: batchId ? `Check finished for ${batchId}` : "Completed check for all batches",
+            });
+
+            await loadBatchList();
+            if (batchId) {
+                await loadBatchReports(batchId);
+            } else if (expandedBatch) {
+                await loadBatchReports(expandedBatch);
+            }
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err.message || "Failed to check reports",
+            });
+        } finally {
+            setCheckingBatchId(null);
+            setCheckingAllBatches(false);
+        }
+    };
+
+    const handleDeleteReport = async (reportId, batchId) => {
+        if (!reportId) return;
+        try {
+            setCheckingBatchId(batchId || reportId);
+            const result = await window.electronAPI.deleteReport(reportId, 10);
+            if (result?.status !== "SUCCESS") {
+                throw new Error(result?.error || "Delete failed");
+            }
+            await loadBatchReports(batchId);
+            await loadBatchList();
+            setBatchMessage({
+                type: "success",
+                text: `Deleted report ${reportId}`,
+            });
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err.message || "Failed to delete report",
+            });
+        } finally {
+            setCheckingBatchId(null);
+        }
+    };
+
+    const handleReuploadReport = async (reportId, batchId) => {
+        if (!reportId) return;
+        try {
+            setCheckingBatchId(batchId || reportId);
+            const result = await window.electronAPI.reuploadElrajhiReport(reportId);
+            if (result?.status !== "SUCCESS") {
+                throw new Error(result?.error || "Reupload failed");
+            }
+            await loadBatchReports(batchId);
+            await loadBatchList();
+            setBatchMessage({
+                type: "success",
+                text: `Reupload completed for report ${reportId}`,
+            });
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err.message || "Failed to reupload report",
+            });
+        } finally {
+            setCheckingBatchId(null);
+        }
     };
 
     const resetMessages = () => {
@@ -1007,7 +1164,7 @@ const UploadReportElrajhi = () => {
                             <input
                                 type="number"
                                 min="1"
-                                max="10"
+                                max="50"
                                 value={numTabs}
                                 onChange={(e) => {
                                     const value = parseInt(e.target.value);
@@ -1571,7 +1728,7 @@ const UploadReportElrajhi = () => {
                             <input
                                 type="number"
                                 min="1"
-                                max="10"
+                                max="50"
                                 value={numTabs}
                                 onChange={(e) => {
                                     const value = parseInt(e.target.value, 10);
@@ -1645,6 +1802,241 @@ const UploadReportElrajhi = () => {
         </div>
     );
 
+    const checkReportsContent = (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-semibold text-gray-900">Check reports uploaded</p>
+                    <p className="text-xs text-gray-600">
+                        Expand a batch to view its reports, run a status check, delete completed reports, or reupload incomplete ones.
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={loadBatchList}
+                        className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-slate-200"
+                        disabled={batchLoading}
+                    >
+                        <RefreshCw className={`w-4 h-4 ${batchLoading ? "animate-spin" : ""}`} />
+                        Refresh
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => runBatchCheck()}
+                        disabled={!batchList.length || checkingAllBatches}
+                        className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                        {checkingAllBatches ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Send className="w-4 h-4" />
+                        )}
+                        Check all batches
+                    </button>
+                </div>
+            </div>
+
+            {batchMessage && (
+                <div
+                    className={`rounded-lg border p-3 flex items-start gap-2 ${batchMessage.type === "error"
+                        ? "bg-red-50 border-red-100 text-red-700"
+                        : batchMessage.type === "success"
+                            ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                            : "bg-blue-50 border-blue-100 text-blue-700"
+                        }`}
+                >
+                    {batchMessage.type === "error" ? (
+                        <AlertTriangle className="w-4 h-4 mt-0.5" />
+                    ) : batchMessage.type === "success" ? (
+                        <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                    ) : (
+                        <Info className="w-4 h-4 mt-0.5" />
+                    )}
+                    <div className="text-sm">{batchMessage.text}</div>
+                </div>
+            )}
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                {batchLoading && !batchList.length ? (
+                    <div className="p-6 flex items-center gap-3 text-sm text-gray-600">
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        Loading batches...
+                    </div>
+                ) : batchList.length ? (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 text-gray-600">
+                                <tr>
+                                    <th className="px-4 py-2 text-left">Batch ID</th>
+                                    <th className="px-4 py-2 text-left">Reports</th>
+                                    <th className="px-4 py-2 text-left">With report ID</th>
+                                    <th className="px-4 py-2 text-left">Complete</th>
+                                    <th className="px-4 py-2 text-left"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {batchList.map((batch) => {
+                                    const isExpanded = expandedBatch === batch.batchId;
+                                    const completed = batch.completedReports || 0;
+                                    const total = batch.totalReports || 0;
+                                    return (
+                                        <React.Fragment key={batch.batchId}>
+                                            <tr className="border-b last:border-0">
+                                                <td className="px-4 py-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleBatchExpand(batch.batchId)}
+                                                        className="inline-flex items-center gap-2 text-left text-sm font-semibold text-gray-900"
+                                                    >
+                                                        {isExpanded ? (
+                                                            <ChevronDown className="w-4 h-4 text-gray-600" />
+                                                        ) : (
+                                                            <ChevronRight className="w-4 h-4 text-gray-600" />
+                                                        )}
+                                                        <span>{batch.batchId}</span>
+                                                    </button>
+                                                    {batch.excelName ? (
+                                                        <p className="text-xs text-gray-500 ml-6">
+                                                            {batch.excelName}
+                                                        </p>
+                                                    ) : null}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-800">
+                                                    {total}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-800">
+                                                    {batch.withReportId || 0}/{total || 0}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-800">
+                                                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-gray-800 border border-slate-200">
+                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                        {completed}/{total} complete
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => runBatchCheck(batch.batchId)}
+                                                        disabled={checkingBatchId === batch.batchId}
+                                                        className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                                    >
+                                                        {checkingBatchId === batch.batchId ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <RefreshCw className="w-4 h-4" />
+                                                        )}
+                                                        Check batch
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr className="border-b last:border-0">
+                                                    <td colSpan={5} className="bg-slate-50">
+                                                        <div className="p-4">
+                                                            {batchReports[batch.batchId] ? (
+                                                                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                                                                    <table className="min-w-full text-sm">
+                                                                        <thead className="bg-gray-50 text-gray-600">
+                                                                            <tr>
+                                                                                <th className="px-3 py-2 text-left">Report ID</th>
+                                                                                <th className="px-3 py-2 text-left">Client</th>
+                                                                                <th className="px-3 py-2 text-left">Asset</th>
+                                                                                <th className="px-3 py-2 text-left">Status</th>
+                                                                                <th className="px-3 py-2 text-left">Actions</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {batchReports[batch.batchId].map((report) => {
+                                                                                const reportId = report.report_id || report.reportId || "";
+                                                                                const submitState = report.submit_state ?? report.submitState;
+                                                                                const status =
+                                                                                    !reportId
+                                                                                        ? "MISSING_ID"
+                                                                                        : submitState === 1 || report.status === "COMPLETE"
+                                                                                            ? "COMPLETE"
+                                                                                            : "INCOMPLETE";
+                                                                                const isComplete = status === "COMPLETE";
+
+                                                                                return (
+                                                                                    <tr key={report.id || reportId || report.asset_name} className="border-t last:border-0">
+                                                                                        <td className="px-3 py-2 text-gray-900 font-semibold">
+                                                                                            {reportId || <span className="text-gray-500">Not created</span>}
+                                                                                        </td>
+                                                                                        <td className="px-3 py-2 text-gray-800">{report.client_name || "—"}</td>
+                                                                                        <td className="px-3 py-2 text-gray-800">{report.asset_name || "—"}</td>
+                                                                                        <td className="px-3 py-2">
+                                                                                            {status === "COMPLETE" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                    <CheckCircle2 className="w-3 h-3" />
+                                                                                                    Complete
+                                                                                                </span>
+                                                                                            ) : status === "MISSING_ID" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                    <AlertTriangle className="w-3 h-3" />
+                                                                                                    Missing report ID
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                    <AlertTriangle className="w-3 h-3" />
+                                                                                                    Incomplete
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
+                                                                                        <td className="px-3 py-2">
+                                                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleDeleteReport(reportId, batch.batchId)}
+                                                                                                    disabled={!isComplete || !reportId || checkingBatchId === batch.batchId}
+                                                                                                    className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 border border-red-200 disabled:opacity-50"
+                                                                                                >
+                                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                                    Delete
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleReuploadReport(reportId, batch.batchId)}
+                                                                                                    disabled={isComplete || !reportId || checkingBatchId === batch.batchId}
+                                                                                                    className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 border border-blue-200 disabled:opacity-50"
+                                                                                                >
+                                                                                                    <RotateCw className="w-4 h-4" />
+                                                                                                    Reupload
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                );
+                                                                            })}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                                    Loading reports...
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="p-6 text-sm text-gray-600 flex items-center gap-2">
+                        <Info className="w-4 h-4" />
+                        No batches yet. Upload reports first, then come back to check their status.
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
@@ -1653,7 +2045,7 @@ const UploadReportElrajhi = () => {
                         Upload Report Elrajhi
                     </h2>
                     <p className="text-sm text-gray-600 mt-1">
-                        Choose a flow: quick upload without validation or the new validation tab with folder upload, valuers, and Taqeem actions.
+                        Choose a flow: quick upload, validation with folder parsing, or check previously uploaded batches.
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -1669,10 +2061,20 @@ const UploadReportElrajhi = () => {
                     >
                         With validation
                     </TabButton>
+                    <TabButton
+                        active={activeTab === "check-reports"}
+                        onClick={() => setActiveTab("check-reports")}
+                    >
+                        Check reports uploaded
+                    </TabButton>
                 </div>
             </div>
 
-            {activeTab === "no-validation" ? noValidationContent : validationContent}
+            {activeTab === "no-validation"
+                ? noValidationContent
+                : activeTab === "validation"
+                    ? validationContent
+                    : checkReportsContent}
         </div>
     );
 };

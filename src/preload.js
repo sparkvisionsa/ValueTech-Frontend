@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     retryMacroIds: (reportId, tabsNum) => safeInvoke('retry-macro-ids', reportId, tabsNum),
     macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
     elrajhiUploadReport: (batchId, tabsNum, pdfOnly, finalizeSubmission = true) => safeInvoke('elrajhi-filler', batchId, tabsNum, pdfOnly, finalizeSubmission),
+    checkElrajhiBatches: (batchId, tabsNum) => safeInvoke('elrajhi-check-batches', batchId, tabsNum),
+    reuploadElrajhiReport: (reportId) => safeInvoke('elrajhi-reupload-report', reportId),
     duplicateReportNavigate: (recordId, company) => safeInvoke('duplicate-report', recordId, company),
     createReportsByBatch: (batchId, tabsNum) => safeInvoke('create-reports-by-batch', batchId, tabsNum),
 
@@ -63,8 +65,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteReport: (reportId, maxRounds) => safeInvoke('delete-report', reportId, maxRounds),
     deleteIncompleteAssets: (reportId, maxRounds) => safeInvoke('delete-incomplete-assets', reportId, maxRounds),
     handleCancelledReport: (reportId) => safeInvoke('handle-cancelled-report', reportId),
-
-
 
     getToken: () => safeInvoke('get-token'),
     // Progress listener for macro fill
@@ -90,5 +90,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // API requests (optionally include headers, e.g., Authorization)
     apiRequest: (method, url, data = {}, headers = {}) =>
-        safeInvoke('api-request', { method, url, data, headers })
+        safeInvoke('api-request', { method, url, data, headers }),
+
+    readRam: () => safeInvoke('read-ram'),
+
+    // Valuation system
+    createValuationFolders: (payload) => safeInvoke('valuation-create-folders', payload),
+    updateValuationCalc: (payload) => safeInvoke('valuation-update-calc', payload)
 });

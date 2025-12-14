@@ -27,6 +27,7 @@ import SystemUpdates from './screens/SystemUpdates';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
+import ValuationSystem from './screens/ValuationSystem';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState(null);
@@ -105,6 +106,9 @@ const AppContent = () => {
 
             case 'multi-excel-upload':
                 return <MultiExcelUpload />;
+
+            case 'valuation-system':
+                return <ValuationSystem />;
 
             default:
                 return <LoginForm onViewChange={setCurrentView} />;

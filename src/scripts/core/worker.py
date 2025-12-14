@@ -15,6 +15,7 @@ from scripts.submission.macroFiller import (
     stop_macro_edit
 )
 from scripts.submission.ElRajhiFiller import ElRajhiFiller
+from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
 from scripts.submission.duplicateReport import run_duplicate_report
 from scripts.submission.mutliReportFiller import create_reports_by_batch
 
@@ -175,6 +176,27 @@ async def handle_command(cmd):
         result = await ElRajhiFiller(browser, batch_id, tabs_num, pdf_only, finalize_submission=finalize_submission)
         result["commandId"] = cmd.get("commandId")
         
+        print(json.dumps(result), flush=True)
+
+    elif action == "elrajhi-check-batches":
+        browser = await get_browser()
+
+        batch_id = cmd.get("batchId")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await check_elrajhi_batches(browser, batch_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "elrajhi-reupload-report":
+        browser = await get_browser()
+
+        report_id = cmd.get("reportId")
+
+        result = await reupload_elrajhi_report(browser, report_id)
+        result["commandId"] = cmd.get("commandId")
+
         print(json.dumps(result), flush=True)
 
     elif action == "duplicate-report":
