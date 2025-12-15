@@ -12,6 +12,7 @@ import {
     Upload,
     CheckCircle2,
     AlertTriangle,
+    Table,
     File as FileIcon,
     RefreshCw,
     FolderOpen,
@@ -19,6 +20,7 @@ import {
     Send,
     Download,
     ChevronDown,
+    ChevronUp,
     ChevronRight,
     Trash2,
     RotateCw,
@@ -74,6 +76,160 @@ const convertArabicDigits = (value) => {
         "٩": "9",
     };
     return value.replace(/[٠-٩]/g, (d) => map[d] ?? d);
+};
+
+const parseExcelDateValue = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+
+    if (typeof value === "number") {
+        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+        const msPerDay = 24 * 60 * 60 * 1000;
+        return new Date(excelEpoch.getTime() + value * msPerDay);
+    }
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+
+        if (/^\d+$/.test(trimmed)) {
+            const serial = parseInt(trimmed, 10);
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const msPerDay = 24 * 60 * 60 * 1000;
+            return new Date(excelEpoch.getTime() + serial * msPerDay);
+        }
+
+        const normalized = trimmed.replace(/[.]/g, "/");
+        const parts = normalized.split(/[\/\-]/).map((p) => p.trim());
+        if (parts.length === 3) {
+            const [a, b, c] = parts;
+            // Try dd/mm/yyyy then yyyy-mm-dd
+            if (a.length === 4) {
+                const year = parseInt(a, 10);
+                const month = parseInt(b, 10);
+                const day = parseInt(c, 10);
+                if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+                    return new Date(year, month - 1, day);
+                }
+            } else {
+                const day = parseInt(a, 10);
+                const month = parseInt(b, 10);
+                const year = parseInt(c, 10);
+                if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+                    return new Date(year, month - 1, day);
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+const formatDateForDisplay = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    return date.toISOString().slice(0, 10);
+};
+
+const hasValue = (val) =>
+    val !== undefined &&
+    val !== null &&
+    (typeof val === "number" || String(val).toString().trim() !== "");
+
+const pickFieldValue = (row, candidates = []) => {
+    if (!row) return undefined;
+    const normalizedMap = Object.keys(row).reduce((acc, key) => {
+        acc[normalizeKey(key)] = key;
+        return acc;
+    }, {});
+
+    for (const candidate of candidates) {
+        const matchKey = normalizedMap[normalizeKey(candidate)];
+        if (matchKey !== undefined) {
+            return row[matchKey];
+        }
+    }
+    return undefined;
+};
+
+const isValidEmail = (email) => {
+    if (!email) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+};
+
+const validateReportInfoAndMarket = (reportRow = {}, marketRows = []) => {
+    const issues = [];
+    const addIssue = (field, location, message) => issues.push({ field, location, message });
+
+    const purpose = pickFieldValue(reportRow, ["purpose_id", "purpose of valuation", "purpose"]);
+    const valueAttributes = pickFieldValue(reportRow, ["value_premise_id", "value attributes", "value_attribute", "value premise id"]);
+    const reportType = pickFieldValue(reportRow, ["report_type", "report", "report name", "report title", "title"]);
+    const clientName = pickFieldValue(reportRow, ["client_name", "client name"]);
+    const telephone = pickFieldValue(reportRow, ["telephone", "phone", "client telephone", "client phone", "mobile"]);
+    const email = pickFieldValue(reportRow, ["email", "client email"]);
+
+    const valuedAtRaw = pickFieldValue(reportRow, ["valued_at", "date of valuation", "valuation date"]);
+    const submittedAtRaw = pickFieldValue(reportRow, ["submitted_at", "report issuing date", "report date", "report issuing"]);
+    const valuedAt = parseExcelDateValue(valuedAtRaw);
+    const submittedAt = parseExcelDateValue(submittedAtRaw);
+
+    if (!hasValue(purpose)) addIssue("Purpose of Valuation", "Report Info", "Field Purpose of Valuation is required");
+    if (!hasValue(valueAttributes)) addIssue("Value Attributes", "Report Info", "Field Value Attributes is required");
+    if (!hasValue(reportType)) addIssue("Report", "Report Info", "Field Report is required");
+
+    if (!hasValue(clientName)) {
+        addIssue("Client Name", "Report Info", "Field client name is required");
+    } else if (String(clientName).trim().length < 9) {
+        addIssue("Client Name", "Report Info", "Client name field must contain at least 9 characters");
+    }
+
+    const telephoneClean = hasValue(telephone) ? String(telephone).replace(/\s+/g, "") : "";
+    if (!hasValue(telephone)) {
+        addIssue("Client Telephone", "Report Info", "Field client telephone is required");
+    } else if (telephoneClean.length < 8) {
+        addIssue("Client Telephone", "Report Info", "Client telephone must contain at least 8 characters");
+    }
+
+    if (!hasValue(email)) {
+        addIssue("Client Email", "Report Info", "Field client email is required");
+    } else if (!isValidEmail(email)) {
+        addIssue("Client Email", "Report Info", "Client email field must contain a valid email address");
+    }
+
+    if (!valuedAt) addIssue("Date of Valuation", "Report Info", "Field Date of Valuation is required");
+    if (!submittedAt) addIssue("Report Issuing Date", "Report Info", "Field Report Issuing Date is required");
+    if (valuedAt && submittedAt && valuedAt > submittedAt) {
+        addIssue("Date of Valuation", "Report Info", "Date of Valuation must be on or before Report Issuing Date");
+    }
+
+    if (!marketRows.length) {
+        addIssue("Final Value", "market sheet", "No assets found in market sheet to validate final values");
+    } else {
+        marketRows.forEach((row, idx) => {
+            const finalVal = pickFieldValue(row, ["final_value", "final value", "value"]);
+            if (!hasValue(finalVal) || Number.isNaN(Number(finalVal))) {
+                const rowNumber = idx + 2; // account for header row
+                const assetName = row.asset_name || row.assetName || `Row ${rowNumber}`;
+                addIssue(
+                    "Final Value",
+                    `market row ${rowNumber}`,
+                    `Final Value is required for asset "${assetName}"`
+                );
+            }
+        });
+    }
+
+    const snapshot = {
+        purpose,
+        valueAttributes,
+        reportType,
+        clientName,
+        telephone,
+        email,
+        valuedAt,
+        submittedAt,
+    };
+
+    return { issues, snapshot };
 };
 
 const detectValuerColumnsOrThrow = (exampleRow) => {
@@ -295,6 +451,26 @@ const UploadReportElrajhi = () => {
     const [checkingAllBatches, setCheckingAllBatches] = useState(false);
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchMessage, setBatchMessage] = useState(null);
+    const [selectedReports, setSelectedReports] = useState(new Set());
+    const [bulkActionBusy, setBulkActionBusy] = useState(null);
+    const [actionMenuBatch, setActionMenuBatch] = useState(null);
+    const [actionMenuOpen, setActionMenuOpen] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+    const [mainReportIssues, setMainReportIssues] = useState([]);
+    const [mainReportSnapshot, setMainReportSnapshot] = useState(null);
+    const [validationReportIssues, setValidationReportIssues] = useState([]);
+    const [validationReportSnapshot, setValidationReportSnapshot] = useState(null);
+
+    const resetMainValidationState = () => {
+        setMainReportIssues([]);
+        setMainReportSnapshot(null);
+    };
+
+    const resetValidationCardState = () => {
+        setValidationReportIssues([]);
+        setValidationReportSnapshot(null);
+    };
 
     // Pause/Resume/Stop state management
     const [isPausedMain, setIsPausedMain] = useState(false);
@@ -515,6 +691,10 @@ const UploadReportElrajhi = () => {
                 throw new Error("Select a folder with Excel file before sending.");
             }
 
+            if (validationReportIssues.length) {
+                throw new Error("Resolve the report info validation issues before sending.");
+            }
+            // Upload to backend
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
                 validationPdfFiles
@@ -613,6 +793,10 @@ const UploadReportElrajhi = () => {
                 throw new Error("Select a folder with Excel file before sending.");
             }
 
+            if (validationReportIssues.length) {
+                throw new Error("Resolve the report info validation issues before sending.");
+            }
+            // Upload to backend
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
                 validationPdfFiles
@@ -711,6 +895,7 @@ const UploadReportElrajhi = () => {
             setBatchMessage(null);
             const data = await fetchElrajhiBatches();
             setBatchList(Array.isArray(data?.batches) ? data.batches : []);
+            setCurrentPage(1);
         } catch (err) {
             setBatchMessage({
                 type: "error",
@@ -859,6 +1044,73 @@ const UploadReportElrajhi = () => {
         setSuccess("");
     };
 
+    const runReportValidationForFile = async (file, target = "main") => {
+        if (!file) {
+            if (target === "validation") {
+                resetValidationCardState();
+            } else {
+                resetMainValidationState();
+            }
+            return { issues: [], snapshot: null };
+        }
+
+        try {
+            const buffer = await file.arrayBuffer();
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(buffer);
+
+            const reportSheet = workbook.getWorksheet("Report Info");
+            const marketSheet = workbook.getWorksheet("market");
+
+            if (!reportSheet || !marketSheet) {
+                const issues = [
+                    {
+                        field: "Workbook",
+                        location: "Sheets",
+                        message: "Excel must contain sheets named 'Report Info' and 'market'.",
+                    },
+                ];
+                if (target === "validation") {
+                    setValidationReportIssues(issues);
+                    setValidationReportSnapshot(null);
+                } else {
+                    setMainReportIssues(issues);
+                    setMainReportSnapshot(null);
+                }
+                return { issues, snapshot: null };
+            }
+
+            const reportRows = worksheetToObjects(reportSheet);
+            const marketRows = worksheetToObjects(marketSheet);
+            const result = validateReportInfoAndMarket(reportRows[0] || {}, marketRows);
+
+            if (target === "validation") {
+                setValidationReportIssues(result.issues);
+                setValidationReportSnapshot(result.snapshot);
+            } else {
+                setMainReportIssues(result.issues);
+                setMainReportSnapshot(result.snapshot);
+            }
+            return result;
+        } catch (err) {
+            const fallback = [
+                {
+                    field: "Excel",
+                    location: file?.name || "Workbook",
+                    message: err?.message || "Failed to read Excel file",
+                },
+            ];
+            if (target === "validation") {
+                setValidationReportIssues(fallback);
+                setValidationReportSnapshot(null);
+            } else {
+                setMainReportIssues(fallback);
+                setMainReportSnapshot(null);
+            }
+            return { issues: fallback, snapshot: null };
+        }
+    };
+
     const downloadExcelFile = async (path, setBusy, setMessage) => {
         if (!path) return;
         try {
@@ -890,14 +1142,18 @@ const UploadReportElrajhi = () => {
         }
     };
 
-    const handleExcelChange = (e) => {
+    const handleExcelChange = async (e) => {
         resetMessages();
+        resetMainValidationState();
         const file = e.target.files?.[0];
         setExcelFile(file || null);
         setRememberedFiles((prev) => ({
             ...prev,
             mainExcel: file ? file.name : null,
         }));
+        if (file) {
+            await runReportValidationForFile(file, "main");
+        }
     };
 
     const handlePdfsChange = (e) => {
@@ -934,15 +1190,21 @@ const UploadReportElrajhi = () => {
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.load(buffer);
 
+            const reportSheet = workbook.getWorksheet("Report Info");
             const marketSheet = workbook.getWorksheet("market");
-            if (!marketSheet) {
-                throw new Error("Excel must include a sheet named 'market'.");
+            if (!marketSheet || !reportSheet) {
+                throw new Error("Excel must include sheets named 'Report Info' and 'market'.");
             }
 
             const marketRows = worksheetToObjects(marketSheet);
             if (!marketRows.length) {
                 throw new Error("Sheet 'market' has no rows to read valuers from.");
             }
+
+            const reportRows = worksheetToObjects(reportSheet);
+            const reportValidation = validateReportInfoAndMarket(reportRows[0] || {}, marketRows);
+            setValidationReportIssues(reportValidation.issues);
+            setValidationReportSnapshot(reportValidation.snapshot);
 
             const valuerCols = detectValuerColumnsOrThrow(marketRows[0]);
 
@@ -1010,7 +1272,12 @@ const UploadReportElrajhi = () => {
             const matchedCount = reports.filter((r) => !!r.pdf_name).length;
 
             if (!silent) {
-                if (invalidTotals.length) {
+                if (reportValidation.issues.length) {
+                    setValidationMessage({
+                        type: "error",
+                        text: `Found ${reportValidation.issues.length} validation issue(s). Review the table below.`,
+                    });
+                } else if (invalidTotals.length) {
                     const firstInvalid = invalidTotals[0];
                     setValidationMessage({
                         type: "error",
@@ -1019,15 +1286,16 @@ const UploadReportElrajhi = () => {
                 } else {
                     setValidationMessage({
                         type: "success",
-                        text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.`,
+                        text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name. Report info looks valid.`,
                     });
                 }
             }
 
-            return { assets, matchedCount, invalidTotals };
+            return { assets, matchedCount, invalidTotals, reportIssues: reportValidation.issues, reportSnapshot: reportValidation.snapshot };
         } catch (err) {
             setMarketAssets([]);
             setValidationReports([]);
+            resetValidationCardState();
             if (!silent) {
                 setValidationMessage({
                     type: "error",
@@ -1053,6 +1321,11 @@ const UploadReportElrajhi = () => {
                 throw new Error("Please select PDF files before sending.");
             }
 
+            const mainValidation = await runReportValidationForFile(excelFile, "main");
+            if (mainValidation?.issues?.length) {
+                throw new Error(`Found ${mainValidation.issues.length} validation issue(s) in the Excel file. Review the table below.`);
+            }
+            // ---- Build multipart/form-data ----
             const formData = new FormData();
             formData.append("excel", excelFile);
             pdfFiles.forEach((file) => {
@@ -1147,6 +1420,7 @@ const UploadReportElrajhi = () => {
 
     const handleValidationFolderChange = (e) => {
         resetValidationBanner();
+        resetValidationCardState();
         const incomingFiles = Array.from(e.target.files || []);
         setValidationFolderFiles(incomingFiles);
         const excel = incomingFiles.find((file) => /\.(xlsx|xls)$/i.test(file.name));
@@ -1163,7 +1437,7 @@ const UploadReportElrajhi = () => {
     const allAssetsTotalsValid = marketAssets.every(
         (a) => Math.abs((a.totalPercentage || 0) - 100) < 0.001
     );
-    const canSendReports = marketAssets.length > 0 && allAssetsTotalsValid && !loadingValuers;
+    const canSendReports = marketAssets.length > 0 && allAssetsTotalsValid && !loadingValuers && !validationReportIssues.length;
     const maxValuerSlots = Math.max(
         1,
         marketAssets.reduce(
@@ -1189,6 +1463,7 @@ const UploadReportElrajhi = () => {
         setSendToConfirmerValidation(false);
         setIsPausedValidation(false);
         setIsPausedPdfOnly(false);
+        resetValidationCardState();
     };
 
     const registerValidationFolder = async () => {
@@ -1226,12 +1501,24 @@ const UploadReportElrajhi = () => {
 
             if (!parseResult) return;
 
-            const { assets, matchedCount } = parseResult;
+            const { assets, matchedCount, reportIssues = [], reportSnapshot = null } = parseResult;
+
+            // Ensure card state is aligned with the latest parse (extra safety even though parseExcelForValidation already sets it).
+            setValidationReportIssues(reportIssues);
+            setValidationReportSnapshot(reportSnapshot);
 
             if (!assets.length) {
                 setValidationMessage({
                     type: "error",
                     text: "No assets found in the Excel file.",
+                });
+                return;
+            }
+
+            if (reportIssues.length) {
+                setValidationMessage({
+                    type: "error",
+                    text: `Found ${reportIssues.length} validation issue(s). Review the details below before sending.`,
                 });
                 return;
             }
@@ -1250,7 +1537,7 @@ const UploadReportElrajhi = () => {
 
             setValidationMessage({
                 type: "success",
-                text: `Folder staged. Found ${assets.length} asset(s) and ${validationPdfFiles.length} PDF(s). Matched ${matchedCount} PDF(s) by asset name.`,
+                text: `Folder staged. Found ${assets.length} asset(s) and ${validationPdfFiles.length} PDF(s). Matched ${matchedCount} PDF(s) by asset name. Report info is valid.`,
             });
         } finally {
             setSavingValidation(false);
@@ -1263,6 +1550,7 @@ const UploadReportElrajhi = () => {
         setSendToConfirmerMain(false);
         setIsPausedMain(false);
         resetMessages();
+        resetMainValidationState();
     };
 
     // Control button component for pause/resume/stop
@@ -1304,58 +1592,225 @@ const UploadReportElrajhi = () => {
         </div>
     );
 
-    const validationContent = (
-        <div className="space-y-5">
-            {validationMessage && (
-                <div
-                    className={`rounded-xl p-3 flex items-start gap-2 border ${validationMessage.type === "error"
-                        ? "bg-red-50 text-red-700 border-red-100"
-                        : validationMessage.type === "success"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                            : "bg-blue-50 text-blue-700 border-blue-100"
-                        }`}
-                >
-                    {validationMessage.type === "error" ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5" />
-                    ) : validationMessage.type === "success" ? (
-                        <CheckCircle2 className="w-4 h-4 mt-0.5" />
-                    ) : (
-                        <Info className="w-4 h-4 mt-0.5" />
-                    )}
-                    <div className="text-sm">{validationMessage.text}</div>
-                </div>
-            )}
+    const ValidationResultsCard = ({ title, issues = [], snapshot }) => {
+        if (!snapshot && !issues.length) return null;
 
-            <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                    <Info className="w-5 h-5 text-emerald-600" />
+        const fields = [
+            { label: "Purpose of Valuation", value: snapshot?.purpose },
+            { label: "Value Attributes", value: snapshot?.valueAttributes },
+            { label: "Report", value: snapshot?.reportType },
+            { label: "Client Name", value: snapshot?.clientName },
+            { label: "Client Telephone", value: snapshot?.telephone },
+            { label: "Client Email", value: snapshot?.email },
+            { label: "Date of Valuation", value: snapshot?.valuedAt ? formatDateForDisplay(snapshot.valuedAt) : "" },
+            { label: "Report Issuing Date", value: snapshot?.submittedAt ? formatDateForDisplay(snapshot.submittedAt) : "" },
+        ];
+
+        return (
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+                <div className="px-4 py-3 border-b flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Table className="w-4 h-4 text-blue-600" />
+                        <p className="text-sm font-semibold text-gray-900">{title}</p>
+                    </div>
+                    <span
+                        className={`text-xs font-semibold px-2 py-1 rounded-full border ${issues.length
+                            ? "bg-red-50 text-red-700 border-red-100"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                            }`}
+                    >
+                        {issues.length ? `${issues.length} issue(s)` : "No issues found"}
+                    </span>
                 </div>
-                <div className="space-y-1">
-                    <p className="text-sm font-semibold text-slate-900">Validated folder flow</p>
-                    <p className="text-xs text-slate-600">
-                        Add a folder, review valuers, choose tabs, then decide if you want to send to confirmer. PDFs can be sent selectively.
-                    </p>
+                <div className="p-4 space-y-3">
+                    {snapshot ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                            {fields.map((field) => (
+                                <div
+                                    key={field.label}
+                                    className="p-2 rounded-md bg-slate-50 border border-slate-100"
+                                >
+                                    <p className="font-semibold text-gray-800">{field.label}</p>
+                                    <p className="text-gray-700 break-words">{field.value || "—"}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {issues.length ? (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs">
+                                <thead className="bg-red-50 text-red-700">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left">Field</th>
+                                        <th className="px-3 py-2 text-left">Location</th>
+                                        <th className="px-3 py-2 text-left">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {issues.map((issue, idx) => (
+                                        <tr key={`${issue.field}-${idx}`} className="border-t bg-red-50">
+                                            <td className="px-3 py-2 font-semibold text-red-800">{issue.field}</td>
+                                            <td className="px-3 py-2 text-red-700">{issue.location || "—"}</td>
+                                            <td className="px-3 py-2 text-red-700">{issue.message}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-sm text-emerald-700">
+                            <CheckCircle2 className="w-4 h-4" />
+                            All required fields look good.
+                        </div>
+                    )}
                 </div>
             </div>
+        );
+    };
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
-                    <div className="flex items-center gap-2">
+    const selectionKey = (batchId, reportId) => `${batchId || "batch"}::${reportId || "unknown"}`;
+
+    const isSelected = (batchId, reportId) => selectedReports.has(selectionKey(batchId, reportId));
+
+    const toggleReportSelection = (batchId, reportId, checked) => {
+        setSelectedReports((prev) => {
+            const next = new Set(prev);
+            const key = selectionKey(batchId, reportId);
+            if (checked) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectAllForBatch = (batchId, reports = [], checked) => {
+        setSelectedReports((prev) => {
+            const next = new Set(prev);
+            reports.forEach((r) => {
+                const rid = r.report_id || r.reportId;
+                if (!rid) return;
+                const key = selectionKey(batchId, rid);
+                if (checked) {
+                    next.add(key);
+                } else {
+                    next.delete(key);
+                }
+            });
+            return next;
+        });
+    };
+
+    const handleBulkAction = async (action, batchId, reports = []) => {
+        const selected = reports.filter((r) => isSelected(batchId, r.report_id || r.reportId));
+        if (!selected.length) {
+            setBatchMessage({
+                type: "info",
+                text: "Select at least one report first.",
+            });
+            return;
+        }
+
+        const readableAction =
+            action === "delete"
+                ? "Delete"
+                : action === "retry"
+                    ? "Retry"
+                    : action === "send"
+                        ? "Send to confirmer"
+                        : "Approve";
+
+        setBulkActionBusy(action);
+        setBatchMessage({
+            type: "info",
+            text: `${readableAction} in progress for ${selected.length} report(s)...`,
+        });
+
+        try {
+            for (const report of selected) {
+                const rid = report.report_id || report.reportId;
+                if (!rid) continue;
+
+                if (action === "delete") {
+                    await handleDeleteReport(rid, batchId);
+                } else if (action === "retry" || action === "send") {
+                    await handleReuploadReport(rid, batchId);
+                } else if (action === "approve") {
+                    setBatchMessage({
+                        type: "error",
+                        text: "Approve via single-report automation is not wired to desktop integration yet.",
+                    });
+                    break;
+                }
+            }
+
+            if (action !== "approve") {
+                setBatchMessage({
+                    type: "success",
+                    text: `${readableAction} finished for selected report(s).`,
+                });
+            }
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err?.message || `Failed to ${readableAction.toLowerCase()} selected report(s).`,
+            });
+        } finally {
+            setBulkActionBusy(null);
+            setActionMenuOpen(false);
+            setActionMenuBatch(null);
+        }
+    };
+
+    // pagination helpers
+    const totalBatchPages = Math.max(1, Math.ceil((batchList.length || 0) / pageSize));
+    const currentPageSafe = Math.min(Math.max(currentPage, 1), totalBatchPages);
+    const batchPageStart = (currentPageSafe - 1) * pageSize;
+    const displayedBatches = batchList.slice(batchPageStart, batchPageStart + pageSize);
+
+
+    const validationContent = (
+        <div className="space-y-5">
+            <div className="space-y-4">
+                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
                         <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">Step 1</span>
-                        <Upload className="w-5 h-5 text-blue-600" />
-                        <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                                Upload folder (Excel + PDFs)
-                            </p>
-                            <p className="text-xs text-gray-600">
-                                Choose the folder that contains the Excel report file and all related PDFs.
-                            </p>
+                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
+                            <Upload className="w-4 h-4 text-blue-700" />
+                            <div>
+                                <p className="text-sm font-semibold text-gray-900 leading-tight">
+                                    Upload folder (Excel + PDFs)
+                                </p>
+                                <p className="text-[11px] text-gray-600 leading-tight">
+                                    Choose the folder that contains the Excel report file and all related PDFs.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-gray-700 border border-slate-200">
+                                <FileSpreadsheet className="w-3 h-3" />
+                                {validationExcelFile
+                                    ? validationExcelFile.name
+                                    : rememberedFiles.validationExcel
+                                        ? `Last: ${rememberedFiles.validationExcel}`
+                                        : "No Excel selected"}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-gray-700 border border-slate-200">
+                                <Files className="w-3 h-3" />
+                                {validationPdfFiles.length
+                                    ? `${validationPdfFiles.length} PDF(s)`
+                                    : rememberedFiles.validationPdfs.length
+                                        ? `Last: ${rememberedFiles.validationPdfs.length} PDF(s)`
+                                        : "0 PDF(s)"}
+                            </span>
                         </div>
                     </div>
-                    <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
+                    <label className="flex items-center justify-between px-4 py-4 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition w-1/4 min-w-[260px]">
                         <div className="flex items-center gap-2 text-sm text-gray-800">
                             <FolderOpen className="w-4 h-4" />
-                            <span>
+                            <span className="font-semibold">
                                 {validationFolderFiles.length
                                     ? `${validationFolderFiles.length} file(s) in folder`
                                     : "Pick a folder"}
@@ -1370,10 +1825,10 @@ const UploadReportElrajhi = () => {
                         />
                         <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
-                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                            <p className="font-semibold text-gray-900">Excel detected</p>
-                            <p>
+                    <div className="flex flex-wrap gap-3">
+                        <div className="flex-1 min-w-[180px] p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
+                            <p className="font-semibold text-gray-900 text-sm">Excel detected</p>
+                            <p className="text-xs text-gray-700">
                                 {validationExcelFile
                                     ? validationExcelFile.name
                                     : rememberedFiles.validationExcel
@@ -1381,9 +1836,9 @@ const UploadReportElrajhi = () => {
                                         : "—"}
                             </p>
                         </div>
-                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
-                            <p className="font-semibold text-gray-900">PDFs detected</p>
-                            <p>
+                        <div className="flex-1 min-w-[180px] p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
+                            <p className="font-semibold text-gray-900 text-sm">PDFs detected</p>
+                            <p className="text-xs text-gray-700">
                                 {validationPdfFiles.length
                                     ? `${validationPdfFiles.length} file(s)`
                                     : rememberedFiles.validationPdfs.length
@@ -1392,7 +1847,7 @@ const UploadReportElrajhi = () => {
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <button
                             type="button"
                             onClick={registerValidationFolder}
@@ -1417,110 +1872,157 @@ const UploadReportElrajhi = () => {
                     </div>
                 </div>
 
-                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
-                    <div className="flex items-center gap-2">
-                        <Info className="w-5 h-5 text-emerald-600" />
-                        <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                                Valuer contributions
-                            </p>
-                            <p className="text-xs text-gray-500">
-                                Pulled from the Excel &quot;market&quot; sheet. Each asset row must have valuers totaling 100%. Listing all assets and their valuers below.
-                            </p>
-                            {marketAssets.length > 1 && (
-                                <p className="text-[11px] text-gray-500">
-                                    All {marketAssets.length} assets were validated for valuers and totals.
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Info className="w-5 h-5 text-emerald-600" />
+                            <div>
+                                <p className="text-sm font-semibold text-gray-900">
+                                    Valuer contributions
                                 </p>
-                            )}
+                                <p className="text-xs text-gray-500">
+                                    Pulled from the Excel &quot;market&quot; sheet. Each asset row must have valuers totaling 100%. Listing all assets and their valuers below.
+                                </p>
+                                {marketAssets.length > 1 && (
+                                    <p className="text-[11px] text-gray-500">
+                                        All {marketAssets.length} assets were validated for valuers and totals.
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 text-gray-600">
-                                <tr>
-                                    <th className="px-3 py-2 text-left">Asset</th>
-                                    {Array.from({ length: maxValuerSlots }).map((_, idx) => (
-                                        <th key={`valuer-col-${idx}`} className="px-3 py-2 text-left">
-                                            Valuer {idx + 1}
-                                        </th>
-                                    ))}
-                                    <th className="px-3 py-2 text-left">Total (%)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {marketAssets.map((asset, assetIdx) => {
-                                    const assetTotal = calculateAssetTotal(asset);
-                                    const isComplete = Math.abs(assetTotal - 100) < 0.001;
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left">Asset</th>
+                                        {Array.from({ length: maxValuerSlots }).map((_, idx) => (
+                                            <th key={`valuer-col-${idx}`} className="px-3 py-2 text-left">
+                                                Valuer {idx + 1}
+                                            </th>
+                                        ))}
+                                        <th className="px-3 py-2 text-left">Total (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {marketAssets.map((asset, assetIdx) => {
+                                        const assetTotal = calculateAssetTotal(asset);
+                                        const isComplete = Math.abs(assetTotal - 100) < 0.001;
 
-                                    return (
-                                        <tr
-                                            key={`${asset.asset_name || "asset"}-${assetIdx}`}
-                                            className="border-t align-top"
-                                        >
-                                            <td className="px-3 py-2 text-gray-900 font-medium">
-                                                {asset.asset_name || `Asset ${assetIdx + 1}`}
-                                            </td>
-                                            {Array.from({ length: maxValuerSlots }).map((_, valIdx) => {
-                                                const valuer = (asset.valuers || [])[valIdx];
+                                        return (
+                                            <tr
+                                                key={`${asset.asset_name || "asset"}-${assetIdx}`}
+                                                className="border-t align-top"
+                                            >
+                                                <td className="px-3 py-2 text-gray-900 font-medium">
+                                                    {asset.asset_name || `Asset ${assetIdx + 1}`}
+                                                </td>
+                                                {Array.from({ length: maxValuerSlots }).map((_, valIdx) => {
+                                                    const valuer = (asset.valuers || [])[valIdx];
 
-                                                return (
-                                                    <td
-                                                        key={`asset-${assetIdx}-valuer-${valIdx}`}
-                                                        className="px-3 py-2 text-gray-800"
-                                                    >
-                                                        {valuer ? (
-                                                            <div className="space-y-0.5">
-                                                                <div className="text-xs text-gray-500">
-                                                                    ID: {valuer.valuerId || "—"}
+                                                    return (
+                                                        <td
+                                                            key={`asset-${assetIdx}-valuer-${valIdx}`}
+                                                            className="px-3 py-2 text-gray-800"
+                                                        >
+                                                            {valuer ? (
+                                                                <div className="space-y-0.5">
+                                                                    <div className="text-xs text-gray-500">
+                                                                        ID: {valuer.valuerId || "—"}
+                                                                    </div>
+                                                                    <div className="text-sm font-semibold text-gray-800">
+                                                                        {valuer.valuerName || "—"}
+                                                                    </div>
+                                                                    <div className="text-sm text-gray-700">
+                                                                        {Number(valuer.percentage ?? valuer.contribution ?? 0)}%
+                                                                    </div>
                                                                 </div>
-                                                                <div className="text-sm font-semibold text-gray-800">
-                                                                    {valuer.valuerName || "—"}
-                                                                </div>
-                                                                <div className="text-sm text-gray-700">
-                                                                    {Number(valuer.percentage ?? valuer.contribution ?? 0)}%
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-gray-400 text-xs">—</span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                            <td className="px-3 py-2 font-semibold text-right">
-                                                <span className={isComplete ? "text-emerald-600" : "text-red-600"}>
-                                                    {assetTotal}%
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                                            ) : (
+                                                                <span className="text-gray-400 text-xs">—</span>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                })}
+                                                <td className="px-3 py-2 font-semibold text-right">
+                                                    <span className={isComplete ? "text-emerald-600" : "text-red-600"}>
+                                                        {assetTotal}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                        {loadingValuers && (
+                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Reading valuers from Excel...
+                            </div>
+                        )}
+                        {!loadingValuers && !marketAssets.length && (
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <Info className="w-4 h-4" />
+                                Select a folder with an Excel file to load valuers.
+                            </div>
+                        )}
+                        {!loadingValuers && marketAssets.length > 0 && !allAssetsTotalsValid && (
+                            <div className="flex items-center gap-2 text-xs text-red-600">
+                                <AlertTriangle className="w-4 h-4" />
+                                Every asset row must total 100% to enable sending to Taqeem.
+                            </div>
+                        )}
+                        {!loadingValuers && marketAssets.length > 0 && allAssetsTotalsValid && (
+                            <div className="flex items-center gap-2 text-xs text-emerald-600">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Contributions are balanced. You can proceed to send.
+                            </div>
+                        )}
                     </div>
-                    {loadingValuers && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Reading valuers from Excel...
+
+                    <div className="space-y-3">
+                        <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
+                            <div className="h-10 w-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                                <Info className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-sm font-semibold text-slate-900">Validated folder flow</p>
+                                <p className="text-xs text-slate-600">
+                                    Add a folder, review valuers, choose tabs, then decide if you want to send to confirmer. PDFs can be sent selectively.
+                                </p>
+                                {validationMessage && (
+                                    <div
+                                        className={`mt-2 rounded-lg border px-3 py-2 inline-flex items-start gap-2 ${validationMessage.type === "error"
+                                            ? "bg-red-50 text-red-700 border-red-100"
+                                            : validationMessage.type === "success"
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                : "bg-blue-50 text-blue-700 border-blue-100"
+                                            }`}
+                                    >
+                                        {validationMessage.type === "error" ? (
+                                            <AlertTriangle className="w-4 h-4 mt-0.5" />
+                                        ) : validationMessage.type === "success" ? (
+                                            <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                                        ) : (
+                                            <Info className="w-4 h-4 mt-0.5" />
+                                        )}
+                                        <div className="text-sm">{validationMessage.text}</div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    )}
-                    {!loadingValuers && !marketAssets.length && (
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Info className="w-4 h-4" />
-                            Select a folder with an Excel file to load valuers.
-                        </div>
-                    )}
-                    {!loadingValuers && marketAssets.length > 0 && !allAssetsTotalsValid && (
-                        <div className="flex items-center gap-2 text-xs text-red-600">
-                            <AlertTriangle className="w-4 h-4" />
-                            Every asset row must total 100% to enable sending to Taqeem.
-                        </div>
-                    )}
-                    {!loadingValuers && marketAssets.length > 0 && allAssetsTotalsValid && (
-                        <div className="flex items-center gap-2 text-xs text-emerald-600">
-                            <CheckCircle2 className="w-4 h-4" />
-                            Contributions are balanced. You can proceed to send.
-                        </div>
-                    )}
+
+                        {(validationReportSnapshot || validationReportIssues.length) ? (
+                            <ValidationResultsCard
+                                title="Report Info validation"
+                                issues={validationReportIssues}
+                                snapshot={validationReportSnapshot}
+                            />
+                        ) : (
+                            <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-sm text-gray-500 flex items-center justify-center">
+                                Validation results will appear here after reading the Excel.
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1703,6 +2205,12 @@ const UploadReportElrajhi = () => {
                                 Do you want to send the report to the confirmer? / هل تريد ارسال التقرير الي المعتمد ؟
                             </span>
                         </label>
+                        {validationReportIssues.length ? (
+                            <div className="flex items-center gap-2 text-xs text-red-600">
+                                <AlertTriangle className="w-4 h-4" />
+                                Resolve the report info issues above to enable sending.
+                            </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2 items-center">
                             <button
                                 type="button"
@@ -1917,6 +2425,14 @@ const UploadReportElrajhi = () => {
                 </div>
             )}
 
+            {(mainReportSnapshot || mainReportIssues.length) ? (
+                <ValidationResultsCard
+                    title="Report Info validation"
+                    issues={mainReportIssues}
+                    snapshot={mainReportSnapshot}
+                />
+            ) : null}
+
             <div className="mt-3 space-y-3">
                 <label className="inline-flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
                     <input
@@ -1933,7 +2449,7 @@ const UploadReportElrajhi = () => {
                     <button
                         type="button"
                         onClick={sendToTaqeem}
-                        disabled={sendingTaqeem || !excelFile || !pdfFiles.length}
+                        disabled={sendingTaqeem || !excelFile || !pdfFiles.length || mainReportIssues.length > 0}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                     >
                         {sendingTaqeem ? (
@@ -1943,6 +2459,12 @@ const UploadReportElrajhi = () => {
                         )}
                         Send to Taqeem
                     </button>
+                    {mainReportIssues.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-red-600">
+                            <AlertTriangle className="w-4 h-4" />
+                            Resolve the report info issues above to enable sending.
+                        </div>
+                    )}
                     {sendingTaqeem && (
                         <ControlButtons
                             isPaused={isPausedMain}
@@ -2213,6 +2735,7 @@ const UploadReportElrajhi = () => {
                         <table className="min-w-full text-sm">
                             <thead className="bg-gray-50 text-gray-600">
                                 <tr>
+                                    <th className="px-4 py-2 text-left">Local</th>
                                     <th className="px-4 py-2 text-left">Batch ID</th>
                                     <th className="px-4 py-2 text-left">Reports</th>
                                     <th className="px-4 py-2 text-left">With report ID</th>
@@ -2221,14 +2744,18 @@ const UploadReportElrajhi = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {batchList.map((batch) => {
+                                {displayedBatches.map((batch, idx) => {
                                     const isExpanded = expandedBatch === batch.batchId;
+                                    const sent = batch.sentReports || 0;
+                                    const confirmed = batch.confirmedReports || 0;
                                     const completed = batch.completedReports || 0;
                                     const total = batch.totalReports || 0;
                                     const isCheckingThisBatch = checkingBatchId === batch.batchId;
+                                    const localNumber = batchList.length - (batchPageStart + idx);
                                     return (
                                         <React.Fragment key={batch.batchId}>
                                             <tr className="border-b last:border-0">
+                                                <td className="px-4 py-3 text-gray-800">{localNumber}</td>
                                                 <td className="px-4 py-3">
                                                     <button
                                                         type="button"
@@ -2255,10 +2782,24 @@ const UploadReportElrajhi = () => {
                                                     {batch.withReportId || 0}/{total || 0}
                                                 </td>
                                                 <td className="px-4 py-3 text-gray-800">
-                                                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-gray-800 border border-slate-200">
-                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                        {completed}/{total} complete
-                                                    </span>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-gray-800 border border-slate-200">
+                                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                            {completed}/{total} done
+                                                        </span>
+                                                        {sent ? (
+                                                            <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700 border border-blue-100">
+                                                                <Send className="w-3 h-3" />
+                                                                {sent} sent
+                                                            </span>
+                                                        ) : null}
+                                                        {confirmed ? (
+                                                            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700 border border-emerald-100">
+                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                {confirmed} confirmed
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
                                                     <div className="flex gap-2 justify-end flex-wrap">
@@ -2346,7 +2887,7 @@ const UploadReportElrajhi = () => {
                                             </tr>
                                             {isExpanded && (
                                                 <tr className="border-b last:border-0">
-                                                    <td colSpan={5} className="bg-slate-50">
+                                                    <td colSpan={6} className="bg-slate-50">
                                                         <div className="p-4">
                                                             {batchReports[batch.batchId] ? (
                                                                 <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -2357,20 +2898,96 @@ const UploadReportElrajhi = () => {
                                                                                 <th className="px-3 py-2 text-left">Client</th>
                                                                                 <th className="px-3 py-2 text-left">Asset</th>
                                                                                 <th className="px-3 py-2 text-left">Status</th>
-                                                                                <th className="px-3 py-2 text-left">Actions</th>
+                                                                                <th className="px-3 py-2 text-left">
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                className="h-4 w-4"
+                                                                                                checked={
+                                                                                                    batchReports[batch.batchId]?.length
+                                                                                                        ? batchReports[batch.batchId].every((r) =>
+                                                                                                            isSelected(batch.batchId, r.report_id || r.reportId)
+                                                                                                        )
+                                                                                                        : false
+                                                                                                }
+                                                                                                onChange={(e) =>
+                                                                                                    toggleSelectAllForBatch(
+                                                                                                        batch.batchId,
+                                                                                                        batchReports[batch.batchId] || [],
+                                                                                                        e.target.checked
+                                                                                                    )
+                                                                                                }
+                                                                                            />
+                                                                                            <span className="text-xs text-gray-700">Select all</span>
+                                                                                        </div>
+                                                                                        <div className="relative">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => {
+                                                                                                    setActionMenuBatch(
+                                                                                                        actionMenuBatch === batch.batchId ? null : batch.batchId
+                                                                                                    );
+                                                                                                    setActionMenuOpen(actionMenuBatch !== batch.batchId ? true : !actionMenuOpen);
+                                                                                                }}
+                                                                                                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-gray-800 border border-slate-200"
+                                                                                            >
+                                                                                                Actions
+                                                                                                {actionMenuOpen && actionMenuBatch === batch.batchId ? (
+                                                                                                    <ChevronUp className="w-3 h-3" />
+                                                                                                ) : (
+                                                                                                    <ChevronDown className="w-3 h-3" />
+                                                                                                )}
+                                                                                            </button>
+                                                                                            {actionMenuOpen && actionMenuBatch === batch.batchId && (
+                                                                                                <div className="absolute right-0 mt-1 w-44 rounded-md border border-slate-200 bg-white shadow-lg z-10">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
+                                                                                                        onClick={() => handleBulkAction("delete", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <Trash2 className="w-4 h-4" />
+                                                                                                        Delete
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-blue-700 hover:bg-blue-50"
+                                                                                                        onClick={() => handleBulkAction("retry", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <RotateCw className="w-4 h-4" />
+                                                                                                        Retry
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50"
+                                                                                                        onClick={() => handleBulkAction("send", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <Send className="w-4 h-4" />
+                                                                                                        Send
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-purple-700 hover:bg-purple-50"
+                                                                                                        onClick={() => handleBulkAction("approve", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <CheckCircle2 className="w-4 h-4" />
+                                                                                                        Approve
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
                                                                             {batchReports[batch.batchId].map((report) => {
                                                                                 const reportId = report.report_id || report.reportId || "";
                                                                                 const submitState = report.submit_state ?? report.submitState;
-                                                                                const status =
-                                                                                    !reportId
-                                                                                        ? "MISSING_ID"
-                                                                                        : submitState === 1 || report.status === "COMPLETE"
-                                                                                            ? "COMPLETE"
-                                                                                            : "INCOMPLETE";
-                                                                                const isComplete = status === "COMPLETE";
+                                                                                const rawStatus = (report.report_status || report.reportStatus || report.status || "").toString().toUpperCase();
+                                                                                const normalizedStatus = rawStatus || ((submitState === 1 || report.status === "COMPLETE") ? "COMPLETE" : "INCOMPLETE");
+                                                                                const status = !reportId ? "MISSING_ID" : normalizedStatus;
+                                                                                const isComplete = ["COMPLETE", "SENT", "CONFIRMED"].includes(status);
 
                                                                                 return (
                                                                                     <tr key={report.id || reportId || report.asset_name} className="border-t last:border-0">
@@ -2385,6 +3002,16 @@ const UploadReportElrajhi = () => {
                                                                                                     <CheckCircle2 className="w-3 h-3" />
                                                                                                     Complete
                                                                                                 </span>
+                                                                                            ) : status === "SENT" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
+                                                                                                    <Send className="w-3 h-3" />
+                                                                                                    Sent
+                                                                                                </span>
+                                                                                            ) : status === "CONFIRMED" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                    <CheckCircle2 className="w-3 h-3" />
+                                                                                                    Confirmed
+                                                                                                </span>
                                                                                             ) : status === "MISSING_ID" ? (
                                                                                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
                                                                                                     <AlertTriangle className="w-3 h-3" />
@@ -2398,26 +3025,12 @@ const UploadReportElrajhi = () => {
                                                                                             )}
                                                                                         </td>
                                                                                         <td className="px-3 py-2">
-                                                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => handleDeleteReport(reportId, batch.batchId)}
-                                                                                                    disabled={!isComplete || !reportId || checkingBatchId === batch.batchId}
-                                                                                                    className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 border border-red-200 disabled:opacity-50"
-                                                                                                >
-                                                                                                    <Trash2 className="w-4 h-4" />
-                                                                                                    Delete
-                                                                                                </button>
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => handleReuploadReport(reportId, batch.batchId)}
-                                                                                                    disabled={isComplete || !reportId || checkingBatchId === batch.batchId}
-                                                                                                    className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 border border-blue-200 disabled:opacity-50"
-                                                                                                >
-                                                                                                    <RotateCw className="w-4 h-4" />
-                                                                                                    Reupload
-                                                                                                </button>
-                                                                                            </div>
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                className="h-4 w-4"
+                                                                                                checked={isSelected(batch.batchId, reportId)}
+                                                                                                onChange={(e) => toggleReportSelection(batch.batchId, reportId, e.target.checked)}
+                                                                                            />
                                                                                         </td>
                                                                                     </tr>
                                                                                 );
@@ -2440,6 +3053,48 @@ const UploadReportElrajhi = () => {
                                 })}
                             </tbody>
                         </table>
+                        <div className="flex items-center justify-between px-4 py-3 border-t">
+                            <div className="text-xs text-gray-600">
+                                Page {currentPageSafe} of {totalBatchPages}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                    disabled={currentPageSafe <= 1}
+                                    className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
+                                >
+                                    Prev
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: totalBatchPages }, (_, i) => {
+                                        const pageNum = i + 1;
+                                        const isActive = pageNum === currentPageSafe;
+                                        return (
+                                            <button
+                                                key={`page-${pageNum}`}
+                                                type="button"
+                                                onClick={() => setCurrentPage(pageNum)}
+                                                className={`min-w-[34px] px-2 py-1.5 text-xs rounded-md border ${isActive
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "bg-white text-gray-700 border-slate-200 hover:bg-slate-100"
+                                                    }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentPage((p) => Math.min(totalBatchPages, p + 1))}
+                                    disabled={currentPageSafe >= totalBatchPages}
+                                    className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <div className="p-6 text-sm text-gray-600 flex items-center gap-2">
