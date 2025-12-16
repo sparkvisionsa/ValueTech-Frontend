@@ -7,12 +7,14 @@ from scripts.loginFlow.register import register_user
 
 from scripts.submission.validateReport import validate_report
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from scripts.submission.createMacros import (
     run_create_assets,
     pause_create_macros,
     resume_create_macros,
     stop_create_macros
 )
+
 from scripts.submission.grabMacroIds import (
     get_all_macro_ids_parallel, 
     pause_grab_macro_ids,
@@ -24,20 +26,24 @@ from scripts.submission.grabMacroIds import (
     resume_retry_macro_ids, 
     stop_retry_macro_ids
 )
+
 from scripts.submission.macroFiller import (
     run_macro_edit, 
     pause_macro_edit, 
     resume_macro_edit, 
     stop_macro_edit
 )
+
 from scripts.submission.ElRajhiFiller import (
     ElRajhiFiller,
     ElrajhiRetry,
+    ElrajhiRetryByReportIds,
 
     pause_batch,
     resume_batch,
     stop_batch,
-    )
+)
+
 from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
 from scripts.submission.duplicateReport import run_duplicate_report
 from scripts.submission.mutliReportFiller import create_reports_by_batch
@@ -55,7 +61,9 @@ from scripts.submission.checkMacroStatus import (
 )
 
 from scripts.delete.reportDelete import (
-    delete_report_flow, 
+    delete_report_flow,
+    delete_multiple_reports_flow,
+
     pause_delete_report, 
     resume_delete_report, 
     stop_delete_report
@@ -410,6 +418,17 @@ async def handle_command(cmd):
 
         print(json.dumps(result), flush=True)
 
+    elif action == "delete-multiple-reports":
+        browser = await get_browser()
+
+        report_ids = cmd.get("reportIds")
+        max_rounds = int(cmd.get("maxRounds", 10))
+
+        result = await delete_multiple_reports_flow(report_ids=report_ids, max_rounds=max_rounds)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
     elif action == "pause-delete-report":
         report_id = cmd.get("reportId")
         result = await pause_delete_report(report_id)
@@ -486,6 +505,17 @@ async def handle_command(cmd):
         tabs_num = int(cmd.get("tabsNum", 3))
 
         result = await ElrajhiRetry(browser, batch_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "elrajhi-retry-by-report-ids":
+        browser = await get_browser()
+
+        report_ids = cmd.get("reportIds")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await ElrajhiRetryByReportIds(browser, report_ids, tabs_num)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)

@@ -10,6 +10,7 @@ from scripts.submission.ElRajhiFiller import (
 )
 from .formSteps import macro_form_config
 from .macroFiller import fill_macro_form
+from .validateReport import check_report_existence
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -32,20 +33,28 @@ def chunk_items(items, n):
         start += size
     return chunks
 
-
-async def _mark_submit_state(report_doc, submit_state, report_status=None):
+async def _mark_submit_state(report_doc, submit_state, report_status=None, clear_report_id=False):
     update = {
         "submit_state": submit_state,
         "last_checked_at": datetime.now(timezone.utc),
     }
+
     if report_status:
         update["report_status"] = report_status
+
+    if clear_report_id:
+        update["report_id"] = None
 
     await db.urgentreports.update_one(
         {"_id": report_doc["_id"]},
         {"$set": update},
     )
 
+
+
+
+
+    
 
 async def _check_single_report(page, report_doc):
     report_id = report_doc.get("report_id")
@@ -66,6 +75,26 @@ async def _check_single_report(page, report_doc):
         await page.get(url)
         await asyncio.sleep(1)
 
+        # -------------------------------
+        # NEW: report existence check
+        # -------------------------------
+        existence = await check_report_existence(page, report_id)
+
+        if not existence.get("exists"):
+            await _mark_submit_state(report_doc, -1, "NOT_FOUND", clear_report_id=True)
+            return {
+                "batchId": report_doc.get("batch_id"),
+                "reportId": report_id,
+                "status": "NOT_FOUND",
+                "reason": "report_not_accessible_or_missing",
+                "client_name": report_doc.get("client_name"),
+                "asset_name": report_doc.get("asset_name"),
+                "checkedAt": datetime.now(timezone.utc).isoformat(),
+            }
+
+        # -------------------------------
+        # Existing logic (UNCHANGED)
+        # -------------------------------
         delete_btn = await wait_for_element(page, "#delete_report", timeout=8)
         submit_state = 1 if delete_btn else 0
         status_value = "COMPLETE" if submit_state else "INCOMPLETE"
@@ -119,6 +148,7 @@ async def _check_single_report(page, report_doc):
                 "hasCertificateButton": has_confirmed_marker,
             },
         }
+
     except Exception as e:
         await _mark_submit_state(report_doc, 0, "INCOMPLETE")
         return {
@@ -129,6 +159,7 @@ async def _check_single_report(page, report_doc):
             "client_name": report_doc.get("client_name"),
             "asset_name": report_doc.get("asset_name"),
         }
+
 
 
 async def check_elrajhi_batches(browser, batch_id=None, tabs_num=3):

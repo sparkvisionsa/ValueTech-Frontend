@@ -438,8 +438,6 @@ const UploadReportElrajhi = () => {
     } = useElrajhiUpload();
 
     const [downloadingExcel, setDownloadingExcel] = useState(false);
-    const [loadingExcel, setLoadingExcel] = useState(false);
-    const [loadingPdf, setLoadingPdf] = useState(false);
     const [savingValidation, setSavingValidation] = useState(false);
     const [downloadingValidationExcel, setDownloadingValidationExcel] = useState(false);
     const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
@@ -448,6 +446,7 @@ const UploadReportElrajhi = () => {
     const [batchReports, setBatchReports] = useState({});
     const [expandedBatch, setExpandedBatch] = useState(null);
     const [checkingBatchId, setCheckingBatchId] = useState(null);
+    const [retryingBatchId, setRetryingBatchId] = useState(null);
     const [checkingAllBatches, setCheckingAllBatches] = useState(false);
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchMessage, setBatchMessage] = useState(null);
@@ -995,7 +994,8 @@ const UploadReportElrajhi = () => {
         if (!reportId) return;
         try {
             setCheckingBatchId(batchId || reportId);
-            const result = await window.electronAPI.deleteReport(reportId, 10);
+            // Use the new deleteMultipleReports function
+            const result = await window.electronAPI.deleteMultipleReports([reportId], 10);
             if (result?.status !== "SUCCESS") {
                 throw new Error(result?.error || "Delete failed");
             }
@@ -1019,7 +1019,8 @@ const UploadReportElrajhi = () => {
         if (!reportId) return;
         try {
             setCheckingBatchId(batchId || reportId);
-            const result = await window.electronAPI.reuploadElrajhiReport(reportId);
+            // Use the new function for consistency
+            const result = await window.electronAPI.retryElrajhiReportReportIds([reportId], numTabs);
             if (result?.status !== "SUCCESS") {
                 throw new Error(result?.error || "Reupload failed");
             }
@@ -1729,27 +1730,51 @@ const UploadReportElrajhi = () => {
         });
 
         try {
-            for (const report of selected) {
-                const rid = report.report_id || report.reportId;
-                if (!rid) continue;
+            // Extract report IDs for the selected reports
+            const reportIds = selected
+                .map(report => report.report_id || report.reportId)
+                .filter(id => id && id.trim() !== "");
 
-                if (action === "delete") {
-                    await handleDeleteReport(rid, batchId);
-                } else if (action === "retry" || action === "send") {
-                    await handleReuploadReport(rid, batchId);
-                } else if (action === "approve") {
-                    setBatchMessage({
-                        type: "error",
-                        text: "Approve via single-report automation is not wired to desktop integration yet.",
-                    });
-                    break;
-                }
+            if (reportIds.length === 0) {
+                throw new Error("No valid report IDs found in selected reports");
             }
 
-            if (action !== "approve") {
+            if (action === "delete") {
+                // Use the new deleteMultipleReports function
+                const result = await window.electronAPI.deleteMultipleReports(reportIds, 10);
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Delete multiple reports failed");
+                }
+
+                // Refresh data
+                await loadBatchReports(batchId);
+                await loadBatchList();
+
                 setBatchMessage({
                     type: "success",
-                    text: `${readableAction} finished for selected report(s).`,
+                    text: `Deleted ${reportIds.length} report(s) successfully`,
+                });
+
+            } else if (action === "retry" || action === "send") {
+                // Use the new retryElrajhiReportReportIds function
+                const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, numTabs);
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Retry multiple reports failed");
+                }
+
+                // Refresh data
+                await loadBatchReports(batchId);
+                await loadBatchList();
+
+                setBatchMessage({
+                    type: "success",
+                    text: `Retry completed for ${reportIds.length} report(s)`,
+                });
+
+            } else if (action === "approve") {
+                setBatchMessage({
+                    type: "error",
+                    text: "Approve via single-report automation is not wired to desktop integration yet.",
                 });
             }
         } catch (err) {
@@ -1761,6 +1786,9 @@ const UploadReportElrajhi = () => {
             setBulkActionBusy(null);
             setActionMenuOpen(false);
             setActionMenuBatch(null);
+
+            // Clear selection after bulk action
+            setSelectedReports(new Set());
         }
     };
 
@@ -2630,15 +2658,7 @@ const UploadReportElrajhi = () => {
                         )}
                         Check all batches
                     </button>
-                    {checkingAllBatches && (
-                        <ControlButtons
-                            isPaused={isPausedBatchCheck}
-                            isRunning={checkingAllBatches}
-                            onPause={() => handlePauseBatchCheck(null)}
-                            onResume={() => handleResumeBatchCheck(null)}
-                            onStop={() => handleStopBatchCheck(null)}
-                        />
-                    )}
+                    {/* Removed pause buttons from check all batches */}
                 </div>
             </div>
 
@@ -2751,6 +2771,7 @@ const UploadReportElrajhi = () => {
                                     const completed = batch.completedReports || 0;
                                     const total = batch.totalReports || 0;
                                     const isCheckingThisBatch = checkingBatchId === batch.batchId;
+                                    const isRetryingThisBatch = retryingBatchId === batch.batchId;
                                     const localNumber = batchList.length - (batchPageStart + idx);
                                     return (
                                         <React.Fragment key={batch.batchId}>
@@ -2806,7 +2827,7 @@ const UploadReportElrajhi = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => runBatchCheck(batch.batchId)}
-                                                            disabled={isCheckingThisBatch}
+                                                            disabled={isCheckingThisBatch || isRetryingThisBatch}
                                                             className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                                                         >
                                                             {isCheckingThisBatch ? (
@@ -2816,15 +2837,7 @@ const UploadReportElrajhi = () => {
                                                             )}
                                                             Check batch
                                                         </button>
-                                                        {isCheckingThisBatch && (
-                                                            <ControlButtons
-                                                                isPaused={isPausedBatchCheck}
-                                                                isRunning={isCheckingThisBatch}
-                                                                onPause={() => handlePauseBatchCheck(batch.batchId)}
-                                                                onResume={() => handleResumeBatchCheck(batch.batchId)}
-                                                                onStop={() => handleStopBatchCheck(batch.batchId)}
-                                                            />
-                                                        )}
+                                                        {/* Removed pause buttons from check batch button */}
                                                         <button
                                                             type="button"
                                                             onClick={async () => {
@@ -2835,7 +2848,7 @@ const UploadReportElrajhi = () => {
                                                                     });
                                                                     return;
                                                                 }
-                                                                setCheckingBatchId(batch.batchId);
+                                                                setRetryingBatchId(batch.batchId);
                                                                 setCurrentOperationBatchId(batch.batchId);
                                                                 setIsPausedBatchRetry(false);
                                                                 setBatchMessage({
@@ -2859,24 +2872,24 @@ const UploadReportElrajhi = () => {
                                                                         text: err.message || "Failed to retry batch"
                                                                     });
                                                                 } finally {
-                                                                    setCheckingBatchId(null);
+                                                                    setRetryingBatchId(null);
                                                                     setCurrentOperationBatchId(null);
                                                                 }
                                                             }}
-                                                            disabled={isCheckingThisBatch}
+                                                            disabled={isCheckingThisBatch || isRetryingThisBatch}
                                                             className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                                                         >
-                                                            {isCheckingThisBatch ? (
+                                                            {isRetryingThisBatch ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
                                                             ) : (
                                                                 <RotateCw className="w-4 h-4" />
                                                             )}
                                                             Retry
                                                         </button>
-                                                        {isCheckingThisBatch && (
+                                                        {isRetryingThisBatch && (
                                                             <ControlButtons
                                                                 isPaused={isPausedBatchRetry}
-                                                                isRunning={isCheckingThisBatch}
+                                                                isRunning={isRetryingThisBatch}
                                                                 onPause={() => handlePauseBatchRetry(batch.batchId)}
                                                                 onResume={() => handleResumeBatchRetry(batch.batchId)}
                                                                 onStop={() => handleStopBatchRetry(batch.batchId)}
@@ -2985,9 +2998,28 @@ const UploadReportElrajhi = () => {
                                                                                 const reportId = report.report_id || report.reportId || "";
                                                                                 const submitState = report.submit_state ?? report.submitState;
                                                                                 const rawStatus = (report.report_status || report.reportStatus || report.status || "").toString().toUpperCase();
-                                                                                const normalizedStatus = rawStatus || ((submitState === 1 || report.status === "COMPLETE") ? "COMPLETE" : "INCOMPLETE");
-                                                                                const status = !reportId ? "MISSING_ID" : normalizedStatus;
-                                                                                const isComplete = ["COMPLETE", "SENT", "CONFIRMED"].includes(status);
+
+                                                                                // Handle status based on submit_state
+                                                                                let normalizedStatus;
+                                                                                if (submitState === -1) {
+                                                                                    normalizedStatus = "DELETED";
+                                                                                } else if (submitState === 1) {
+                                                                                    normalizedStatus = "COMPLETE";
+                                                                                } else if (submitState === 0) {
+                                                                                    normalizedStatus = "INCOMPLETE";
+                                                                                } else {
+                                                                                    // Fallback to old logic if submit_state not set
+                                                                                    normalizedStatus = rawStatus || ((report.status === "COMPLETE") ? "COMPLETE" : "INCOMPLETE");
+                                                                                }
+
+                                                                                let status;
+                                                                                if (submitState === -1) {
+                                                                                    status = "DELETED";
+                                                                                } else if (!reportId) {
+                                                                                    status = "MISSING_ID";
+                                                                                } else {
+                                                                                    status = normalizedStatus;
+                                                                                }
 
                                                                                 return (
                                                                                     <tr key={report.id || reportId || report.asset_name} className="border-t last:border-0">
@@ -3002,27 +3034,33 @@ const UploadReportElrajhi = () => {
                                                                                                     <CheckCircle2 className="w-3 h-3" />
                                                                                                     Complete
                                                                                                 </span>
-                                                                                            ) : status === "SENT" ? (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
-                                                                                                    <Send className="w-3 h-3" />
-                                                                                                    Sent
-                                                                                                </span>
-                                                                                            ) : status === "CONFIRMED" ? (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
-                                                                                                    <CheckCircle2 className="w-3 h-3" />
-                                                                                                    Confirmed
-                                                                                                </span>
-                                                                                            ) : status === "MISSING_ID" ? (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                    <AlertTriangle className="w-3 h-3" />
-                                                                                                    Missing report ID
-                                                                                                </span>
-                                                                                            ) : (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                    <AlertTriangle className="w-3 h-3" />
-                                                                                                    Incomplete
-                                                                                                </span>
-                                                                                            )}
+                                                                                            ) : status === "DELETED" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-red-700 border border-red-100 text-xs">
+                                                                                                    <Trash2 className="w-3 h-3" />
+                                                                                                    Deleted
+                                                                                                </span>)
+
+                                                                                                : status === "SENT" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
+                                                                                                        <Send className="w-3 h-3" />
+                                                                                                        Sent
+                                                                                                    </span>
+                                                                                                ) : status === "CONFIRMED" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                        <CheckCircle2 className="w-3 h-3" />
+                                                                                                        Confirmed
+                                                                                                    </span>
+                                                                                                ) : status === "MISSING_ID" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                        <AlertTriangle className="w-3 h-3" />
+                                                                                                        Missing report ID
+                                                                                                    </span>
+                                                                                                ) : (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                        <AlertTriangle className="w-3 h-3" />
+                                                                                                        Incomplete
+                                                                                                    </span>
+                                                                                                )}
                                                                                         </td>
                                                                                         <td className="px-3 py-2">
                                                                                             <input

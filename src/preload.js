@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     duplicateReportNavigate: (recordId, company) => safeInvoke('duplicate-report', recordId, company),
     createReportsByBatch: (batchId, tabsNum) => safeInvoke('create-reports-by-batch', batchId, tabsNum),
     retryElrajhiReport: (batchId, tabsNum) => safeInvoke('retry-ElRajhi-report', batchId, tabsNum),
+    retryElrajhiReportReportIds: (reportIds, tabsNum) => safeInvoke('retry-ElRajhi-report-by-report-ids', reportIds, tabsNum),
 
     // Pause/Resume/Stop controls for macro-fill
     pauseMacroFill: (reportId) => safeInvoke('pause-macro-fill', reportId),
@@ -90,6 +91,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopHalfCheck: (reportId) => safeInvoke('stop-half-check', reportId),
 
     deleteReport: (reportId, maxRounds) => safeInvoke('delete-report', reportId, maxRounds),
+    deleteMultipleReports: (reportIds, maxRounds) => safeInvoke('delete-multiple-reports', reportIds, maxRounds),
     pauseDeleteReport: (reportId) => safeInvoke('pause-delete-report', reportId),
     resumeDeleteReport: (reportId) => safeInvoke('resume-delete-report', reportId),
     stopDeleteReport: (reportId) => safeInvoke('stop-delete-report', reportId),

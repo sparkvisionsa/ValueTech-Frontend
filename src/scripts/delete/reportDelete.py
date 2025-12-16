@@ -1124,6 +1124,110 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
             "error": str(e),
             "reportId": report_id
         }
+    
+async def delete_multiple_reports_flow(
+    report_ids: list[str],
+    max_rounds: int = 10
+):
+    """
+    Delete multiple reports sequentially using delete_report_flow().
+
+    Behaviour:
+      - Each report is processed fully before moving to the next.
+      - Each report has its OWN process_id: delete-report-{report_id}
+      - Pause / resume / stop work per-report (not global).
+      - Failure of one report does NOT stop the rest.
+
+    Returns:
+      {
+        "status": "SUCCESS" | "PARTIAL" | "FAILED",
+        "total": int,
+        "deleted": int,
+        "failed": int,
+        "results": [
+            {
+              "reportId": str,
+              "status": "...",
+              "rounds": int,
+              "deletedAssets": int,
+              ...
+            }
+        ]
+      }
+    """
+
+    if not report_ids:
+        return {
+            "status": "FAILED",
+            "error": "report_ids array is empty"
+        }
+
+    total = len(report_ids)
+    deleted = 0
+    failed = 0
+    results = []
+
+    log(f"[batch-delete] Starting deletion of {total} report(s)", "STEP")
+
+    for idx, report_id in enumerate(report_ids, start=1):
+        log(
+            f"[batch-delete] ({idx}/{total}) Deleting report {report_id}",
+            "STEP"
+        )
+
+        try:
+            result = await delete_report_flow(
+                report_id=report_id,
+                max_rounds=max_rounds
+            )
+
+            results.append(result)
+
+            status = result.get("status")
+
+            if status == "SUCCESS":
+                deleted += 1
+                log(
+                    f"[batch-delete] Report {report_id} deleted successfully",
+                    "OK"
+                )
+            else:
+                failed += 1
+                log(
+                    f"[batch-delete] Report {report_id} finished with status={status}",
+                    "WARN"
+                )
+
+        except Exception as e:
+            failed += 1
+            err = {
+                "status": "FAILED",
+                "reportId": report_id,
+                "error": str(e)
+            }
+            results.append(err)
+            log(
+                f"[batch-delete] Exception while deleting report {report_id}: {e}",
+                "ERR"
+            )
+
+    overall_status = (
+        "SUCCESS" if deleted == total
+        else "FAILED" if deleted == 0
+        else "PARTIAL"
+    )
+
+    summary = {
+        "status": overall_status,
+        "total": total,
+        "deleted": deleted,
+        "failed": failed,
+        "results": results
+    }
+
+    log(f"[batch-delete] Summary: {summary}", "OK")
+    return summary
+
 
 
 # ==============================

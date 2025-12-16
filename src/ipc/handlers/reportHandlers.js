@@ -115,6 +115,15 @@ const reportHandlers = {
         }
     },
 
+    async handleRetryElRajhiReportByReportIds(event, reportIds, tabsNum) {
+        try {
+            return await pythonAPI.report.retryElRajhiReportByReportIds(reportIds, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Retry ElRajhi report by report ids error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handlePauseElRajhiBatch(event, batchId) {
         try {
             return await pythonAPI.report.pauseElRajhiBatch(batchId);
@@ -405,6 +414,15 @@ const reportHandlers = {
             return await pythonAPI.report.deleteReport(reportId, maxRounds);
         } catch (err) {
             console.error('[MAIN] Delete report error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async deleteMultipleReports(event, reportIds, maxRounds) {
+        try {
+            return await pythonAPI.report.deleteMultipleReports(reportIds, maxRounds);
+        } catch (err) {
+            console.error('[MAIN] Delete multiple reports error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

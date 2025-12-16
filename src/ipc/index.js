@@ -43,6 +43,7 @@ function registerIpcHandlers() {
     ipcMain.handle('duplicate-report', reportHandlers.handleDuplicateReport);
     ipcMain.handle('create-reports-by-batch', reportHandlers.handleCreateReportsByBatch);
     ipcMain.handle('retry-ElRajhi-report', reportHandlers.handleRetryElRajhiReport);
+    ipcMain.handle('retry-ElRajhi-report-by-report-ids', reportHandlers.handleRetryElRajhiReportByReportIds);
 
     ipcMain.handle('pause-macro-fill', reportHandlers.handlePauseMacroFill);
     ipcMain.handle('resume-macro-fill', reportHandlers.handleResumeMacroFill);
@@ -63,6 +64,7 @@ function registerIpcHandlers() {
     ipcMain.handle('stop-half-check', reportHandlers.handleStopHalfCheck);
 
     ipcMain.handle('delete-report', reportHandlers.deleteReport);
+    ipcMain.handle('delete-multiple-reports', reportHandlers.deleteMultipleReports);
     ipcMain.handle('pause-delete-report', reportHandlers.pauseDeleteReport)
     ipcMain.handle('resume-delete-report', reportHandlers.resumeDeleteReport)
     ipcMain.handle('stop-delete-report', reportHandlers.stopDeleteReport)
@@ -135,6 +137,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('duplicate-report');
     ipcMain.removeAllListeners('create-reports-by-batch');
     ipcMain.removeAllListeners('retry-ElRajhi-report');
+    ipcMain.removeAllListeners('retry-ElRajhi-report-by-report-ids');
 
     ipcMain.removeAllListeners('pause-macro-fill');
     ipcMain.removeAllListeners('resume-macro-fill');
@@ -151,6 +154,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('stop-half-check');
 
     ipcMain.removeAllListeners('delete-report');
+    ipcMain.removeAllListeners('delete-multiple-reports');
     ipcMain.removeAllListeners('pause-delete-report');
     ipcMain.removeAllListeners('resume-delete-report');
     ipcMain.removeAllListeners('stop-delete-report');

@@ -169,6 +169,14 @@ class ReportCommands {
         });
     }
 
+    async retryElRajhiReportByReportIds(reportIds, tabsNum) {
+        return this._sendCommand({
+            action: 'elrajhi-retry-by-report-ids',
+            reportIds,
+            tabsNum
+        });
+    }
+
     async pauseMacroFill(reportId) {
         return this._sendCommand({
             action: 'pause-macro-edit',
@@ -260,6 +268,14 @@ class ReportCommands {
         return this._sendCommand({
             action: 'delete-report',
             reportId,
+            maxRounds
+        });
+    }
+
+    async deleteMultipleReports(reportIds, maxRounds) {
+        return this._sendCommand({
+            action: 'delete-multiple-reports',
+            reportIds,
             maxRounds
         });
     }
