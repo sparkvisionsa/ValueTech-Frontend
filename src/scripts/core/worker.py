@@ -51,7 +51,7 @@ async def handle_command(cmd):
         result = await startLogin(
             page, 
             cmd.get("email", ""), cmd.get("password", ""), 
-            cmd.get("method", ""))
+            cmd.get("method", ""), cmd.get("autoOtp", False))
         
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)

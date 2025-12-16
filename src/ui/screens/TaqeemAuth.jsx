@@ -115,6 +115,54 @@ const TaqeemAuth = ({ onViewChange }) => {
         }
     };
 
+    const handleAutoLogin = async () => {
+        if (isLoading) return;
+        const autoCreds = {
+            email: '1026592343',
+            password: 'Aa@@654321',
+            method: 'AUTO',
+            autoOtp: true
+        };
+        setFormData((prev) => ({ ...prev, ...autoCreds, otp: '' }));
+        setShowOtp(false);
+        setMessage({ text: '', type: '' });
+        setIsLoading(true);
+
+        try {
+            if (window.electronAPI && window.electronAPI.login) {
+                const result = await window.electronAPI.login(autoCreds);
+
+                if (result.status === 'OTP_REQUIRED') {
+                    setShowOtp(true);
+                    setMessage({
+                        text: result.message || 'Two-factor authentication required. Please enter your email code.',
+                        type: 'info'
+                    });
+                    setTaqeemStatus('info', 'Awaiting OTP to finish Taqeem sign-in');
+                } else if (result.status === 'SUCCESS') {
+                    setMessage({
+                        text: result.message || '✅ Login successful! Starting automation...',
+                        type: 'success'
+                    });
+                    setTaqeemStatus('success', 'Taqeem login completed');
+                    goToCompanies();
+                } else {
+                    throw new Error(result.error || 'Login failed');
+                }
+            } else {
+                throw new Error('Electron API not available');
+            }
+        } catch (error) {
+            setMessage({
+                text: '❌ Error: ' + error.message,
+                type: 'error'
+            });
+            setTaqeemStatus('error', error.message || 'Taqeem login failed');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleReset = () => {
         resetFormData();
         resetShowOtp();
@@ -262,6 +310,16 @@ const TaqeemAuth = ({ onViewChange }) => {
                             ) : (
                                 'Login & Start Automation'
                             )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleAutoLogin}
+                            disabled={isLoading}
+                            className="px-4 py-3 rounded-lg font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed transition-all duration-200"
+                            title="Use preset credentials and start login automatically"
+                        >
+                            Auto login
                         </button>
 
                         <button

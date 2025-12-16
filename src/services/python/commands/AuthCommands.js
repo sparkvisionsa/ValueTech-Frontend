@@ -10,12 +10,13 @@ class AuthCommands {
         return await this.worker.sendCommand(command);
     }
 
-    async login(email, password, method) {
+    async login(email, password, method, autoOtp = false) {
         return this._sendCommand({
             action: 'login',
             email,
             password,
-            method
+            method,
+            autoOtp
         });
     }
 
