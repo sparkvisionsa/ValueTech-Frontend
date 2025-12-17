@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createReportsByBatch: (batchId, tabsNum) => safeInvoke('create-reports-by-batch', batchId, tabsNum),
     retryElrajhiReport: (batchId, tabsNum) => safeInvoke('retry-ElRajhi-report', batchId, tabsNum),
     retryElrajhiReportReportIds: (reportIds, tabsNum) => safeInvoke('retry-ElRajhi-report-by-report-ids', reportIds, tabsNum),
+    finalizeMultipleReports: (reportIds) => safeInvoke('finalize-multiple-reports', reportIds),
 
     // Pause/Resume/Stop controls for macro-fill
     pauseMacroFill: (reportId) => safeInvoke('pause-macro-fill', reportId),

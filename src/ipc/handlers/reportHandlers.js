@@ -115,6 +115,15 @@ const reportHandlers = {
         }
     },
 
+    async handleFinalizeMultipleReports(event, reportIds) {
+        try {
+            return await pythonAPI.report.finalizeMultipleReports(reportIds);
+        } catch (err) {
+            console.error('[MAIN] Finalize multiple reports error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handleRetryElRajhiReportByReportIds(event, reportIds, tabsNum) {
         try {
             return await pythonAPI.report.retryElRajhiReportByReportIds(reportIds, tabsNum);

@@ -42,6 +42,8 @@ from scripts.submission.ElRajhiFiller import (
     pause_batch,
     resume_batch,
     stop_batch,
+
+    finalize_multiple_reports
 )
 
 from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
@@ -516,6 +518,16 @@ async def handle_command(cmd):
         tabs_num = int(cmd.get("tabsNum", 3))
 
         result = await ElrajhiRetryByReportIds(browser, report_ids, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "finalize-multiple-reports":
+        browser = await get_browser()
+
+        report_ids = cmd.get("reportIds")
+
+        result = await finalize_multiple_reports(browser, report_ids)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)

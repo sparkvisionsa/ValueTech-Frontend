@@ -169,6 +169,13 @@ class ReportCommands {
         });
     }
 
+    async finalizeMultipleReports(reportIds) {
+        return this._sendCommand({
+            action: 'finalize-multiple-reports',
+            reportIds
+        });
+    }
+
     async retryElRajhiReportByReportIds(reportIds, tabsNum) {
         return this._sendCommand({
             action: 'elrajhi-retry-by-report-ids',

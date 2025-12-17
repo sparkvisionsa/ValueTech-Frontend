@@ -1720,7 +1720,7 @@ const UploadReportElrajhi = () => {
                 : action === "retry"
                     ? "Retry"
                     : action === "send"
-                        ? "Send to confirmer"
+                        ? "Finalize"
                         : "Approve";
 
         setBulkActionBusy(action);
@@ -1755,7 +1755,7 @@ const UploadReportElrajhi = () => {
                     text: `Deleted ${reportIds.length} report(s) successfully`,
                 });
 
-            } else if (action === "retry" || action === "send") {
+            } else if (action === "retry") {
                 // Use the new retryElrajhiReportReportIds function
                 const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, numTabs);
                 if (result?.status !== "SUCCESS") {
@@ -1769,6 +1769,22 @@ const UploadReportElrajhi = () => {
                 setBatchMessage({
                     type: "success",
                     text: `Retry completed for ${reportIds.length} report(s)`,
+                });
+
+            } else if (action === "send") {
+                // Use the new finalizeMultipleReports function
+                const result = await window.electronAPI.finalizeMultipleReports(reportIds);
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Finalize multiple reports failed");
+                }
+
+                // Refresh data
+                await loadBatchReports(batchId);
+                await loadBatchList();
+
+                setBatchMessage({
+                    type: "success",
+                    text: `Finalized ${reportIds.length} report(s) successfully`,
                 });
 
             } else if (action === "approve") {
@@ -3017,7 +3033,11 @@ const UploadReportElrajhi = () => {
                                                                                     status = "DELETED";
                                                                                 } else if (!reportId) {
                                                                                     status = "MISSING_ID";
-                                                                                } else {
+                                                                                } else if (report.report_status === "SENT") {
+                                                                                    status = "SENT";
+                                                                                }
+
+                                                                                else {
                                                                                     status = normalizedStatus;
                                                                                 }
 
@@ -3045,22 +3065,23 @@ const UploadReportElrajhi = () => {
                                                                                                         <Send className="w-3 h-3" />
                                                                                                         Sent
                                                                                                     </span>
-                                                                                                ) : status === "CONFIRMED" ? (
-                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
-                                                                                                        <CheckCircle2 className="w-3 h-3" />
-                                                                                                        Confirmed
-                                                                                                    </span>
-                                                                                                ) : status === "MISSING_ID" ? (
-                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                        <AlertTriangle className="w-3 h-3" />
-                                                                                                        Missing report ID
-                                                                                                    </span>
-                                                                                                ) : (
-                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                        <AlertTriangle className="w-3 h-3" />
-                                                                                                        Incomplete
-                                                                                                    </span>
-                                                                                                )}
+                                                                                                )
+                                                                                                    : status === "CONFIRMED" ? (
+                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                            <CheckCircle2 className="w-3 h-3" />
+                                                                                                            Confirmed
+                                                                                                        </span>
+                                                                                                    ) : status === "MISSING_ID" ? (
+                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                            <AlertTriangle className="w-3 h-3" />
+                                                                                                            Missing report ID
+                                                                                                        </span>
+                                                                                                    ) : (
+                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                            <AlertTriangle className="w-3 h-3" />
+                                                                                                            Incomplete
+                                                                                                        </span>
+                                                                                                    )}
                                                                                         </td>
                                                                                         <td className="px-3 py-2">
                                                                                             <input

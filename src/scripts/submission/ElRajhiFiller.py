@@ -280,6 +280,27 @@ async def finalize_report_submission(page, report_id):
         return {"status": "SUCCESS", "report_id": report_id}
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
+    
+async def finalize_multiple_reports(browser, report_ids):
+    try: 
+        page = browser.main_tab
+        finalized_reports = 0
+        failed_reports = 0
+        for report_id in report_ids:
+            result = await finalize_report_submission(page, report_id)
+            if result.get("status") == "SUCCESS":
+                finalized_reports += 1  
+            else:
+                failed_reports += 1
+        
+        return {
+            "status": "SUCCESS",
+            "message": f"Finalized {finalized_reports} report(s). {failed_reports} failed.",
+            "finalized_reports": finalized_reports,
+            "failed_reports": failed_reports
+        }
+    except Exception as e:
+        return {"status": "FAILED", "error": str(e)}
 
 
 async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=True):
