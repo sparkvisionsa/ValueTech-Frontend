@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from scripts.core.utils import wait_for_element, wait_for_table_rows
+from scripts.core.browser import spawn_new_browser
 from scripts.submission.ElRajhiFiller import (
     extract_asset_from_report,
     finalize_report_submission,
@@ -163,7 +164,6 @@ async def _check_single_report(page, report_doc):
 
 
 async def check_elrajhi_batches(browser, batch_id=None, tabs_num=3):
-    """Check completion status for all reports in a batch (or all batches)."""
     query = {"batch_id": batch_id} if batch_id else {}
     reports = await db.urgentreports.find(query).sort("createdAt", -1).to_list(None)
 
@@ -174,15 +174,14 @@ async def check_elrajhi_batches(browser, batch_id=None, tabs_num=3):
         }
 
     tabs = max(1, min(tabs_num or 1, 5))
-    pages = []
+    new_browser = await spawn_new_browser(browser)
+    main_page = new_browser.main_tab
+    
+    pages = [main_page]
     try:
-        pages = [await browser.get("about:blank", new_tab=True) for _ in range(tabs)]
+        pages = [await new_browser.get("about:blank", new_tab=True) for _ in range(tabs)]
     except Exception:
         pages = []
-
-    if not pages:
-        main_page = await browser.get("about:blank")
-        pages = [main_page]
 
     chunks = chunk_items(reports, len(pages))
     results = []
@@ -221,9 +220,7 @@ async def check_elrajhi_batches(browser, batch_id=None, tabs_num=3):
         group["total"] = len(group["reports"])
         group["incomplete"] = group["total"] - complete
 
-    for page in pages:
-        await page.close()
-
+    new_browser.stop()    
     return {"status": "SUCCESS", "batches": list(grouped.values())}
 
 

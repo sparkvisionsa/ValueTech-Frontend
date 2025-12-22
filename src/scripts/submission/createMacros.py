@@ -2,6 +2,7 @@ import asyncio, sys, traceback, json
 from datetime import datetime
 
 from .formFiller import bulk_inject_inputs
+from scripts.core.browser import spawn_new_browser
 from scripts.core.utils import wait_for_element
 from scripts.core.processControl import (
     get_process_manager,
@@ -70,27 +71,9 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
 
         asset_url = f"https://qima.taqeem.sa/report/asset/create/{report_id}"
 
-        main_page = await browser.get(asset_url)
+        new_browser = await spawn_new_browser(browser)
+        main_page = await new_browser.get(asset_url)
         await asyncio.sleep(2)
-
-        current_url = await main_page.evaluate("window.location.href")
-        if str(report_id) not in current_url:
-            clear_process(report_id)
-            print(json.dumps({
-                "event": "navigation_failed",
-                "msg": f"Failed to navigate to asset creation page for report {report_id}",
-                "url": current_url
-            }), file=sys.stderr)
-            return {
-                "status": "FAILED",
-                "error": f"Failed to navigate to asset creation page for report {report_id}"
-            }
-
-        print(json.dumps({
-            "event": "navigated",
-            "msg": "Successfully navigated",
-            "url": current_url
-        }), file=sys.stderr)
 
         distribution = calculate_tab_batches(macro_count, max_tabs, batch_size)
         print(json.dumps({
@@ -100,7 +83,7 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
 
         pages = [main_page]
         for _ in range(len(distribution) - 1):
-            new_tab = await browser.get(asset_url, new_tab=True)
+            new_tab = await new_browser.get(asset_url, new_tab=True)
             pages.append(new_tab)
             await asyncio.sleep(1)
 
@@ -236,8 +219,7 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
                     return result
 
         # Close extra tabs
-        for p in pages[1:]:
-            await p.close()
+        await new_browser.stop()
 
         # Clear process state
         clear_process(report_id)
@@ -417,19 +399,7 @@ async def stop_create_macros(report_id):
         return {"status": "FAILED", "error": str(e)}
 
 async def run_create_assets_by_count(browser, num_macros, macro_data_template=None, tabs_num=3, batch_size=10):
-    """
-    Create and fill assets distributed across multiple tabs without requiring a report_id.
-    
-    Args:
-        browser: Browser instance
-        num_macros: Total number of macros/assets to create
-        macro_data_template: Template data for macros (dict or list)
-        tabs_num: Number of tabs to use for parallel processing (default: 3)
-        batch_size: Number of assets to process per batch (default: 10)
-    
-    Returns:
-        dict: Result with status and details
-    """
+
     try:
         print(f"[CREATE_ASSETS_BY_COUNT] Starting to create {num_macros} assets using {tabs_num} tabs", file=sys.stderr)
         
@@ -572,3 +542,4 @@ async def run_create_assets_by_count(browser, num_macros, macro_data_template=No
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+

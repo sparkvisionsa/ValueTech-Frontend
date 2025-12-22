@@ -1,3 +1,4 @@
+
 import os, json
 import nodriver as uc
 from urllib.parse import urlparse
@@ -9,6 +10,21 @@ load_dotenv()
 browser = None
 page = None
 
+async def spawn_new_browser(
+    old_browser,
+    user_data_dir=None,
+    headless=False,
+):
+
+    await old_browser.cookies.save()
+
+    new_browser = await uc.start(
+        user_data_dir=user_data_dir,
+        headless=headless,
+    )
+
+    await new_browser.cookies.load()
+    return new_browser    
 
 async def get_browser(force_new=False):
     global browser

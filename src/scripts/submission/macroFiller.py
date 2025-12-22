@@ -78,7 +78,8 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
 
     # Create pages for parallel processing
     main_page = browser.tabs[0]
-    pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
+    effective_tabs = min(tabs_num, total_assets)
+    pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(effective_tabs - 1)]
 
     # Split assets into balanced chunks
     asset_chunks = balanced_chunks(asset_data, tabs_num)

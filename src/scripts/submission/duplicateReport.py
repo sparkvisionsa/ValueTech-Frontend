@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from scripts.core.browser import get_browser
-from scripts.core.utils import wait_for_element, wait_for_table_rows, log
+from scripts.core.browser import get_browser, spawn_new_browser
+from scripts.core.utils import wait_for_table_rows, log
 from scripts.core.company_context import build_report_create_url, require_selected_company, set_selected_company
 from .formSteps import form_steps, macro_form_config
 from .formFiller import fill_form
@@ -83,7 +83,7 @@ async def fill_report_form(page, payload):
             step_payload,
             step["field_map"],
             step["field_types"],
-            is_last=is_last,
+            is_last_step=is_last,
             is_valuers=step.get("is_valuers_step", False) and bool(payload.get("valuers")),
         )
         if isinstance(result, dict) and result.get("status") == "FAILED":
@@ -151,15 +151,7 @@ async def fill_macros_for_report(page, macro_ids, assets, defaults):
 
 
 async def run_duplicate_report(record_id=None, company_url=None):
-    """
-    Create and fill a duplicate report:
-      - Navigate to create page
-      - Fill report info
-      - Set macros count from asset_data length
-      - Collect macro IDs
-      - Fill each macro with asset data
-      - Return to home
-    """
+    new_browser = None
     try:
         company_hint = company_url if isinstance(company_url, dict) else {}
         if company_url:
@@ -176,7 +168,9 @@ async def run_duplicate_report(record_id=None, company_url=None):
         return {"status": "FAILED", "error": str(ctx_err)}
 
     browser = await get_browser()
-    page = await browser.get(create_url)
+    new_browser = await spawn_new_browser(browser)
+    page = new_browser.tabs[0]
+
 
     try:
         record = await fetch_report(record_id)
@@ -212,7 +206,9 @@ async def run_duplicate_report(record_id=None, company_url=None):
 
         log(f"Filling {len(macro_ids)} macros", "STEP")
         macros_result = await fill_macros_for_report(
-            page, macro_ids, updated_assets or payload["assets"], defaults={"client_name": payload["client_name"], "inspection_date": payload.get("inspection_date")}
+            page, macro_ids, updated_assets or payload["assets"], 
+            defaults={"client_name": payload["client_name"], 
+                      "inspection_date": payload.get("inspection_date")}
         )
         if macros_result.get("status") == "FAILED":
             return macros_result
@@ -231,3 +227,7 @@ async def run_duplicate_report(record_id=None, company_url=None):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e), "traceback": traceback.format_exc()}
+
+    finally:
+        if new_browser:
+            new_browser.stop()

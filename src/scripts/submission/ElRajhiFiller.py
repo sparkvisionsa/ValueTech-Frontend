@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from .formSteps import form_steps, macro_form_config
 from .formFiller import fill_form
 from .macroFiller import fill_macro_form
+from scripts.core.browser import spawn_new_browser 
 from scripts.core.utils import wait_for_element, wait_for_table_rows, log
 
 from scripts.core.company_context import (
@@ -304,6 +305,7 @@ async def finalize_multiple_reports(browser, report_ids):
 
 
 async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=True):
+    new_browser = None
     try:
         # Create process for this batch
         process_id = f"elrajhi-filler-{batch_id}"
@@ -369,7 +371,8 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
         )
 
         # Use single tab for report creation
-        main_page = browser.tabs[0]
+        new_browser = await spawn_new_browser(browser)
+        main_page = new_browser.main_tab
         
         # Array to collect macro IDs and their data
         macros_to_fill = []
@@ -475,7 +478,7 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
             
             # Create additional tabs for parallel macro filling
             tabs_num = max(1, min(int(tabs_num or 1), len(macros_to_fill)))
-            pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
+            pages = [main_page] + [await new_browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
             
             # Split macros into balanced chunks
             macro_chunks = balanced_chunks(macros_to_fill, tabs_num)
@@ -580,11 +583,6 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
                     tasks.append(process_macro_chunk(macro_chunk, page, i))
             
             await asyncio.gather(*tasks)
-            
-            # Close extra tabs
-            for page in pages[1:]:
-                await page.close()
-            
             log(f"Phase 2 complete: Filled {completed_macros} macros ({failed_macros} failed)", "INFO")
 
         # Clear process state after completion
@@ -612,7 +610,12 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
         
         return {"status": "FAILED", "error": str(e), "traceback": tb}
     
+    finally:
+        if new_browser:
+            new_browser.stop()
+    
 async def ElrajhiRetry(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=False):
+    new_browser = None
     try:
         # Create process for retry
         process_id = f"elrajhi-retry-{batch_id}"
@@ -694,7 +697,8 @@ async def ElrajhiRetry(browser, batch_id, tabs_num=3, pdf_only=False, company_ur
         )
 
         # Use single tab for report operations
-        main_page = browser.tabs[0]
+        new_browser = await spawn_new_browser(browser)
+        main_page = new_browser.tabs[0]
 
         # Counters
         completed_incomplete = 0
@@ -762,24 +766,25 @@ async def ElrajhiRetry(browser, batch_id, tabs_num=3, pdf_only=False, company_ur
                     macro_id = macro_link.text.strip()
                     log(f"Found existing macro: {macro_id}", "INFO")
                 else:
-                    # No macro exists, create one
+                    asset_create_url = f"https://qima.taqeem.sa/report/asset/create/{report_id}"
+                    main_page = await new_browser.get(asset_create_url)
+                    await asyncio.sleep(1)
                     log(f"No macro found for report {report_id}, creating one...", "INFO")
                     
                     # Import the create assets function
-                    from .createMacros import run_create_assets
+                    from .createMacros import run_create_assets_by_count
                     
                     # Get macro data for this report
                     macro_data = extract_asset_from_report(report_record)
                     
                     # Create one macro using the run_create_assets function
-                    create_result = await run_create_assets(
-                        browser=browser,
-                        report_id=report_id,
-                        macro_count=1,
+                    create_result = await run_create_assets_by_count(
+                        browser=new_browser,
+                        num_macros=1,
+                        macro_data_template=macro_data,
                         tabs_num=1,
-                        batch_size=1,
-                        macro_data=macro_data
                     )
+
 
                     if create_result.get("status") == "FAILED":
                         raise Exception(f"Failed to create macro: {create_result.get('error')}")
@@ -957,7 +962,7 @@ async def ElrajhiRetry(browser, batch_id, tabs_num=3, pdf_only=False, company_ur
             process_state.metadata["phase"] = "macro_filling"
             
             tabs_num = max(1, min(int(tabs_num or 1), len(macros_to_fill)))
-            pages = [main_page] + [await browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
+            pages = [main_page] + [await new_browser.get("", new_tab=True) for _ in range(tabs_num - 1)]
 
             macro_chunks = balanced_chunks(macros_to_fill, tabs_num)
 
@@ -1098,15 +1103,13 @@ async def ElrajhiRetry(browser, batch_id, tabs_num=3, pdf_only=False, company_ur
             clear_process(process_id)
         
         return {"status": "FAILED", "error": str(e), "traceback": tb}
+
+    finally: 
+        if new_browser:
+            new_browser.stop()
     
-async def ElrajhiRetryByReportIds(
-    browser,
-    report_ids,
-    tabs_num=3,
-    pdf_only=False,
-    company_url=None,
-    finalize_submission=False
-):
+async def ElrajhiRetryByReportIds(browser, report_ids, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=False):
+    new_browser = None
     try:
         if not report_ids:
             return {"status": "FAILED", "error": "report_ids array is empty"}
@@ -1187,7 +1190,8 @@ async def ElrajhiRetryByReportIds(
             finalize_submission=finalize_submission,
         )
 
-        main_page = browser.tabs[0]
+        new_browser = await spawn_new_browser(browser)
+        main_page = new_browser.main_tab
 
         macros_to_fill = []
         results = []
@@ -1213,7 +1217,7 @@ async def ElrajhiRetryByReportIds(
 
                 await main_page.get(report_url)
                 await asyncio.sleep(2)
-                await wait_for_table_rows(main_page)
+                await wait_for_table_rows(main_page, timeout=5)
 
                 macro_link = await wait_for_element(
                     main_page,
@@ -1273,7 +1277,7 @@ async def ElrajhiRetryByReportIds(
         if macros_to_fill:
             process_state.total += len(macros_to_fill)
             pages = [main_page] + [
-                await browser.get("", new_tab=True)
+                await new_browser.get("", new_tab=True)
                 for _ in range(min(tabs_num, len(macros_to_fill)) - 1)
             ]
 
@@ -1344,6 +1348,10 @@ async def ElrajhiRetryByReportIds(
     except Exception as e:
         clear_process(process_id)
         return {"status": "FAILED", "error": str(e), "traceback": traceback.format_exc()}
+    
+    finally:
+        if new_browser:
+            new_browser.stop()
 
         
 

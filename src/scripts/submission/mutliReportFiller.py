@@ -5,6 +5,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from scripts.core.company_context import build_report_create_url, require_selected_company
 from scripts.core.utils import wait_for_element
+from scripts.core.browser import spawn_new_browser
 from .formSteps import form_steps
 from .formFiller import fill_form
 from .macroFiller import handle_macro_edits
@@ -263,8 +264,6 @@ async def create_report_for_record(browser, record, tabs_num=3):
         )
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
-
-
 async def create_new_report(browser, record_id, tabs_num=3):
     try:
         if not ObjectId.is_valid(record_id):
@@ -283,8 +282,8 @@ async def create_new_report(browser, record_id, tabs_num=3):
             "traceback": traceback.format_exc()
         }
 
-
 async def create_reports_by_batch(browser, batch_id, tabs_num=3):
+    new_browser = None  
     try:
         if not batch_id:
             return {"status": "FAILED", "error": "Missing batch_id"}
@@ -306,11 +305,13 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             "records": []
         }
 
+        new_browser = await spawn_new_browser(browser) 
+
         for record in records:
             record_id_str = str(record["_id"])
             try:
                 result = await create_report_for_record(
-                    browser=browser,
+                    browser=new_browser,
                     record=record,
                     tabs_num=tabs_num
                 )
@@ -349,3 +350,7 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+
+    finally:
+        if new_browser:
+            new_browser.stop()
