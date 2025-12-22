@@ -1,9 +1,10 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const ExcelJS = require('exceljs');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const PizZip = require('pizzip');
+const xmljs = require('xml-js');
 let BrowserWindow;
 let electronApp;
 try {
@@ -24,7 +25,14 @@ const MAIN_FOLDERS = [
 
 const LOCATION_FOLDER_INDEX = 1; // second folder
 const CALC_SOURCE_PATH = path.resolve(__dirname, '../../../excelfile_calc/calc.xlsx');
-const REPORT_TEMPLATE_PATH = path.resolve(__dirname, '../../../excelfile_calc/report.docx');
+const PROJECTS_WORKBOOK_PATH = path.resolve(__dirname, '../../../excelfile_calc/Projects.xlsx');
+const REPORT_TEMPLATE_PATH = (() => {
+    const fixed = path.resolve(__dirname, '../../../excelfile_calc/report_fixed.docx');
+    const legacy = path.resolve(__dirname, '../../../excelfile_calc/report.docx');
+    return fs.existsSync(fixed) ? fixed : legacy;
+})();
+const EMBEDDED_WORKBOOK_NAME = 'Projects.xlsx';
+const EMBEDDED_WORKBOOK_PART = `/word/embeddings/${EMBEDDED_WORKBOOK_NAME}`;
 const CALC_TARGET_NAME = 'calc.xlsx';
 const VALUE_IMAGE_FOLDER = 'valu calculations';
 const DOCX_MARKER_TEXT = 'مرفق 1: الوصف الجزئي وحسابات القيمة';
@@ -32,6 +40,232 @@ const DOCX_PREVIEW_MARKER_TEXT = 'مرفق 2: الصور الفوتوغرافي�
 const PREVIEW_IMAGES_TABLE_CAPTION = 'TAQEEM_PREVIEW_IMAGES';
 const REG_CERT_FOLDER_NAME = 'شهادات التسجيل';
 const DOCX_REG_CERT_MARKER_TEXT = 'مرفق 3: شهادة التسجيل في بوابة الخدمات الإلكترونية للهيئة السعودية للمقيمين المعتمدين "تقييم"';
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const XML_COMPACT_OPTS = { compact: true, ignoreComment: true, ignoreDeclaration: true };
+const XML_TREE_OPTS = { compact: false, ignoreComment: true, ignoreDeclaration: true, alwaysChildren: true };
+
+const toArray = (val) => {
+    if (!val) return [];
+    return Array.isArray(val) ? val : [val];
+};
+
+const parseXmlCompact = (xmlText) => xmljs.xml2js(xmlText, XML_COMPACT_OPTS);
+const buildXmlCompact = (obj, withDecl = true) => {
+    const xml = xmljs.js2xml(obj, { compact: true, spaces: 2 });
+    return withDecl ? `${XML_DECLARATION}\n${xml}` : xml;
+};
+
+const parseXmlTree = (xmlText) => xmljs.xml2js(xmlText, XML_TREE_OPTS);
+const buildXmlTree = (obj, withDecl = true) => {
+    const xml = xmljs.js2xml(obj, { compact: false, spaces: 2, fullTagEmptyElement: true });
+    return withDecl ? `${XML_DECLARATION}\n${xml}` : xml;
+};
+
+function getParagraphText(node) {
+    if (!node || node.name !== 'w:p') return '';
+    const gather = (el) => {
+        if (!el) return '';
+        if (el.name === 'w:t' && el.elements) {
+            return el.elements.map((e) => e.text || '').join('');
+        }
+        const children = toArray(el.elements);
+        return children.map((c) => gather(c)).join('');
+    };
+    return gather(node);
+}
+
+function findParagraphIndex(bodyElements, predicate) {
+    if (!Array.isArray(bodyElements)) return -1;
+    let lastIdx = -1;
+    for (let i = 0; i < bodyElements.length; i += 1) {
+        const el = bodyElements[i];
+        if (el?.name !== 'w:p') continue;
+        const txt = getParagraphText(el);
+        if (predicate(txt, el)) lastIdx = i;
+    }
+    return lastIdx;
+}
+
+function maxDocPrId(node) {
+    let max = 0;
+    const visit = (el) => {
+        if (!el) return;
+        if (el.name === 'wp:docPr' && el.attributes?.id) {
+            const n = Number(el.attributes.id);
+            if (Number.isFinite(n)) max = Math.max(max, n);
+        }
+        toArray(el.elements).forEach(visit);
+    };
+    visit(node);
+    return max;
+}
+
+function toParagraphElements(xmlSnippet) {
+    const tree = parseXmlTree(xmlSnippet);
+    return toArray(tree.elements).filter((el) => el.name === 'w:p');
+}
+
+function serializeRelationships(relObj) {
+    const rels = relObj || { Relationships: { _attributes: { xmlns: 'http://schemas.openxmlformats.org/package/2006/relationships' }, Relationship: [] } };
+    return buildXmlCompact(rels, true);
+}
+
+function getDocumentAndBody(zip) {
+    const docFile = zip.file('word/document.xml');
+    if (!docFile) throw new Error('document.xml غير موجود داخل ملف DOCX.');
+    const docTree = parseXmlTree(docFile.asText());
+    const docEl = toArray(docTree.elements).find((el) => el.name === 'w:document');
+    const body = toArray(docEl?.elements).find((el) => el.name === 'w:body');
+    if (!docEl || !body) throw new Error('لم يتم العثور على العقدة w:body داخل document.xml.');
+    return { docTree, docEl, body };
+}
+
+function writeDocumentTree(zip, docTree) {
+    zip.file('word/document.xml', buildXmlTree(docTree));
+}
+
+function ensureImageContentTypes(zip) {
+    const contentFile = zip.file('[Content_Types].xml');
+    if (!contentFile) throw new Error('??? [Content_Types].xml ????? ???? ??? DOCX.');
+    const obj = parseXmlCompact(contentFile.asText());
+    obj.Types = obj.Types || {};
+    const defaults = toArray(obj.Types?.Default);
+    const ensure = (ext, type) => {
+        if (!defaults.some((d) => d?._attributes?.Extension === ext)) {
+            defaults.push({ _attributes: { Extension: ext, ContentType: type } });
+        }
+    };
+    ensure('png', 'image/png');
+    ensure('jpg', 'image/jpeg');
+    ensure('jpeg', 'image/jpeg');
+    ensure('bmp', 'image/bmp');
+    ensure('gif', 'image/gif');
+    obj.Types.Default = defaults;
+    zip.file('[Content_Types].xml', buildXmlCompact(obj));
+}
+
+function sanitizeDocxPackage(zip) {
+    const allNames = new Set(Object.keys(zip.files || {}));
+    const resolveTarget = (relsPath, target) => {
+        if (!target) return null;
+        if (/^[a-z]+:/i.test(target)) return null; // External link
+        const relDir = path.posix.dirname(relsPath);
+        const baseDir = relDir.endsWith('_rels') ? path.posix.dirname(relDir) : relDir;
+        if (target.startsWith('/')) return target.slice(1);
+        let normalized = target.replace(/^[.][\\/]/, '');
+        return path.posix.normalize(path.posix.join(baseDir, normalized));
+    };
+
+    Object.keys(zip.files || {})
+        .filter((n) => n.endsWith('.rels'))
+        .forEach((relsPath) => {
+            const relsFile = zip.file(relsPath);
+            if (!relsFile) return;
+            const relObj = parseXmlCompact(relsFile.asText());
+            const rels = toArray(relObj.Relationships?.Relationship);
+            const filtered = rels.filter((rel) => {
+                const mode = rel?._attributes?.TargetMode;
+                if (mode === 'External') return true;
+                const target = rel?._attributes?.Target || '';
+                const partPath = resolveTarget(relsPath, target);
+                if (!partPath) return true;
+                return allNames.has(partPath);
+            });
+            relObj.Relationships = relObj.Relationships || { _attributes: { xmlns: 'http://schemas.openxmlformats.org/package/2006/relationships' } };
+            relObj.Relationships.Relationship = filtered;
+            zip.file(relsPath, buildXmlCompact(relObj));
+        });
+
+    const ctFile = zip.file('[Content_Types].xml');
+    if (ctFile) {
+        const ctObj = parseXmlCompact(ctFile.asText());
+        ctObj.Types = ctObj.Types || {};
+        const overrides = toArray(ctObj.Types.Override).filter((ov) => {
+            const part = ov?._attributes?.PartName;
+            if (!part) return false;
+            const normalized = part.startsWith('/') ? part.slice(1) : part;
+            return allNames.has(normalized);
+        });
+        ctObj.Types.Override = overrides;
+        zip.file('[Content_Types].xml', buildXmlCompact(ctObj));
+    }
+
+    ensureImageContentTypes(zip);
+}
+
+function validateDocxBuffer(buffer) {
+    try {
+        const checkZip = new PizZip(buffer);
+        const docFile = checkZip.file('word/document.xml');
+        if (!docFile) throw new Error('document.xml ??? ????? ??? ???????.');
+        parseXmlTree(docFile.asText());
+        const relsFile = checkZip.file('word/_rels/document.xml.rels');
+        if (relsFile) parseXmlCompact(relsFile.asText());
+        const contentFile = checkZip.file('[Content_Types].xml');
+        if (contentFile) parseXmlCompact(contentFile.asText());
+        console.log('ZIP size after update:', buffer.length);
+    } catch (err) {
+        console.error('DOCX validation failed:', err?.message || err);
+        throw new Error(`DOCX validation failed: ${err?.message || err}`);
+    }
+}
+
+function writeDocxSafe(zip, docxPath, compression = 'STORE') {
+    const tmpPath = `${docxPath}.tmp`;
+    try {
+        const updated = zip.generate({ type: 'nodebuffer', compression });
+        validateDocxBuffer(updated);
+        fs.writeFileSync(tmpPath, updated);
+        fs.renameSync(tmpPath, docxPath);
+    } catch (err) {
+        try {
+            const corrupt = zip.generate({ type: 'nodebuffer' });
+            fs.writeFileSync(`${docxPath}.corrupt.zip`, corrupt);
+        } catch (_) { /* ignore */ }
+        throw err;
+    }
+}
+
+function loadDocumentRelationships(zip) {
+    const relsFile = zip.file('word/_rels/document.xml.rels');
+    const relObj = normalizeRelationships(relsFile ? parseXmlCompact(relsFile.asText()) : {});
+    return relObj;
+}
+
+function paragraphHasDocPrName(paragraph, targetName) {
+    let found = false;
+    const visit = (el) => {
+        if (!el || found) return;
+        if (el.name === 'wp:docPr' && el.attributes?.name === targetName) {
+            found = true;
+            return;
+        }
+        toArray(el.elements).forEach(visit);
+    };
+    visit(paragraph);
+    return found;
+}
+
+function removeParagraphs(body, predicate) {
+    if (!body?.elements) return;
+    body.elements = body.elements.filter((el) => !(el?.name === 'w:p' && predicate(getParagraphText(el), el)));
+}
+
+function removeTablesWithCaption(body, captionVal) {
+    if (!body?.elements) return;
+    const hasCaption = (el) => {
+        if (!el) return false;
+        if (el.name === 'w:tblCaption' && el.attributes?.['w:val'] === captionVal) return true;
+        return toArray(el.elements).some(hasCaption);
+    };
+    body.elements = body.elements.filter((el) => !(el?.name === 'w:tbl' && hasCaption(el)));
+}
+
+function bodyContentEndIndex(body) {
+    if (!body?.elements) return 0;
+    const sectIdx = body.elements.findIndex((el) => el.name === 'w:sectPr');
+    return sectIdx === -1 ? body.elements.length : sectIdx;
+}
 
 const sanitizeName = (name) => {
     if (!name && name !== 0) return '';
@@ -42,6 +276,168 @@ const sanitizeName = (name) => {
 async function ensureDir(dirPath) {
     await fs.promises.mkdir(dirPath, { recursive: true });
 }
+
+function normalizeRelationships(relObj = {}) {
+    if (!relObj.Relationships) {
+        relObj.Relationships = { _attributes: { xmlns: 'http://schemas.openxmlformats.org/package/2006/relationships' }, Relationship: [] };
+    }
+    if (!relObj.Relationships._attributes) {
+        relObj.Relationships._attributes = { xmlns: 'http://schemas.openxmlformats.org/package/2006/relationships' };
+    }
+    const rels = toArray(relObj.Relationships.Relationship);
+    relObj.Relationships.Relationship = rels;
+    return relObj;
+}
+
+function getNextRelId(relObj) {
+    const rels = toArray(relObj?.Relationships?.Relationship);
+    const max = rels.reduce((acc, rel) => {
+        const raw = rel?._attributes?.Id || '';
+        const num = Number(String(raw).replace(/[^\d]/g, ''));
+        return Number.isFinite(num) ? Math.max(acc, num) : acc;
+    }, 0);
+    return `rId${max + 1}`;
+}
+
+function embedWorkbookInDocx(docxPath, workbookPath, opts = {}) {
+    if (!fs.existsSync(docxPath)) throw new Error(`Template docx not found: ${docxPath}`);
+    if (!fs.existsSync(workbookPath)) throw new Error(`Workbook not found: ${workbookPath}`);
+
+    const outputPath = opts.outputPath || docxPath;
+    const embedName = opts.embedName || EMBEDDED_WORKBOOK_NAME;
+    const embedPartPath = `word/embeddings/${embedName}`;
+    const embedContentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const dataSourcePath = `word\\\\embeddings\\\\${embedName}`;
+
+    const zip = new PizZip(fs.readFileSync(docxPath));
+    const workbookBuffer = fs.readFileSync(workbookPath);
+    zip.file(embedPartPath, workbookBuffer);
+
+    // Content types
+    const contentTypes = zip.file('[Content_Types].xml');
+    if (!contentTypes) throw new Error('Missing [Content_Types].xml in template.');
+    const contentObj = parseXmlCompact(contentTypes.asText());
+    contentObj.Types = contentObj.Types || {};
+    const overrides = toArray(contentObj.Types.Override);
+    if (!overrides.some((o) => o?._attributes?.PartName === `/${embedPartPath}`)) {
+        overrides.push({ _attributes: { PartName: `/${embedPartPath}`, ContentType: embedContentType } });
+    }
+    contentObj.Types.Override = overrides;
+    zip.file('[Content_Types].xml', buildXmlCompact(contentObj));
+
+    // settings.xml.rels
+    const settingsRelsFile = zip.file('word/_rels/settings.xml.rels');
+    const settingsRelsObj = normalizeRelationships(settingsRelsFile ? parseXmlCompact(settingsRelsFile.asText()) : {});
+    const rels = settingsRelsObj.Relationships.Relationship;
+    let maxRelNum = 0;
+    rels.forEach((rel) => {
+        const raw = rel?._attributes?.Id || '';
+        const num = Number(String(raw).replace(/[^\d]/g, ''));
+        if (Number.isFinite(num)) maxRelNum = Math.max(maxRelNum, num);
+    });
+
+    const isMailMergeRel = (rel) => rel?._attributes?.Type?.includes('/mailMergeSource');
+
+    // Keep track of IDs that are already used by non mail-merge relationships to avoid collisions.
+    const assignedIds = new Set();
+    rels.forEach((rel) => {
+        if (isMailMergeRel(rel)) return;
+        const id = rel?._attributes?.Id;
+        if (id) assignedIds.add(id);
+    });
+
+    const allocRelId = () => {
+        let nextId;
+        do {
+            maxRelNum += 1;
+            nextId = `rId${maxRelNum}`;
+        } while (assignedIds.has(nextId));
+        assignedIds.add(nextId);
+        return nextId;
+    };
+
+    const ensureRelId = (rel) => {
+        rel._attributes = rel._attributes || {};
+        const current = rel._attributes.Id;
+        if (!current || assignedIds.has(current)) {
+            rel._attributes.Id = allocRelId();
+        } else {
+            assignedIds.add(current);
+        }
+        return rel._attributes.Id;
+    };
+
+    let mailMergeRels = rels.filter(isMailMergeRel);
+    if (mailMergeRels.length === 0) {
+        const mm1 = { _attributes: { Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/mailMergeSource', Target: `embeddings/${embedName}`, TargetMode: 'Internal' } };
+        const mm2 = { _attributes: { Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/mailMergeSource', Target: `embeddings/${embedName}`, TargetMode: 'Internal' } };
+        ensureRelId(mm1);
+        ensureRelId(mm2);
+        mailMergeRels = [mm1, mm2];
+        rels.push(...mailMergeRels);
+    } else {
+        mailMergeRels.forEach((rel) => {
+            rel._attributes = rel._attributes || {};
+            rel._attributes.Target = `embeddings/${embedName}`;
+            rel._attributes.TargetMode = 'Internal';
+            ensureRelId(rel);
+        });
+        if (mailMergeRels.length === 1) {
+            const extra = { _attributes: { Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/mailMergeSource', Target: `embeddings/${embedName}`, TargetMode: 'Internal' } };
+            ensureRelId(extra);
+            mailMergeRels.push(extra);
+            rels.push(extra);
+        }
+        settingsRelsObj.Relationships.Relationship = rels;
+    }
+    settingsRelsObj.Relationships.Relationship = rels;
+    zip.file('word/_rels/settings.xml.rels', serializeRelationships(settingsRelsObj));
+
+    // settings.xml (mail merge connection string -> embedded workbook)
+    const settingsFile = zip.file('word/settings.xml');
+    if (!settingsFile) throw new Error('Missing word/settings.xml in template.');
+    const settingsObj = parseXmlCompact(settingsFile.asText());
+    const mailMerge = settingsObj['w:settings']?.['w:mailMerge'];
+    const normalizeConn = (val) => {
+        if (!val) return `Data Source=${dataSourcePath};`;
+        return val.replace(/Data Source=([^;"]+)/i, `Data Source=${dataSourcePath}`);
+    };
+    if (mailMerge) {
+        const mmId1 = mailMergeRels[0]?._attributes?.Id || 'rId1';
+        const mmId2 = mailMergeRels[1]?._attributes?.Id || mmId1;
+        if (mailMerge['w:connectString']?._attributes) {
+            mailMerge['w:connectString']._attributes['w:val'] = normalizeConn(mailMerge['w:connectString']._attributes['w:val']);
+        }
+        if (mailMerge['w:odso']?.['w:udl']?._attributes) {
+            mailMerge['w:odso']['w:udl']._attributes['w:val'] = normalizeConn(mailMerge['w:odso']['w:udl']._attributes['w:val']);
+        }
+        if (mailMerge['w:dataSource']?._attributes) {
+            mailMerge['w:dataSource']._attributes['r:id'] = mmId1;
+        }
+        if (mailMerge['w:odso']?.['w:src']?._attributes) {
+            mailMerge['w:odso']['w:src']._attributes['r:id'] = mmId2;
+        }
+    }
+    zip.file('word/settings.xml', buildXmlCompact(settingsObj));
+
+    sanitizeDocxPackage(zip);
+    writeDocxSafe(zip, outputPath, 'STORE');
+    return { outputPath };
+}
+
+function tryEmbedWorkbook(docxPath) {
+    if (!fs.existsSync(PROJECTS_WORKBOOK_PATH)) {
+        return;
+    }
+    try {
+        embedWorkbookInDocx(docxPath, PROJECTS_WORKBOOK_PATH);
+    } catch (err) {
+        console.warn('[MAIN] Skipped embedding workbook into docx', docxPath, err?.message);
+    }
+}
+
+// NOTE: Do not mutate the master template on load. We embed Projects.xlsx into each generated
+// document individually to avoid corrupting the source template across runs.
 
 async function copyCalcFile(targetDir) {
     const sourceExists = fs.existsSync(CALC_SOURCE_PATH);
@@ -567,11 +963,31 @@ async function createDocxFiles(basePath, folderName, calcPath) {
     const targetDir = path.join(basePath, folderName, MAIN_FOLDERS[2]);
     await ensureDir(targetDir);
 
+    // Always start from a clean template copy on disk, then embed Projects.xlsx into the new file
+    // to avoid mutating the master report.docx across runs.
+    const templateBuffer = fs.readFileSync(REPORT_TEMPLATE_PATH);
+    // Validate template once so we fail fast if the master DOCX is already corrupted on disk.
+    validateDocxBuffer(templateBuffer);
+    const projectsExists = fs.existsSync(PROJECTS_WORKBOOK_PATH);
+    if (!projectsExists) {
+        throw new Error(`Projects.xlsx not found at ${PROJECTS_WORKBOOK_PATH}`);
+    }
+
     const docNames = await readDocxNamesFromCalc(calcPath);
     let created = 0;
     for (const fileName of docNames) {
         const dest = path.join(targetDir, fileName);
-        await fs.promises.copyFile(REPORT_TEMPLATE_PATH, dest);
+        await fs.promises.writeFile(dest, templateBuffer);
+        // Embed the Projects.xlsx workbook directly into every generated docx so the data source is always present.
+        embedWorkbookInDocx(dest, PROJECTS_WORKBOOK_PATH, {
+            outputPath: dest,
+            embedName: EMBEDDED_WORKBOOK_NAME
+        });
+        // If embedding failed for any reason, fall back to copying the template and attempt embed once more.
+        if (!fs.existsSync(dest)) {
+            await fs.promises.writeFile(dest, templateBuffer);
+            embedWorkbookInDocx(dest, PROJECTS_WORKBOOK_PATH, { outputPath: dest, embedName: EMBEDDED_WORKBOOK_NAME });
+        }
         created += 1;
     }
 
@@ -846,54 +1262,51 @@ async function flipImageHorizontal(buffer, width, height) {
 }
 
 function appendImageToDocx(docxPath, imageBuffer, size, markerText = DOCX_MARKER_TEXT) {
-    const docXmlPath = 'word/document.xml';
-    const relsPath = 'word/_rels/document.xml.rels';
-    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Append images safely at the end of the document (after last content, before sectPr).
+    // This avoids mutating marker paragraphs that could corrupt the document.
+    const zip = new PizZip(fs.readFileSync(docxPath));
+    sanitizeDocxPackage(zip);
+    ensureImageContentTypes(zip);
+    const { docTree, body } = getDocumentAndBody(zip);
+    body.elements = body.elements || [];
+    const relObj = loadDocumentRelationships(zip);
+    const rels = relObj.Relationships.Relationship;
 
-    const content = fs.readFileSync(docxPath);
-    const zip = new PizZip(content);
-    const docFile = zip.file(docXmlPath);
-    if (!docFile) throw new Error('document.xml غير موجود داخل التقرير.');
+    let nextRelNum = rels.reduce((acc, rel) => {
+        const num = Number(String(rel?._attributes?.Id || '').replace(/[^\d]/g, ''));
+        return Number.isFinite(num) ? Math.max(acc, num) : acc;
+    }, 0) + 1;
+    const allocRelId = () => `rId${nextRelNum++}`;
 
-    let docXml = docFile.asText();
-    let relsXml = zip.file(relsPath)?.asText();
-    if (!relsXml) {
-        relsXml = '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
-    }
-
-    const existingIds = Array.from(relsXml.matchAll(/Id="rId(\d+)"/g)).map((m) => Number(m[1]));
-    const nextId = (existingIds.length ? Math.max(...existingIds) : 0) + 1;
-    const relId = `rId${nextId}`;
+    const docPrStart = maxDocPrId(docTree) + 1;
     const imageName = `image_${Date.now()}_${Math.floor(Math.random() * 100000)}.png`;
-
-    // Add relationship entry
-    const relTag = `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${imageName}"/>`;
-    relsXml = relsXml.replace('</Relationships>', `${relTag}</Relationships>`);
-    zip.file(relsPath, relsXml);
-
-    // Add image binary
+    const relId = allocRelId();
+    rels.push({
+        _attributes: {
+            Id: relId,
+            Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+            Target: `media/${imageName}`
+        }
+    });
     zip.file(`word/media/${imageName}`, imageBuffer);
 
-    // Insert drawing into document body (after marker paragraph if found, otherwise appended)
-    const targetWidthPx = 880; // wider image
-    const targetHeightPx = 250; // height unchanged
-    const cx = Math.round(targetWidthPx * 9525); // px to EMU
+    const targetWidthPx = 600;
+    const targetHeightPx = 200;
+    const cx = Math.round(targetWidthPx * 9525);
     const cy = Math.round(targetHeightPx * 9525);
-    const leftIndentTwips = 1600; // more left margin
-    const rightIndentTwips = 50; // keep small right indent
-    const spacingBeforeTwips = 550; // slight spacing above
+    const pageBreakXml = `
+      <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+    `;
     const drawingXml = `
       <w:p>
         <w:pPr>
-          <w:ind w:left="${leftIndentTwips}" w:right="${rightIndentTwips}"/>
-          <w:spacing w:before="${spacingBeforeTwips}"/>
-          <w:jc w="right"/>
+          <w:jc w="center"/>
         </w:pPr>
         <w:r>
           <w:drawing>
             <wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
               <wp:extent cx="${cx}" cy="${cy}"/>
-              <wp:docPr id="${nextId}" name="SheetImage"/>
+              <wp:docPr id="${docPrStart}" name="SheetImage"/>
               <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                 <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
                   <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -925,80 +1338,17 @@ function appendImageToDocx(docxPath, imageBuffer, size, markerText = DOCX_MARKER
       </w:p>
     `;
 
-    let insertionPoint = -1;
-    if (markerText) {
-        const paragraphs = docXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
-        let lastMatchStart = -1;
-        let lastMatchLength = 0;
-        for (const p of paragraphs) {
-            const plain = p.replace(/<[^>]+>/g, '');
-            if (plain.includes(markerText)) {
-                const paraStart = docXml.indexOf(p, lastMatchStart + 1);
-                if (paraStart !== -1) {
-                    lastMatchStart = paraStart;
-                    lastMatchLength = p.length;
-                }
-            }
-        }
-        if (lastMatchStart !== -1) {
-            insertionPoint = lastMatchStart + lastMatchLength;
-        }
+    const paragraphs = [
+        ...toParagraphElements(pageBreakXml),
+        ...toParagraphElements(drawingXml)
+    ];
+    const appendLimit = bodyContentEndIndex(body);
+    const targetIndex = appendLimit;
+    body.elements.splice(targetIndex, 0, ...paragraphs);
 
-        // Fallback simple search (use last occurrence)
-        if (insertionPoint === -1 && docXml.includes(markerText)) {
-            const markerIdx = docXml.lastIndexOf(markerText);
-            const paraStart = docXml.lastIndexOf('<w:p', markerIdx);
-            const paraEnd = docXml.indexOf('</w:p>', markerIdx);
-            if (paraStart >= 0 && paraEnd > paraStart) {
-                insertionPoint = paraEnd + '</w:p>'.length; // after closing </w:p>
-            }
-        }
-    }
-
-    if (insertionPoint === -1) {
-        if (docXml.includes('</w:body></w:document>')) {
-            docXml = docXml.replace('</w:body></w:document>', `${drawingXml}</w:body></w:document>`);
-        } else if (docXml.includes('</w:body>')) {
-            docXml = docXml.replace('</w:body>', `${drawingXml}</w:body>`);
-        } else {
-            docXml += drawingXml;
-        }
-    } else {
-        docXml = `${docXml.slice(0, insertionPoint)}${drawingXml}${docXml.slice(insertionPoint)}`;
-    }
-
-    zip.file(docXmlPath, docXml);
-    const updated = zip.generate({ type: 'nodebuffer' });
-    fs.writeFileSync(docxPath, updated);
-}
-
-function findInsertionPointAfterSheetImage(docXml) {
-    const idx = docXml.lastIndexOf('name="SheetImage"');
-    if (idx === -1) return -1;
-    const paraStart = docXml.lastIndexOf('<w:p', idx);
-    const paraEnd = docXml.indexOf('</w:p>', idx);
-    if (paraStart >= 0 && paraEnd > paraStart) return paraEnd + '</w:p>'.length;
-    return -1;
-}
-
-function removeExistingPreviewImagesTable(docXml) {
-    const captionIdx = docXml.indexOf(`w:tblCaption w:val="${PREVIEW_IMAGES_TABLE_CAPTION}"`);
-    if (captionIdx === -1) return docXml;
-    const tblStart = docXml.lastIndexOf('<w:tbl', captionIdx);
-    const tblEnd = docXml.indexOf('</w:tbl>', captionIdx);
-    if (tblStart === -1 || tblEnd === -1) return docXml;
-    return `${docXml.slice(0, tblStart)}${docXml.slice(tblEnd + '</w:tbl>'.length)}`;
-}
-
-function removeParagraphsContaining(docXml, needle) {
-    if (!needle) return docXml;
-    const paras = docXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
-    let out = docXml;
-    for (const p of paras) {
-        if (!p.includes(needle)) continue;
-        out = out.replace(p, '');
-    }
-    return out;
+    writeDocumentTree(zip, docTree);
+    zip.file('word/_rels/document.xml.rels', serializeRelationships(relObj));
+    writeDocxSafe(zip, docxPath, 'STORE');
 }
 
 function computeContainSize(imgWidth, imgHeight, maxWidth, maxHeight) {
@@ -1025,40 +1375,42 @@ async function appendPreviewImagesToDocx(docxPath, imagePaths, opts = {}) {
 
     if (!Array.isArray(imagePaths) || imagePaths.length === 0) return { appended: 0 };
 
-    const docXmlPath = 'word/document.xml';
-    const relsPath = 'word/_rels/document.xml.rels';
+    const zip = new PizZip(fs.readFileSync(docxPath));
+    sanitizeDocxPackage(zip);
+    ensureImageContentTypes(zip);
+    const { docTree, body } = getDocumentAndBody(zip);
+    body.elements = body.elements || [];
+    const relObj = loadDocumentRelationships(zip);
+    const rels = relObj.Relationships.Relationship;
 
-    const content = fs.readFileSync(docxPath);
-    const zip = new PizZip(content);
-    const docFile = zip.file(docXmlPath);
-    if (!docFile) throw new Error('document.xml غير موجود داخل التقرير.');
+    let nextRelNum = rels.reduce((acc, rel) => {
+        const num = Number(String(rel?._attributes?.Id || '').replace(/[^\d]/g, ''));
+        return Number.isFinite(num) ? Math.max(acc, num) : acc;
+    }, 0) + 1;
+    let nextDocPr = maxDocPrId(docTree) + 1;
 
-    let docXml = docFile.asText();
-    // Backwards compatibility: remove old table-based layout + new paragraph-based layout.
-    docXml = removeExistingPreviewImagesTable(docXml);
-    docXml = removeParagraphsContaining(docXml, 'name="PreviewImage"');
-
-    let relsXml = zip.file(relsPath)?.asText();
-    if (!relsXml) {
-        relsXml = '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
-    }
-
-    const existingIds = Array.from(relsXml.matchAll(/Id="rId(\d+)"/g)).map((m) => Number(m[1]));
-    let nextRel = (existingIds.length ? Math.max(...existingIds) : 0) + 1;
+    // Remove any old preview images so the document stays consistent.
+    removeTablesWithCaption(body, PREVIEW_IMAGES_TABLE_CAPTION);
+    removeParagraphs(body, (_txt, el) => paragraphHasDocPrName(el, 'PreviewImage'));
 
     const pxToEmu = (px) => Math.round(px * 9525);
 
-    const rows = [];
-    for (let i = 0; i < imagePaths.length; i++) {
+    const runs = [];
+    for (let i = 0; i < imagePaths.length; i += 1) {
         const imagePath = imagePaths[i];
         const buf = fs.readFileSync(imagePath);
         const ext = (path.extname(imagePath) || '.png').toLowerCase();
         const imageName = `preview_${Date.now()}_${i}${ext}`;
-        const relId = `rId${nextRel++}`;
+        const relId = `rId${nextRelNum++}`;
 
         zip.file(`word/media/${imageName}`, buf);
-        const relTag = `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${imageName}"/>`;
-        relsXml = relsXml.replace('</Relationships>', `${relTag}</Relationships>`);
+        rels.push({
+            _attributes: {
+                Id: relId,
+                Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+                Target: `media/${imageName}`
+            }
+        });
 
         let imgW = null;
         let imgH = null;
@@ -1067,35 +1419,33 @@ async function appendPreviewImagesToDocx(docxPath, imagePaths, opts = {}) {
             imgW = img?.width;
             imgH = img?.height;
         } catch (_) {
-            // ignore dimension detection failures; will fall back to max box
+            // Fallback to max sizes
         }
         const { width, height } = computeContainSize(imgW, imgH, maxImageWidthPx, maxImageHeightPx);
-        rows.push({ relId, imageName, cx: pxToEmu(width), cy: pxToEmu(height) });
+        runs.push({ relId, imageName, cx: pxToEmu(width), cy: pxToEmu(height), docPrId: nextDocPr++ });
     }
 
-    zip.file(relsPath, relsXml);
-
-    const makeInlineDrawingRun = (relId, docPrId, cx, cy) => `
+    const makeInlineDrawingRun = (img) => `
       <w:r>
         <w:drawing>
           <wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
-            <wp:extent cx="${cx}" cy="${cy}"/>
-            <wp:docPr id="${docPrId}" name="PreviewImage"/>
+            <wp:extent cx="${img.cx}" cy="${img.cy}"/>
+            <wp:docPr id="${img.docPrId}" name="PreviewImage"/>
             <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
               <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
                 <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
                   <pic:nvPicPr>
-                    <pic:cNvPr id="0" name="preview"/>
+                    <pic:cNvPr id="0" name="${img.imageName}"/>
                     <pic:cNvPicPr/>
                   </pic:nvPicPr>
                   <pic:blipFill>
-                    <a:blip r:embed="${relId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+                    <a:blip r:embed="${img.relId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
                     <a:stretch><a:fillRect/></a:stretch>
                   </pic:blipFill>
                   <pic:spPr>
                     <a:xfrm>
                       <a:off x="0" y="0"/>
-                      <a:ext cx="${cx}" cy="${cy}"/>
+                      <a:ext cx="${img.cx}" cy="${img.cy}"/>
                     </a:xfrm>
                     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                   </pic:spPr>
@@ -1107,63 +1457,34 @@ async function appendPreviewImagesToDocx(docxPath, imagePaths, opts = {}) {
       </w:r>
     `;
 
-    const makeRowParagraph = (runsXml) => `
-      <w:p>
-        <w:pPr>
-          <w:ind w:left="${tableIndentTwips}" w:right="${rightIndentTwips}"/>
-          <w:jc w:val="right"/>
-          <w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>
-        </w:pPr>
-        ${runsXml}
-      </w:p>
-    `;
-
-    const docPrStart = Date.now() % 100000;
     const paragraphsXml = [];
-    for (let i = 0; i < rows.length; i += imagesPerRow) {
-        const chunk = rows.slice(i, i + imagesPerRow);
-        const runs = chunk.map((img, idx) => makeInlineDrawingRun(img.relId, docPrStart + i + idx, img.cx, img.cy)).join('');
-        paragraphsXml.push(makeRowParagraph(runs));
+    for (let i = 0; i < runs.length; i += imagesPerRow) {
+        const chunk = runs.slice(i, i + imagesPerRow);
+        const runXml = chunk.map((img) => makeInlineDrawingRun(img)).join('');
+        const paraXml = `
+          <w:p>
+            <w:pPr>
+              <w:ind w:left="${tableIndentTwips}" w:right="${rightIndentTwips}"/>
+              <w:jc w:val="right"/>
+              <w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>
+            </w:pPr>
+            ${runXml}
+          </w:p>
+        `;
+        paragraphsXml.push(paraXml);
     }
 
-    const galleryXml = `
-      ${paragraphsXml.join('')}
-    `;
+    const paragraphs = paragraphsXml.flatMap((xml) => toParagraphElements(xml));
 
-    let insertionPoint = -1;
-    if (markerText) {
-        // Insert after the paragraph that contains the marker text (use last occurrence).
-        const paragraphs = docXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
-        let lastMatchStart = -1;
-        let lastMatchLength = 0;
-        for (const p of paragraphs) {
-            const plain = p.replace(/<[^>]+>/g, '');
-            if (plain.includes(markerText)) {
-                const paraStart = docXml.indexOf(p, lastMatchStart + 1);
-                if (paraStart !== -1) {
-                    lastMatchStart = paraStart;
-                    lastMatchLength = p.length;
-                }
-            }
-        }
-        if (lastMatchStart !== -1) insertionPoint = lastMatchStart + lastMatchLength;
-        if (insertionPoint === -1 && docXml.includes(markerText)) {
-            const markerIdx = docXml.lastIndexOf(markerText);
-            const paraStart = docXml.lastIndexOf('<w:p', markerIdx);
-            const paraEnd = docXml.indexOf('</w:p>', markerIdx);
-            if (paraStart >= 0 && paraEnd > paraStart) insertionPoint = paraEnd + '</w:p>'.length;
-        }
-    }
-    // Fallback: append after "SheetImage" if present
-    if (insertionPoint === -1) insertionPoint = findInsertionPointAfterSheetImage(docXml);
-    if (insertionPoint === -1) {
-        insertionPoint = docXml.includes('</w:body>') ? docXml.lastIndexOf('</w:body>') : docXml.length;
-    }
+    let insertAfter = markerText ? findParagraphIndex(body.elements, (txt) => txt.includes(markerText)) : -1;
+    if (insertAfter === -1) insertAfter = findParagraphIndex(body.elements, (_txt, el) => paragraphHasDocPrName(el, 'SheetImage'));
+    const appendLimit = bodyContentEndIndex(body);
+    const targetIndex = insertAfter === -1 ? appendLimit : Math.min(appendLimit, insertAfter + 1);
+    body.elements.splice(targetIndex, 0, ...paragraphs);
 
-    docXml = `${docXml.slice(0, insertionPoint)}${galleryXml}${docXml.slice(insertionPoint)}`;
-    zip.file(docXmlPath, docXml);
-    const updated = zip.generate({ type: 'nodebuffer' });
-    fs.writeFileSync(docxPath, updated);
+    writeDocumentTree(zip, docTree);
+    zip.file('word/_rels/document.xml.rels', serializeRelationships(relObj));
+    writeDocxSafe(zip, docxPath, 'STORE');
     return { appended: imagePaths.length };
 }
 
@@ -1392,29 +1713,30 @@ async function appendRegistrationCertificateToDocx(docxPath, pdfPath) {
     if (!fs.existsSync(pdfPath)) return { appendedPages: 0 };
     const png = await renderPdfFirstPageToPng(pdfPath);
 
-    const docXmlPath = 'word/document.xml';
-    const relsPath = 'word/_rels/document.xml.rels';
-    const content = fs.readFileSync(docxPath);
-    const zip = new PizZip(content);
-    const docFile = zip.file(docXmlPath);
-    if (!docFile) throw new Error('document.xml غير موجود داخل التقرير.');
+    const zip = new PizZip(fs.readFileSync(docxPath));
+    sanitizeDocxPackage(zip);
+    ensureImageContentTypes(zip);
+    const { docTree, body } = getDocumentAndBody(zip);
+    body.elements = body.elements || [];
+    const relObj = loadDocumentRelationships(zip);
+    const rels = relObj.Relationships.Relationship;
 
-    let docXml = docFile.asText();
-    docXml = removeParagraphsContaining(docXml, 'name="RegistrationCertificateImage"');
+    let nextRelNum = rels.reduce((acc, rel) => {
+        const num = Number(String(rel?._attributes?.Id || '').replace(/[^\d]/g, ''));
+        return Number.isFinite(num) ? Math.max(acc, num) : acc;
+    }, 0) + 1;
+    const relId = `rId${nextRelNum++}`;
 
-    let relsXml = zip.file(relsPath)?.asText();
-    if (!relsXml) {
-        relsXml = '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
-    }
+    rels.push({
+        _attributes: {
+            Id: relId,
+            Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+            Target: `media/reg_cert_${Date.now()}.png`
+        }
+    });
 
-    const existingIds = Array.from(relsXml.matchAll(/Id="rId(\d+)"/g)).map((m) => Number(m[1]));
-    const nextId = (existingIds.length ? Math.max(...existingIds) : 0) + 1;
-    const relId = `rId${nextId}`;
-    const imageName = `reg_cert_${Date.now()}_${Math.floor(Math.random() * 100000)}.png`;
-
-    const relTag = `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${imageName}"/>`;
-    relsXml = relsXml.replace('</Relationships>', `${relTag}</Relationships>`);
-    zip.file(relsPath, relsXml);
+    // Write the image binary to the zip
+    const imageName = rels[rels.length - 1]._attributes.Target.replace('media/', '');
     zip.file(`word/media/${imageName}`, png);
 
     let imgW = 1200;
@@ -1432,6 +1754,8 @@ async function appendRegistrationCertificateToDocx(docxPath, pdfPath) {
     const cx = pxToEmu(width);
     const cy = pxToEmu(height);
 
+    removeParagraphs(body, (_txt, el) => paragraphHasDocPrName(el, 'RegistrationCertificateImage'));
+
     const leftIndentTwips = 2200;
     const rightIndentTwips = 80;
     const drawingXml = `
@@ -1445,7 +1769,7 @@ async function appendRegistrationCertificateToDocx(docxPath, pdfPath) {
           <w:drawing>
             <wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
               <wp:extent cx="${cx}" cy="${cy}"/>
-              <wp:docPr id="${nextId}" name="RegistrationCertificateImage"/>
+              <wp:docPr id="${maxDocPrId(docTree) + 1}" name="RegistrationCertificateImage"/>
               <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                 <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
                   <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -1473,32 +1797,16 @@ async function appendRegistrationCertificateToDocx(docxPath, pdfPath) {
       </w:p>
     `;
 
-    let insertionPoint = -1;
+    const paragraphs = toParagraphElements(drawingXml);
     const markerText = DOCX_REG_CERT_MARKER_TEXT;
-    if (markerText) {
-        const paragraphs = docXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
-        let lastMatchStart = -1;
-        let lastMatchLength = 0;
-        for (const p of paragraphs) {
-            const plain = p.replace(/<[^>]+>/g, '');
-            if (plain.includes(markerText)) {
-                const paraStart = docXml.indexOf(p, lastMatchStart + 1);
-                if (paraStart !== -1) {
-                    lastMatchStart = paraStart;
-                    lastMatchLength = p.length;
-                }
-            }
-        }
-        if (lastMatchStart !== -1) insertionPoint = lastMatchStart + lastMatchLength;
-    }
-    if (insertionPoint === -1) {
-        insertionPoint = docXml.includes('</w:body>') ? docXml.lastIndexOf('</w:body>') : docXml.length;
-    }
+    const insertAfter = markerText ? findParagraphIndex(body.elements, (txt) => txt.includes(markerText)) : -1;
+    const appendLimit = bodyContentEndIndex(body);
+    const targetIndex = insertAfter === -1 ? appendLimit : Math.min(appendLimit, insertAfter + 1);
+    body.elements.splice(targetIndex, 0, ...paragraphs);
 
-    docXml = `${docXml.slice(0, insertionPoint)}${drawingXml}${docXml.slice(insertionPoint)}`;
-    zip.file(docXmlPath, docXml);
-    const updated = zip.generate({ type: 'nodebuffer' });
-    fs.writeFileSync(docxPath, updated);
+    writeDocumentTree(zip, docTree);
+    zip.file('word/_rels/document.xml.rels', serializeRelationships(relObj));
+    writeDocxSafe(zip, docxPath, 'STORE');
     return { appendedPages: 1 };
 }
 
@@ -1749,3 +2057,8 @@ const valuationHandlers = {
 };
 
 module.exports = valuationHandlers;
+
+
+
+
+

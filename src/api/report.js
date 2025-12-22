@@ -96,6 +96,11 @@ const fetchElrajhiBatchReports = async (batchId) => {
     return response.data;
 };
 
+const createManualMultiApproachReport = async (payload) => {
+    const response = await httpClient.post("/multi-approach/manual", payload);
+    return response.data;
+};
+
 
 module.exports = {
     uploadAssetDataToDatabase,
@@ -108,5 +113,6 @@ module.exports = {
     createDuplicateReport,
     updateUrgentReport,
     fetchElrajhiBatches,
-    fetchElrajhiBatchReports
+    fetchElrajhiBatchReports,
+    createManualMultiApproachReport
 };

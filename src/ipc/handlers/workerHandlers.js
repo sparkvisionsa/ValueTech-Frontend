@@ -1,4 +1,4 @@
-const pythonAPI = require('../../services/python/PythonAPI');
+﻿const pythonAPI = require('../../services/python/PythonAPI');
 const { dialog } = require('electron');
 
 const workerHandlers = {
@@ -37,6 +37,21 @@ const workerHandlers = {
         }
     },
 
+    async showOpenDialogWord() {
+        try {
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                properties: ['openFile'],
+                filters: [
+                    { name: 'Word Documents', extensions: ['docx', 'doc'] }
+                ]
+            });
+            return { status: 'SUCCESS', filePaths, canceled };
+        } catch (error) {
+            console.error('[MAIN] Open Word dialog error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
+
     async showOpenDialogPdfs() {
         try {
             const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -52,6 +67,20 @@ const workerHandlers = {
         }
     },
 
+    async showOpenDialogImages() {
+        try {
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                properties: ['openFile', 'multiSelections'],
+                filters: [
+                    { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'gif'] }
+                ]
+            });
+            return { status: 'SUCCESS', filePaths, canceled };
+        } catch (error) {
+            console.error('[MAIN] Open image dialog error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
     async selectFolder() {
         const result = await dialog.showOpenDialog({
             properties: ['openDirectory', 'multiSelections']
@@ -141,3 +170,5 @@ const workerHandlers = {
 };
 
 module.exports = workerHandlers;
+
+

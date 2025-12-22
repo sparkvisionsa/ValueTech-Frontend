@@ -31,10 +31,19 @@ class PythonWorkerService {
             if (process.platform === 'win32') {
                 const venvPathWin = path.join(projectRoot, '.venv', 'Scripts', 'python.exe');
                 if (fs.existsSync(venvPathWin)) return { type: 'python', path: venvPathWin };
+
+                // Fallback to "venv" to support environments created with the default name
+                const legacyVenvPathWin = path.join(projectRoot, 'venv', 'Scripts', 'python.exe');
+                if (fs.existsSync(legacyVenvPathWin)) return { type: 'python', path: legacyVenvPathWin };
+
                 return { type: 'python', path: 'python' };
             } else {
                 const venvPathUnix = path.join(projectRoot, '.venv', 'bin', 'python');
                 if (fs.existsSync(venvPathUnix)) return { type: 'python', path: venvPathUnix };
+
+                const legacyVenvPathUnix = path.join(projectRoot, 'venv', 'bin', 'python');
+                if (fs.existsSync(legacyVenvPathUnix)) return { type: 'python', path: legacyVenvPathUnix };
+
                 return { type: 'python', path: 'python3' };
             }
         }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavStatus } from '../context/NavStatusContext';
 import usePersistentState from "../hooks/usePersistentState";
+import { useSession } from '../context/SessionContext';
 
 const TaqeemAuth = ({ onViewChange }) => {
     const [formData, setFormData, resetFormData] = usePersistentState('taqeem-auth:form', {
@@ -16,12 +17,19 @@ const TaqeemAuth = ({ onViewChange }) => {
     const [secondaryLoading, setSecondaryLoading] = useState(false);
     const [secondaryBatchId, setSecondaryBatchId] = useState('');
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+    const { isAuthenticated } = useSession();
 
     useEffect(() => {
         if (taqeemStatus?.state !== 'success') {
             setTaqeemStatus('info', 'Taqeem login is required to proceed');
         }
     }, [setTaqeemStatus, taqeemStatus?.state]);
+
+    useEffect(() => {
+        if (!isAuthenticated && onViewChange) {
+            onViewChange('registration');
+        }
+    }, [isAuthenticated, onViewChange]);
 
     const goToCompanies = () => {
         if (onViewChange) {

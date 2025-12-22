@@ -17,7 +17,7 @@ const DEFAULT_STATE = {
     allowedModules: []
 };
 
-const DEMO_MODULES = ['taqeem-login', 'profile', 'asset-create', 'packages', 'get-companies'];
+const DEMO_MODULES = ['apps', 'taqeem-login', 'profile', 'asset-create', 'packages', 'get-companies'];
 
 const computeDowntimeTarget = (state) => {
     if (!state || state.mode !== 'inactive') return null;
@@ -244,7 +244,7 @@ export const SystemControlProvider = ({ children }) => {
     }, [systemState, token, autoActivating, updateSystemState, fetchSystemState, isAdmin]);
 
     const hasPermission = (viewId) => {
-        const alwaysAllowed = ['login', 'registration', 'taqeem-login', 'profile'];
+        const alwaysAllowed = ['apps', 'login', 'registration', 'taqeem-login', 'profile'];
         if (alwaysAllowed.includes(viewId)) return true;
         if (!user) return true;
         if (isAdmin) return true;
@@ -267,7 +267,7 @@ export const SystemControlProvider = ({ children }) => {
     };
 
     const isFeatureBlocked = (viewId) => {
-        const alwaysAllowed = ['login', 'registration'];
+        const alwaysAllowed = ['apps', 'login', 'registration'];
         if (alwaysAllowed.includes(viewId)) return false;
         if (!hasPermission(viewId)) return true;
 

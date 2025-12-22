@@ -27,37 +27,62 @@ import SystemUpdates from './screens/SystemUpdates';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
+import ManualMultiReport from './screens/ManualMultiReport';
 import ValuationSystem from './screens/ValuationSystem';
+import WordCopy from './screens/WordCopy';
+import Apps from './screens/Apps';
+import { ValueNavProvider } from './context/ValueNavContext';
+import ComingSoon from './screens/ComingSoon';
+import { useValueNav } from './context/ValueNavContext';
 
 const AppContent = () => {
-    const [currentView, setCurrentView] = useState(null);
-    const { isAuthenticated, isLoading } = useSession();
+    const [currentView, setCurrentView] = useState('apps');
+    const [pendingProtectedView, setPendingProtectedView] = useState(null);
+    const { isAuthenticated } = useSession();
+    const { syncNavForView, setActiveTab } = useValueNav();
 
-    // Choose initial page based on existing session
-    useEffect(() => {
-        if (!isLoading && currentView === null) {
-            // If a session exists, resume at Taqeem login; otherwise go to app login
-            setCurrentView(isAuthenticated ? 'taqeem-login' : 'login');
+    const handleViewChange = (nextView) => {
+        const protectedViews = ['taqeem-login', 'get-companies'];
+        if (!isAuthenticated && protectedViews.includes(nextView)) {
+            setPendingProtectedView(nextView);
+            setCurrentView('registration');
+            return;
         }
-    }, [isLoading, isAuthenticated, currentView]);
+        if (syncNavForView) {
+            syncNavForView(nextView);
+        }
+        if (!nextView || nextView === 'apps') {
+            setActiveTab(null);
+        }
+        setCurrentView(nextView);
+    };
 
-    if (currentView === null) {
-        return null;
-    }
+    useEffect(() => {
+        if (isAuthenticated && pendingProtectedView) {
+            if (syncNavForView) {
+                syncNavForView(pendingProtectedView);
+            }
+            setCurrentView(pendingProtectedView);
+            setPendingProtectedView(null);
+        }
+    }, [isAuthenticated, pendingProtectedView, syncNavForView]);
 
     const renderCurrentView = () => {
         switch (currentView) {
+            case 'apps':
+                return <Apps onViewChange={handleViewChange} />;
+
             case 'registration':
-                return <Registration onViewChange={setCurrentView} />;
+                return <Registration onViewChange={handleViewChange} />;
 
             case 'profile':
-                return <Profile onViewChange={setCurrentView} />;
+                return <Profile onViewChange={handleViewChange} />;
 
             case 'login':
-                return <LoginForm onViewChange={setCurrentView} />;
+                return <LoginForm onViewChange={handleViewChange} />;
 
             case 'taqeem-login':
-                return <TaqeemAuth onViewChange={setCurrentView} />
+                return <TaqeemAuth onViewChange={handleViewChange} />
 
             case 'check-status':
                 return <CheckBrowser />;
@@ -87,7 +112,7 @@ const AppContent = () => {
                 return <DeleteReport />;
 
             case 'get-companies':
-                return <GetCompanies onViewChange={setCurrentView} />
+                return <GetCompanies onViewChange={handleViewChange} />
 
             case 'packages':
                 return <Packages />;
@@ -107,16 +132,25 @@ const AppContent = () => {
             case 'multi-excel-upload':
                 return <MultiExcelUpload />;
 
+            case 'manual-multi-report':
+                return <ManualMultiReport />;
+
             case 'valuation-system':
                 return <ValuationSystem />;
 
+            case 'word-copy':
+                return <WordCopy />;
+
+            case 'coming-soon':
+                return <ComingSoon />;
+
             default:
-                return <LoginForm onViewChange={setCurrentView} />;
+                return <Apps onViewChange={handleViewChange} />;
         }
     };
 
     return (
-        <Layout currentView={currentView} onViewChange={setCurrentView}>
+        <Layout currentView={currentView} onViewChange={handleViewChange}>
             {renderCurrentView()}
         </Layout>
     );
@@ -128,7 +162,9 @@ const App = () => {
             <SystemControlProvider>
                 <NavStatusProvider>
                     <ElrajhiUploadProvider>
-                        <AppContent />
+                        <ValueNavProvider>
+                            <AppContent />
+                        </ValueNavProvider>
                     </ElrajhiUploadProvider>
                 </NavStatusProvider>
             </SystemControlProvider>

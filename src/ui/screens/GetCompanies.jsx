@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavStatus } from "../context/NavStatusContext";
 import usePersistentState from "../hooks/usePersistentState";
+import { useSession } from "../context/SessionContext";
+import { useValueNav } from "../context/ValueNavContext";
 
 export default function GetCompanies({ onViewChange }) {
     const [companies, setCompanies, resetCompanies] = usePersistentState("get-companies:list", [], { storage: 'session' });
@@ -11,6 +13,8 @@ export default function GetCompanies({ onViewChange }) {
     const [selectedCompany, setSelectedCompany, resetSelectedCompany] = usePersistentState("get-companies:selected", null, { storage: 'session' });
     const [navigationComplete, setNavigationComplete, _resetNavigationComplete] = usePersistentState("get-companies:navigationComplete", false, { storage: 'session' });
     const { taqeemStatus, setCompanyStatus } = useNavStatus();
+    const { isAuthenticated } = useSession();
+    const { syncCompanies, loadSavedCompanies } = useValueNav();
 
     useEffect(() => {
         if (navigationComplete && selectedCompany) {
@@ -24,6 +28,11 @@ export default function GetCompanies({ onViewChange }) {
     }, [navigationComplete, selectedCompany, setCompanyStatus]);
 
     const handleGetCompanies = async () => {
+        if (!isAuthenticated) {
+            setError('Please register or login with your phone number before using Taqeem.');
+            if (onViewChange) onViewChange('registration');
+            return;
+        }
         setLoading(true);
         setError("");
         setSuccessMessage("");
@@ -34,9 +43,20 @@ export default function GetCompanies({ onViewChange }) {
             const data = await window.electronAPI.getCompanies();
 
             if (data.status === "SUCCESS") {
-                setCompanies(data.data || []);
+                const fetched = data.data || [];
+                setCompanies(fetched);
                 setSuccessMessage("Companies fetched successfully!");
                 setCompanyStatus('info', 'Select a company to navigate');
+
+                // Persist companies to backend for this user
+                if (syncCompanies) {
+                    try {
+                        await syncCompanies(fetched.map((c) => ({ ...c, type: c.type || 'equipment' })), 'equipment');
+                        await loadSavedCompanies('equipment');
+                    } catch (syncErr) {
+                        console.warn('Failed to sync companies', syncErr);
+                    }
+                }
             } else {
                 setError(data.error || 'Failed to get companies');
                 setCompanyStatus('error', data.error || 'Failed to load companies');
@@ -50,12 +70,16 @@ export default function GetCompanies({ onViewChange }) {
     };
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            if (onViewChange) onViewChange('registration');
+            return;
+        }
         if (companies && companies.length) {
             return;
         }
         handleGetCompanies();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companies]);
+    }, [companies, isAuthenticated]);
 
     const handleNavigateToCompany = async () => {
         if (!selectedCompany) return;

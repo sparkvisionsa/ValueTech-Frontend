@@ -4,9 +4,12 @@ import { AlertTriangle, Bell, Download, HardDrive, Loader2, RefreshCcw, ShieldCh
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useNavStatus } from '../context/NavStatusContext';
+import { useValueNav } from '../context/ValueNavContext';
+import navigation from '../constants/navigation';
+const { viewTitles, valueSystemGroups, findTabInfo } = navigation;
 
 const Layout = ({ children, currentView, onViewChange }) => {
-    const { isAuthenticated, user } = useSession();
+    const { isAuthenticated, user, logout } = useSession();
     const {
         systemState,
         latestUpdate,
@@ -23,6 +26,18 @@ const Layout = ({ children, currentView, onViewChange }) => {
         updateSystemState
     } = useSystemControl();
     const { taqeemStatus, companyStatus } = useNavStatus();
+    const {
+        breadcrumbs,
+        activeGroup,
+        activeTab,
+        selectedCompany,
+        chooseCard,
+        chooseDomain,
+        setSelectedCompany,
+        setActiveGroup,
+        setActiveTab,
+        resetAll
+    } = useValueNav();
 
     const isAdmin = user?.phone === '011111';
     const blocked = isAuthenticated && (isFeatureBlocked(currentView) || updateBlocked());
@@ -270,6 +285,131 @@ const Layout = ({ children, currentView, onViewChange }) => {
         </div>
     );
 
+    const handleAuthNav = (view) => {
+        if (onViewChange) onViewChange(view);
+    };
+
+    const userBadge = isAuthenticated ? (
+        <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 shadow-sm">
+            <div className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                {(user?.phone || '').charAt(0) || '?'}
+            </div>
+            <div className="text-sm text-gray-800 font-medium">{user?.phone || 'User'}</div>
+            <button
+                onClick={logout}
+                className="text-xs font-semibold text-red-600 hover:text-red-700 underline decoration-dotted"
+            >
+                Logout
+            </button>
+        </div>
+    ) : (
+        <div className="flex items-center gap-2">
+            <button
+                onClick={() => handleAuthNav('registration')}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+            >
+                Register
+            </button>
+            <button
+                onClick={() => handleAuthNav('login')}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-900 bg-gray-900 px-3 py-1 text-sm font-semibold text-white hover:bg-gray-800"
+            >
+                Login
+            </button>
+        </div>
+    );
+
+    const currentTabInfo = findTabInfo(currentView);
+    const headerTitle = currentTabInfo?.tab?.label || viewTitles[currentView] || 'Value Tech';
+    const groupTabs = activeGroup ? valueSystemGroups[activeGroup]?.tabs || [] : [];
+    const firstGroupTab = groupTabs?.[0]?.id;
+
+    const handleBreadcrumbClick = (item) => {
+        switch (item.kind) {
+            case 'apps':
+                // top-level
+                onViewChange('apps');
+                break;
+            case 'card':
+                chooseCard(item.key);
+                setActiveGroup(null);
+                setActiveTab(null);
+                onViewChange('apps');
+                break;
+            case 'domain':
+                chooseCard('uploading-reports');
+                chooseDomain(item.key);
+                onViewChange('apps');
+                break;
+            case 'company':
+                chooseCard('uploading-reports');
+                chooseDomain('equipments');
+                if (item.value) {
+                    setSelectedCompany(item.value);
+                }
+                onViewChange('apps');
+                break;
+            case 'group':
+                chooseCard('uploading-reports');
+                if (selectedDomain) {
+                    chooseDomain(selectedDomain);
+                }
+                setActiveGroup(item.key);
+                if (firstGroupTab) {
+                    onViewChange(firstGroupTab);
+                } else {
+                    onViewChange('apps');
+                }
+                break;
+            case 'tab':
+                onViewChange(item.key);
+                break;
+            default:
+                onViewChange('apps');
+        }
+    };
+
+    const PageChrome = () => {
+        if (!breadcrumbs || breadcrumbs.length === 0) return null;
+        return (
+            <div className="flex flex-col gap-3 mb-4">
+                <div className="text-sm text-gray-700 flex flex-wrap items-center gap-2">
+                    {breadcrumbs.map((item, idx) => (
+                        <React.Fragment key={item.key + idx}>
+                            <button
+                                onClick={() => handleBreadcrumbClick(item)}
+                                className={`px-1 text-sm ${idx === breadcrumbs.length - 1 ? 'font-semibold text-gray-900' : 'text-blue-700 hover:underline'}`}
+                            >
+                                {item.label}
+                            </button>
+                            {idx < breadcrumbs.length - 1 && <span className="text-gray-400">/</span>}
+                        </React.Fragment>
+                    ))}
+                </div>
+                {groupTabs && groupTabs.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {groupTabs.map((tab) => {
+                            const isActive = currentView === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => onViewChange(tab.id)}
+                                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition ${isActive
+                                        ? 'border-blue-600 bg-blue-50 text-blue-800'
+                                        : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:bg-blue-50'
+                                        }`}
+                                >
+                                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="flex h-screen bg-gray-50"> {/* Simple background */}
             {/* Sidebar */}
@@ -280,11 +420,14 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 {/* Header */}
                 <header className="bg-white shadow-sm border-b border-gray-200">
                     <div className="px-6 py-4 flex flex-col gap-2">
-                        <div className="flex items-center justify-between gap-2">
-                            <h1 className="text-2xl font-bold text-gray-900">
-                                {getViewTitle(currentView)}
-                            </h1>
-                            <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex flex-col">
+                                <h1 className="text-2xl font-bold text-gray-900">
+                                    {headerTitle}
+                                </h1>
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap justify-end">
+                                {userBadge}
                                 {statusBanner}
                                 <button
                                     type="button"
@@ -371,6 +514,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
 
                 {/* Page Content - Remove any conflicting backgrounds */}
                 <main className="flex-1 overflow-auto p-6 bg-transparent relative">
+                    <PageChrome />
                     {blocked && (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gradient-to-br from-white/85 to-blue-50/80 backdrop-blur-sm text-center px-6">
                             <div className="flex items-center justify-center h-16 w-16 rounded-full bg-red-50 border border-red-100 mb-3">
@@ -412,15 +556,6 @@ const Layout = ({ children, currentView, onViewChange }) => {
 };
 
 // Helper function to get view titles
-const getViewTitle = (view) => {
-    const titles = {
-        login: 'Authentication',
-        dashboard: 'Dashboard',
-        automation: 'Automation Control',
-        settings: 'Settings',
-        'valuation-system': 'نظام التقييم'
-    };
-    return titles[view] || 'AutoBot';
-};
+const getViewTitle = (view) => viewTitles[view] || 'Value Tech';
 
 export default Layout;

@@ -129,6 +129,15 @@ async def create_report_for_record(browser, record, tabs_num=3):
         results = []
         record["number_of_macros"] = str(len(record.get("asset_data", [])))
 
+        # Normalize valuers to shape expected by fill_valuers (valuerName/percentage)
+        valuers = []
+        for v in record.get("valuers", []):
+            name = v.get("valuer_name") or v.get("valuerName")
+            pct = v.get("contribution_percentage") or v.get("percentage")
+            if name:
+                valuers.append({"valuerName": name, "percentage": pct or 0})
+        record["valuers"] = valuers
+
         # Open the initial create-report page
         main_page = await browser.get(create_url)
         await asyncio.sleep(1)

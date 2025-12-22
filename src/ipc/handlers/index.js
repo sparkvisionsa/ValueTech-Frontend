@@ -6,6 +6,7 @@ const healthHandlers = require('./healthHandlers');
 const packageHandlers = require('./packageHandlers');
 const systemHandlers = require('./systemHandlers');
 const valuationHandlers = require('./valuationHandlers');
+const wordHandlers = require('./wordHandlers');
 
 module.exports = {
     authHandlers,
@@ -14,5 +15,6 @@ module.exports = {
     healthHandlers,
     packageHandlers,
     systemHandlers,
-    valuationHandlers
+    valuationHandlers,
+    wordHandlers
 };

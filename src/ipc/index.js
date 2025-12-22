@@ -1,5 +1,5 @@
 const { ipcMain } = require('electron');
-const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers, systemHandlers, valuationHandlers } = require('./handlers');
+const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers, systemHandlers, valuationHandlers, wordHandlers } = require('./handlers');
 
 function registerIpcHandlers() {
     // Auth handlers
@@ -83,6 +83,8 @@ function registerIpcHandlers() {
     ipcMain.handle('worker-status', workerHandlers.handleWorkerStatus);
     ipcMain.handle('show-open-dialog', workerHandlers.showOpenDialog);
     ipcMain.handle('show-open-dialog-pdfs', workerHandlers.showOpenDialogPdfs);
+    ipcMain.handle('show-open-dialog-word', workerHandlers.showOpenDialogWord);
+    ipcMain.handle('show-open-dialog-images', workerHandlers.showOpenDialogImages);
     ipcMain.handle('select-folder', workerHandlers.selectFolder);
     ipcMain.handle('read-folder', workerHandlers.readFolder);
 
@@ -103,6 +105,9 @@ function registerIpcHandlers() {
     ipcMain.handle('valuation-append-preview-images', valuationHandlers.handleAppendPreviewImages);
     ipcMain.handle('valuation-append-registration-certificates', valuationHandlers.handleAppendRegistrationCertificates);
 
+    // Word utilities
+    ipcMain.handle('word-copy-files', wordHandlers.handleCopyWordFile);
+
     console.log('[IPC] All handlers registered');
 }
 
@@ -119,6 +124,8 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('worker-status');
     ipcMain.removeAllListeners('show-open-dialog');
     ipcMain.removeAllListeners('show-open-dialog-pdfs');
+    ipcMain.removeAllListeners('show-open-dialog-word');
+    ipcMain.removeAllListeners('show-open-dialog-images');
     ipcMain.removeAllListeners('select-folder');
     ipcMain.removeAllListeners('read-folder');
     ipcMain.removeAllListeners('read-file');
@@ -182,6 +189,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('valuation-value-calcs');
     ipcMain.removeAllListeners('valuation-append-preview-images');
     ipcMain.removeAllListeners('valuation-append-registration-certificates');
+    ipcMain.removeAllListeners('word-copy-files');
 
     console.log('[IPC] All handlers unregistered');
 }

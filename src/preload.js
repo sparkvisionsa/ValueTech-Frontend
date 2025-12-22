@@ -126,7 +126,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Worker
     showOpenDialog: () => safeInvoke('show-open-dialog'),
+    showOpenDialogWord: () => safeInvoke('show-open-dialog-word'),
     showOpenDialogPdfs: () => safeInvoke('show-open-dialog-pdfs'),
+    showOpenDialogImages: () => safeInvoke('show-open-dialog-images'),
     selectFolder: () => safeInvoke('select-folder'),
     readFolder: (folderPath) => safeInvoke('read-folder', folderPath),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
@@ -146,5 +148,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createValuationDocx: (payload) => safeInvoke('valuation-create-docx', payload),
     generateValuationValueCalcs: (payload) => safeInvoke('valuation-value-calcs', payload),
     appendValuationPreviewImages: (payload) => safeInvoke('valuation-append-preview-images', payload),
-    appendValuationRegistrationCertificates: (payload) => safeInvoke('valuation-append-registration-certificates', payload)
+    appendValuationRegistrationCertificates: (payload) => safeInvoke('valuation-append-registration-certificates', payload),
+
+    // Word utilities
+    copyWordFile: (payload) => safeInvoke('word-copy-files', payload)
 });
