@@ -92,34 +92,145 @@ const DeleteReport = () => {
     };
 
     // Handle report deletion - fire and forget
-    const handleDeleteReport = async () => {
-        if (!reportId.trim()) {
-            setError("Report ID is required");
-            return;
-        }
+    // const handleDeleteReport = async () => {
+    //     if (!reportId.trim()) {
+    //         setError("Report ID is required");
+    //         return;
+    //     }
 
-        setError("");
-        setDeleteRequested(true);
-        setStatusChangeResult(null);
-        setDeleteReportStatus('running');
-        setOperationResult(null);
+    //     setError("");
+    //     setDeleteRequested(true);
+    //     setStatusChangeResult(null);
+    //     setDeleteReportStatus('running');
+    //     setOperationResult(null);
 
-        try {
-            console.log(`Sending delete request for report: ${reportId}`);
+    //     try {
+    //         console.log(`Sending delete request for report: ${reportId}`);
 
-            // Fire the delete request
-            window.electronAPI.deleteReport(reportId, 10).then(result => {
-                console.log("Report deletion completed:", result);
-            }).catch(err => {
-                console.error("Report deletion encountered error:", err);
-                setDeleteReportStatus('stopped');
-            });
+    //         // Fire the delete request
+    //         window.electronAPI.deleteReport(reportId, 10).then(result => {
+    //             console.log("Report deletion completed:", result);
+    //         }).catch(err => {
+    //             console.error("Report deletion encountered error:", err);
+    //             setDeleteReportStatus('stopped');
+    //         });
 
-        } catch (err) {
-            console.error("Error initiating report deletion:", err);
-            setDeleteReportStatus('stopped');
-        }
-    };
+    //     } catch (err) {
+    //         console.error("Error initiating report deletion:", err);
+    //         setDeleteReportStatus('stopped');
+    //     }
+    // };
+// ==========================================================================
+
+// Delete report Function With Batch Ids
+
+
+
+
+const parseReportIds = (input) => {
+  return [...new Set(
+    (input || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+  )];
+};
+
+const runWithConcurrency = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let idx = 0;
+
+  const runners = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (true) {
+      const current = idx++;
+      if (current >= items.length) break;
+
+      try {
+        results[current] = await worker(items[current], current);
+      } catch (e) {
+        results[current] = { ok: false, error: String(e) };
+      }
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+};
+
+const handleDeleteReport = async () => {
+  const ids = parseReportIds(reportId); // reportId is the input string: "1215, 5888, ,6965"
+  if (!ids.length) {
+    setError("At least one Report ID is required (comma separated)");
+    return;
+  }
+
+  setError("");
+  setDeleteRequested(true);
+  setStatusChangeResult(null);
+  setDeleteReportStatus("running");
+  setOperationResult(null);
+
+  const maxRounds = 10;
+  const concurrency = 10; // adjust safely (2–4 recommended)
+
+  // init UI state per id (optional)
+  setOperationResult({
+    mode: "batch",
+    items: Object.fromEntries(ids.map(id => [id, { status: "queued" }]))
+  });
+
+  try {
+    const results = await runWithConcurrency(ids, concurrency, async (id) => {
+      // mark running
+      setOperationResult(prev => ({
+        ...prev,
+        items: { ...prev.items, [id]: { status: "running" } }
+      }));
+
+      try {
+        const res = await window.electronAPI.deleteReport(id, maxRounds);
+        // mark success
+        setOperationResult(prev => ({
+          ...prev,
+          items: { ...prev.items, [id]: { status: "success", result: res } }
+        }));
+        return { id, ok: true, result: res };
+      } catch (err) {
+        // mark failed
+        setOperationResult(prev => ({
+          ...prev,
+          items: { ...prev.items, [id]: { status: "failed", error: String(err) } }
+        }));
+        return { id, ok: false, error: String(err) };
+      }
+    });
+
+    const failed = results.filter(r => !r?.ok).length;
+
+    setStatusChangeResult({
+      total: ids.length,
+      success: ids.length - failed,
+      failed,
+      results
+    });
+
+    setDeleteReportStatus(failed ? "partial" : "success");
+  } catch (err) {
+    console.error("Error initiating batch deletion:", err);
+    setDeleteReportStatus("stopped");
+  }
+};
+
+// ==========================================================================
+
+
+
+
+
+
+
+
+
 
     // Handle delete only assets - fire and forget
     const handleDeleteReportAssets = async () => {
