@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopRetryMacroIds: (reportId) => safeInvoke('stop-retry-macro-ids', reportId),
 
     macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
+    macroFillRetry: (reportId, tabsNum) => safeInvoke('run-macro-edit-retry', reportId, tabsNum),
 
     elrajhiUploadReport: (batchId, tabsNum, pdfOnly, finalizeSubmission = true) => safeInvoke('elrajhi-filler', batchId, tabsNum, pdfOnly, finalizeSubmission),
 

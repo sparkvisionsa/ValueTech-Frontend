@@ -292,6 +292,15 @@ const reportHandlers = {
         }
     },
 
+    async handleMacroFillRetry(event, reportId, tabsNum) {
+        try {
+            return await pythonAPI.report.macroFillRetry(reportId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Macro fill retry error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handlePauseMacroFill(event, reportId) {
         try {
             console.log('[MAIN] Received pause macro fill request:', reportId);

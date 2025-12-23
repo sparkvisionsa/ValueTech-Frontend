@@ -13,6 +13,16 @@ const submitMacro = async (reportId, tabsNum) => {
     };
 };
 
+const retryMacro = async (reportId, tabsNum) => {
+    if (window.electronAPI) {
+        return await window.electronAPI.macroFillRetry(reportId, tabsNum);
+    }
+    return {
+        status: "SUCCESS",
+        result: { message: "Macro retry submitted successfully (demo)" }
+    };
+};
+
 const checkMacroStatus = async (reportId, tabsNum) => {
     return await window.electronAPI.fullCheck(reportId, tabsNum);
 };
@@ -560,6 +570,120 @@ const SubmitMacro = () => {
         }
     };
 
+    // Add this after the handleSubmitMacro function
+    const handleRetryMacro = async () => {
+        if (!reportId.trim()) {
+            setError("Please enter a report ID");
+            return;
+        }
+
+        const tabsNumValue = parseInt(tabsNum);
+        if (isNaN(tabsNumValue) || tabsNumValue < 1) {
+            setError("Please enter a valid number of tabs (minimum 1)");
+            return;
+        }
+
+        setError("");
+        setIsSubmitting(true);
+        setCurrentStep('submission-in-progress');
+
+        // Initialize progress state
+        dispatch({
+            type: 'UPDATE_PROGRESS',
+            payload: {
+                reportId,
+                updates: {
+                    status: 'INITIALIZING',
+                    message: "Initializing macro retry...",
+                    progress: 0,
+                    paused: false,
+                    stopped: false,
+                    data: {
+                        current: 0,
+                        total: 0,
+                        failedRecords: 0,
+                        currentMacro: '',
+                        stage: 'Starting'
+                    }
+                }
+            }
+        });
+
+        try {
+            console.log(`Retrying macro for report: ${reportId} with tabs: ${tabsNumValue}`);
+
+            const result = await retryMacro(reportId, tabsNumValue);
+            console.log("Macro retry result:", result);
+
+            // Check for success based on response.status
+            if (result.status === "SUCCESS") {
+                setSubmissionResult(result);
+
+                // If we don't have progress data from events, use the final result
+                if (!currentProgress || currentProgress.progress < 100) {
+                    dispatch({
+                        type: 'UPDATE_PROGRESS',
+                        payload: {
+                            reportId,
+                            updates: {
+                                status: 'COMPLETE',
+                                message: result.result?.message || "Macro retry submitted successfully",
+                                progress: 100,
+                                data: {
+                                    current: currentProgress?.data?.total || 100,
+                                    total: currentProgress?.data?.total || 100,
+                                    failedRecords: currentProgress?.data?.failedRecords || 0,
+                                    numTabs: tabsNumValue,
+                                    stage: 'Complete'
+                                }
+                            }
+                        }
+                    });
+                }
+
+                setCurrentStep('success');
+            } else {
+                // Handle failure
+                const errorMessage = result.result?.message || result.error || 'Failed to retry macro';
+                setError(errorMessage);
+                setCurrentStep('error');
+
+                // Update progress state with error
+                dispatch({
+                    type: 'UPDATE_PROGRESS',
+                    payload: {
+                        reportId,
+                        updates: {
+                            status: 'FAILED',
+                            message: `Error: ${errorMessage}`,
+                            progress: 0
+                        }
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Error retrying macro:", err);
+            const errorMessage = err.message || 'An unexpected error occurred while retrying macro';
+            setError(errorMessage);
+            setCurrentStep('error');
+
+            // Update progress state with error
+            dispatch({
+                type: 'UPDATE_PROGRESS',
+                payload: {
+                    reportId,
+                    updates: {
+                        status: 'FAILED',
+                        message: `Error: ${errorMessage}`,
+                        progress: 0
+                    }
+                }
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     // Handle macro status check with pause/resume support
     const handleCheckMacro = async () => {
         if (!reportId.trim()) {
@@ -964,6 +1088,18 @@ const SubmitMacro = () => {
                                         )}
                                         {isSubmitting ? "Submitting..." : "Submit Macro"}
                                     </button>
+                                    <button
+                                        onClick={handleRetryMacro}
+                                        disabled={!reportId.trim() || !tabsNum.trim() || isSubmitting || !isLoggedIn}
+                                        className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded font-semibold flex items-center gap-2 justify-center"
+                                    >
+                                        {isSubmitting ? (
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="w-4 h-4" />
+                                        )}
+                                        {isSubmitting ? "Retrying..." : "Retry Macro"}
+                                    </button>
                                 </div>
 
                                 {error && (
@@ -985,6 +1121,7 @@ const SubmitMacro = () => {
                                                 <strong>Full Check:</strong> Checks all macros in the report (can be paused/resumed)<br />
                                                 <strong>Half Check:</strong> Only checks previously incomplete macros (faster, can be paused/resumed)<br />
                                                 <strong>Submit Macro:</strong> Submits macros for the report with pause/resume support
+                                                <strong>Retry Macro:</strong> Retry failed macros for the report with pause/resume support
                                             </p>
                                         </div>
                                     </div>

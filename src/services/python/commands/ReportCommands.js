@@ -161,6 +161,14 @@ class ReportCommands {
         });
     }
 
+    async macroFillRetry(reportId, tabsNum) {
+        return this._sendCommand({
+            action: 'run-macro-edit-retry',
+            reportId,
+            tabsNum
+        });
+    }
+
     async retryAlRahjiReport(batchId, tabsNum) {
         return this._sendCommand({
             action: 'retry-ElRajhi-report',

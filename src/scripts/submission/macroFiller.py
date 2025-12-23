@@ -50,7 +50,6 @@ async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
         print(f"Filling macro {macro_id} failed: {e}", file=sys.stderr)
         return {"status": "FAILED", "error": str(e)}
 
-
 async def handle_macro_edits(browser, record, tabs_num=3, record_id=None): 
     asset_data = record.get("asset_data", [])
     if not asset_data: 
@@ -221,7 +220,6 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
         "total": total_assets
     }
 
-
 async def run_macro_edit(browser, report_id, tabs_num=3):
     
     try:
@@ -286,6 +284,78 @@ async def run_macro_edit(browser, report_id, tabs_num=3):
         
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
+async def run_macro_edit_retry(browser, report_id, tabs_num=3):
+    try:
+        record = await db.reports.find_one({"report_id": report_id})
+        if not record:
+            return {"status": "FAILED", "error": "Record not found"}
+
+        asset_data = record.get("asset_data", [])
+        if not asset_data:
+            return {"status": "SUCCESS", "message": "No assets found"}
+
+        # Filter retryable assets (submit_state == 0)
+        retry_assets = [
+            asset for asset in asset_data
+            if asset.get("submitState", 0) == 0
+        ]
+
+        if not retry_assets:
+            return {
+                "status": "SUCCESS",
+                "message": "No retryable assets found (all macros already submitted)"
+            }
+
+        # Verify IDs
+        missing_ids = [
+            i for i, asset in enumerate(retry_assets)
+            if not asset.get("id")
+        ]
+        if missing_ids:
+            return {
+                "status": "FAILED",
+                "error": f"Retry assets missing macro IDs at indices: {missing_ids}"
+            }
+
+        # Update retry start time
+        await db.reports.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"retryEditStartTime": datetime.now(timezone.utc)}}
+        )
+
+        emit_progress(
+            report_id,
+            message=f"Starting retry for {len(retry_assets)} macros..."
+        )
+
+        # Create a shallow copy of record with filtered assets
+        retry_record = {
+            **record,
+            "asset_data": retry_assets
+        }
+
+        result = await handle_macro_edits(
+            browser,
+            retry_record,
+            tabs_num=tabs_num,
+            record_id=report_id
+        )
+
+        await db.reports.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"retryEditEndTime": datetime.now(timezone.utc)}}
+        )
+
+        return result
+
+    except Exception as e:
+        clear_process(report_id)
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 
 async def pause_macro_edit(report_id):
     """Pause macro editing for a report"""
@@ -307,7 +377,6 @@ async def pause_macro_edit(report_id):
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
 
-
 async def resume_macro_edit(report_id):
     """Resume macro editing for a report"""
     try:
@@ -327,7 +396,6 @@ async def resume_macro_edit(report_id):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
-
 
 async def stop_macro_edit(report_id):
     """Stop macro editing for a report"""

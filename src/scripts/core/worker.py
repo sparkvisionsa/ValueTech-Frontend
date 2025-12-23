@@ -28,7 +28,9 @@ from scripts.submission.grabMacroIds import (
 )
 
 from scripts.submission.macroFiller import (
-    run_macro_edit, 
+    run_macro_edit,
+    run_macro_edit_retry,
+
     pause_macro_edit, 
     resume_macro_edit, 
     stop_macro_edit
@@ -262,6 +264,17 @@ async def handle_command(cmd):
         
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
+
+    elif action == "run-macro-edit-retry":
+        browser = await get_browser()
+
+        report_id = cmd.get("reportId")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await run_macro_edit_retry(browser, report_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)   
 
     elif action == "pause-macro-edit":
         report_id = cmd.get("reportId")

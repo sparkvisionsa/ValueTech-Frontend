@@ -32,6 +32,7 @@ function registerIpcHandlers() {
 
 
     ipcMain.handle('macro-fill', reportHandlers.handleMacroFill);
+    ipcMain.handle('run-macro-edit-retry', reportHandlers.handleMacroFillRetry);
 
     ipcMain.handle('elrajhi-filler', reportHandlers.handleElRajhiUploadReport);
     ipcMain.handle('pause-elrajhi-batch', reportHandlers.handlePauseElRajhiBatch);
@@ -138,6 +139,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('grab-macro-ids');
     ipcMain.removeAllListeners('retry-macro-ids');
     ipcMain.removeAllListeners('macro-fill');
+    ipcMain.removeAllListeners('run-macro-edit-retry');
 
     ipcMain.removeAllListeners('elrajhi-filler');
     ipcMain.removeAllListeners('pause-elrajhi-batch');

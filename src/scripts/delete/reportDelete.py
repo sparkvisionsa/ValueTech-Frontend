@@ -1129,32 +1129,6 @@ async def delete_multiple_reports_flow(
     report_ids: list[str],
     max_rounds: int = 10
 ):
-    """
-    Delete multiple reports sequentially using delete_report_flow().
-
-    Behaviour:
-      - Each report is processed fully before moving to the next.
-      - Each report has its OWN process_id: delete-report-{report_id}
-      - Pause / resume / stop work per-report (not global).
-      - Failure of one report does NOT stop the rest.
-
-    Returns:
-      {
-        "status": "SUCCESS" | "PARTIAL" | "FAILED",
-        "total": int,
-        "deleted": int,
-        "failed": int,
-        "results": [
-            {
-              "reportId": str,
-              "status": "...",
-              "rounds": int,
-              "deletedAssets": int,
-              ...
-            }
-        ]
-      }
-    """
 
     if not report_ids:
         return {
