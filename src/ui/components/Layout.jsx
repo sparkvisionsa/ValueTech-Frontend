@@ -372,34 +372,34 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const PageChrome = () => {
         if (!breadcrumbs || breadcrumbs.length === 0) return null;
         return (
-            <div className="flex flex-col gap-3 mb-4">
-                <div className="text-sm text-gray-700 flex flex-wrap items-center gap-2">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                <div className="flex flex-wrap items-center gap-1 text-[12px] text-gray-700">
                     {breadcrumbs.map((item, idx) => (
                         <React.Fragment key={item.key + idx}>
                             <button
                                 onClick={() => handleBreadcrumbClick(item)}
-                                className={`px-1 text-sm ${idx === breadcrumbs.length - 1 ? 'font-semibold text-gray-900' : 'text-blue-700 hover:underline'}`}
+                                className={`px-0.5 text-[12px] ${idx === breadcrumbs.length - 1 ? 'font-semibold text-gray-900' : 'text-blue-700 hover:underline'}`}
                             >
                                 {item.label}
                             </button>
-                            {idx < breadcrumbs.length - 1 && <span className="text-gray-400">/</span>}
+                            {idx < breadcrumbs.length - 1 && <span className="text-gray-400"> &gt; </span>}
                         </React.Fragment>
                     ))}
                 </div>
                 {groupTabs && groupTabs.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                         {groupTabs.map((tab) => {
                             const isActive = currentView === tab.id;
                             return (
                                 <button
                                     key={tab.id}
                                     onClick={() => onViewChange(tab.id)}
-                                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition ${isActive
+                                    className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md border text-[11px] font-semibold transition ${isActive
                                         ? 'border-blue-600 bg-blue-50 text-blue-800'
                                         : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:bg-blue-50'
                                         }`}
                                 >
-                                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                                     {tab.label}
                                 </button>
                             );

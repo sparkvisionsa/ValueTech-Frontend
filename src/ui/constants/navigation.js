@@ -6,7 +6,7 @@ const valueSystemGroups = {
         id: 'evaluationSources',
         title: 'Evaluation Sources',
         tabs: [
-            { id: 'word-copy', label: 'نسخ ملف وورد', description: 'إنشاء نسخ متعددة من ملفات الوورد مع خيارات التسمية والإرفاق.' },
+            { id: 'word-copy', label: 'نسخ بيانات الأكسيل للتقرير', description: 'تحضير ونسخ بيانات التقرير من ملف إكسل بسهولة.' },
             { id: 'valuation-system', label: 'نظام التقييم', description: 'تشغيل مسار نظام التقييم وإعداد ملفات البيانات والمخرجات.' }
         ]
     },
@@ -78,7 +78,7 @@ const viewTitles = {
     'upload-report-elrajhi': 'Upload Report Elrajhi',
     'duplicate-report': 'Duplicate report & send new',
     'multi-excel-upload': 'Multi-Excel Upload',
-    'manual-multi-report': 'نسخ بيانات الأكسيل للتقارير',
+    'manual-multi-report': 'التقارير اليدوية المتعددة',
     'macro-edit': 'Edit Macro',
     'grab-macro-ids': 'Grab Macro IDs',
     'common-fields': 'Add Common Fields',
@@ -91,7 +91,7 @@ const viewTitles = {
     profile: 'Profile',
     packages: 'Packages',
     'valuation-system': 'نظام التقييم',
-    'word-copy': 'نسخ ملف وورد',
+    'word-copy': 'نسخ بيانات الأكسيل للتقرير',
     'delete-report': 'Delete Report',
     'system-status': 'System Operating Status',
     'system-updates': 'System Updates',

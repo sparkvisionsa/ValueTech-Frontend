@@ -17,7 +17,7 @@ def get_motor_client():
     MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
     return AsyncIOMotorClient(MONGO_URI)
 
-async def update_report_with_macro_ids(report_id, macro_ids_with_pages, db_name='test', collection_name='reports'):
+async def update_report_with_macro_ids(report_id, macro_ids_with_pages, db_name='test', collection_name='multiapproachreports'):
     client = None
     try:
         client = get_motor_client()
@@ -207,7 +207,7 @@ async def get_macro_ids_from_page(page, base_url, page_num, tab_id, process_id=N
     
     return local_macro_ids
 
-async def update_report_pg_count(report_id, pg_count, db_name='test', collection_name='reports'):
+async def update_report_pg_count(report_id, pg_count, db_name='test', collection_name='multiapproachreports'):
     """
     Update the report document's pg_count field to the given number.
     Returns True on success, False on error.
@@ -367,7 +367,7 @@ async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3):
         return {"status": "FAILED", "error": str(e)}
 
 
-async def retry_get_missing_macro_ids(browser, report_id, tabs_num=3, db_name='test', collection_name='reports'):
+async def retry_get_missing_macro_ids(browser, report_id, tabs_num=3, db_name='test', collection_name='multiapproachreports'):
     """
     Retry version: only process pages for which assets in the report are missing pg_no / id.
     """

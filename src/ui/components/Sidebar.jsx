@@ -1,6 +1,5 @@
 ﻿import React from 'react';
 import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home } from 'lucide-react';
-import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import navigation from '../constants/navigation';
@@ -8,7 +7,6 @@ import navigation from '../constants/navigation';
 const { valueSystemGroups } = navigation;
 
 const Sidebar = ({ currentView, onViewChange }) => {
-    const { isAuthenticated, user } = useSession();
     const { isFeatureBlocked } = useSystemControl();
     const {
         selectedCard,
@@ -26,7 +24,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         setSelectedCompany
     } = useValueNav();
 
-    const isAdmin = user?.phone === '011111';
+    const isAdmin = false;
     const isAppsActive = currentView === 'apps';
 
     const domainButtons = [
@@ -64,16 +62,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                         }
 
                                         if (item.id === 'equipments') {
-                                            if (!isAuthenticated) {
-                                                onViewChange('registration');
-                                                return;
-                                            }
-                                            const list = await loadSavedCompanies('equipment');
-                                            if (!list || list.length === 0) {
-                                                onViewChange('taqeem-login');
-                                            } else {
-                                                onViewChange('apps');
-                                            }
+                                            await loadSavedCompanies('equipment');
+                                            onViewChange('apps');
                                             return;
                                         }
 
@@ -114,7 +104,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                 )}
                 {showPlaceholder && (
                     <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2">
-                        Saved companies will appear here after you fetch them from Taqeem.
+                        No company showed.
                     </div>
                 )}
                 {companies && companies.length > 0 && (
@@ -123,18 +113,21 @@ const Sidebar = ({ currentView, onViewChange }) => {
                         <ul className="space-y-1">
                             {companies.map((company) => {
                                 const isActive = selectedCompany?.name === company.name;
+                                const isDisabled = selectedCompany && !isActive;
                                 return (
                                     <li key={company.name || company.id}>
                                         <button
                                             onClick={() => {
+                                                if (isDisabled) return;
                                                 setSelectedCompany(company);
                                                 setActiveGroup(null);
                                                 onViewChange('apps');
                                             }}
+                                            disabled={isDisabled}
                                             className={`w-full text-left px-3 py-2 rounded-lg border ${isActive
                                                 ? 'border-blue-500 bg-blue-600/30 text-white'
                                                 : 'border-gray-700 bg-gray-800 text-gray-100 hover:border-blue-500 hover:bg-gray-700'
-                                                }`}
+                                                } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                         >
                                             <div className="text-sm font-semibold truncate">{company.name || 'Company'}</div>
                                             {company.officeId && (
@@ -153,13 +146,6 @@ const Sidebar = ({ currentView, onViewChange }) => {
 
     const renderMainLinks = () => {
         if (selectedDomain !== 'equipments') return null;
-        if (!selectedCompany) {
-            return (
-                <div className="mt-4 text-xs text-gray-400 bg-gray-800/40 border border-gray-700 rounded-lg px-3 py-2">
-                    Select a company under Equipments to view tools.
-                </div>
-            );
-        }
         return (
             <div className="mt-3">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Main links</p>
@@ -224,14 +210,14 @@ const Sidebar = ({ currentView, onViewChange }) => {
             <div className="p-3 border-b border-gray-700">
                 <h1 className="text-base font-bold text-white leading-tight tracking-tight">Value Tech</h1>
 
-                <div className="flex gap-2 mt-2">
+                <div className="flex gap-2 mt-1">
                     <button
                         onClick={() => {
                             resetAll();
                             chooseCard(null);
                             onViewChange('apps');
                         }}
-                        className={`flex-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 border text-left transition ${isAppsActive
+                        className={`flex-1 inline-flex items-center gap-1 rounded-lg px-2.5 py-2 border text-left transition ${isAppsActive
                             ? 'bg-blue-600 border-blue-500 text-white shadow'
                             : 'bg-gray-800 border-gray-700 text-gray-100 hover:bg-gray-700'
                             }`}
@@ -245,11 +231,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                 </div>
             </div>
 
-            <nav className="flex-1 p-3 overflow-y-auto space-y-2">
-                {!selectedCard && (
-                    <p className="text-[10px] text-gray-400 leading-snug">Choose a card inside Apps to load navigation.</p>
-                )}
-
+            <nav className="flex-1 p-3 pt-2 overflow-y-auto space-y-2">
                 {renderDomains()}
                 {renderCompanyList()}
                 {renderMainLinks()}

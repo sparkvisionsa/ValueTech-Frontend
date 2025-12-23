@@ -11,6 +11,8 @@ import {
   Send,
   Table,
   Trash2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { createManualMultiApproachReport } from "../../api/report";
 const {
@@ -23,11 +25,11 @@ const {
   buildDefaultValuers,
 } = require("../constants/reportFormOptions");
 
-const defaultAssetRow = () => ({
+const defaultAssetRow = (source = "market") => ({
   asset_name: "",
   asset_usage_id: "",
   final_value: "",
-  source_sheet: "market",
+  source_sheet: source,
 });
 
 const buildDefaultFormData = (totalValue = 0) => ({
@@ -124,6 +126,30 @@ const TextAreaField = ({
   </div>
 );
 
+const Modal = ({ open, onClose, title, children, maxWidth = "max-w-5xl" }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-3 py-6 overflow-auto">
+      <div className={`w-full ${maxWidth}`}>
+        <div className="bg-white rounded-lg shadow-lg border border-gray-200">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 transition"
+              aria-label="إغلاق"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-4">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Section = ({ title, children, className = "" }) => (
   <div
     className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 ${className}`}
@@ -161,10 +187,18 @@ const InfoBanner = ({ tone = "info", message }) => {
   );
 };
 const ManualMultiReport = () => {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [showAssetsModal, setShowAssetsModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const [assets, setAssets] = useState([defaultAssetRow()]);
   const [assetErrors, setAssetErrors] = useState({});
   const [pasteBuffer, setPasteBuffer] = useState("");
+  const [columnHeaders, setColumnHeaders] = useState([
+    "asset_name",
+    "asset_usage_id",
+    "final_value",
+    "source_sheet",
+  ]);
+  const [defaultSourceSheet, setDefaultSourceSheet] = useState("market");
   const [formData, setFormData] = useState(buildDefaultFormData());
   const [errors, setErrors] = useState({});
   const [reportUsers, setReportUsers] = useState([]);
@@ -177,6 +211,8 @@ const ManualMultiReport = () => {
   const [tabsNum, setTabsNum] = useState(3);
   const [createdBatchId, setCreatedBatchId] = useState("");
   const [createdReports, setCreatedReports] = useState([]);
+  const [expandedReports, setExpandedReports] = useState([]);
+  const [selectedReportId, setSelectedReportId] = useState("");
 
   const assetsTotal = useMemo(
     () =>
@@ -187,23 +223,70 @@ const ManualMultiReport = () => {
     [assets]
   );
 
-  const steps = [
-    { id: 1, title: "المرحلة 1", description: "نسخ بيانات الأصول من الأكسيل" },
-    {
-      id: 2,
-      title: "المرحلة 2",
-      description: "تفاصيل التقرير (مطابقة لشاشة Duplicate report)",
-    },
-    {
-      id: 3,
-      title: "المرحلة 3",
-      description: "عدد التابات ورفع التقرير إلى تقييم",
-    },
-  ];
+  const getReportId = (report, index) =>
+    report?._id ||
+    report?.id ||
+    report?.localId ||
+    report?.reportInfo?.batchId ||
+    report?.excel_name ||
+    report?.title ||
+    `report-${index}`;
+
+  const handleSelectSavedReport = (reportId) => {
+    setSelectedReportId(reportId);
+    if (!reportId) {
+      setAssets([defaultAssetRow(defaultSourceSheet)]);
+      return;
+    }
+    const selected =
+      createdReports.find((report, idx) => getReportId(report, idx) === reportId) ||
+      null;
+    if (selected?.reportInfo) {
+      setFormData((prev) => ({
+        ...prev,
+        ...selected.reportInfo,
+      }));
+      setValuers(
+        selected.reportInfo.valuers?.length
+          ? selected.reportInfo.valuers
+          : buildDefaultValuers()
+      );
+      setReportUsers(selected.reportInfo.report_users || []);
+    }
+    const reportAssets = selected?.asset_data || selected?.assets;
+    if (reportAssets?.length) {
+      const mappedAssets = reportAssets.map((asset) => ({
+        asset_name: asset.asset_name || "",
+        asset_usage_id: asset.asset_usage_id || "",
+        final_value: asset.final_value || "",
+        source_sheet: asset.source_sheet || "market",
+      }));
+      setDefaultSourceSheet(mappedAssets[0]?.source_sheet || "market");
+      setAssets(mappedAssets);
+    } else {
+      setAssets([defaultAssetRow(defaultSourceSheet)]);
+    }
+  };
+
+  const toggleReportExpansion = (reportId) => {
+    setExpandedReports((prev) =>
+      prev.includes(reportId)
+        ? prev.filter((id) => id !== reportId)
+        : [...prev, reportId]
+    );
+  };
+
   const resetWizard = () => {
-    setAssets([defaultAssetRow()]);
+    setDefaultSourceSheet("market");
+    setAssets([defaultAssetRow("market")]);
     setAssetErrors({});
     setPasteBuffer("");
+    setColumnHeaders([
+      "asset_name",
+      "asset_usage_id",
+      "final_value",
+      "source_sheet",
+    ]);
     setFormData(buildDefaultFormData());
     setErrors({});
     setReportUsers([]);
@@ -211,10 +294,11 @@ const ManualMultiReport = () => {
     setValuerError(null);
     setStatus(null);
     setAutomationStatus(null);
-    setCurrentStep(1);
     setCreatedBatchId("");
     setCreatedReports([]);
     setTabsNum(3);
+    setExpandedReports([]);
+    setSelectedReportId("");
   };
 
   const handleAssetChange = (index, field, value) => {
@@ -225,15 +309,31 @@ const ManualMultiReport = () => {
     );
   };
 
-  const addAssetRow = () => setAssets((prev) => [...prev, defaultAssetRow()]);
+  const addAssetRow = () =>
+    setAssets((prev) => [...prev, defaultAssetRow(defaultSourceSheet)]);
 
   const removeAssetRow = (index) =>
     setAssets((prev) => prev.filter((_, idx) => idx !== index));
+  const headerOptions = [
+    { value: "asset_name", label: "اسم الأصل" },
+    { value: "asset_usage_id", label: "معرف الاستخدام" },
+    { value: "final_value", label: "القيمة النهائية" },
+    { value: "source_sheet", label: "الورقة (market/cost)" },
+  ];
+  const updateColumnHeader = (index, value) => {
+    setColumnHeaders((prev) => prev.map((h, idx) => (idx === index ? value : h)));
+  };
+  const handleDefaultSourceChange = (value) => {
+    setDefaultSourceSheet(value);
+    updateColumnHeader(3, "source_sheet");
+    setAssets((prev) => prev.map((row) => ({ ...row, source_sheet: value })));
+  };
+
   const parsePastedRows = () => {
     if (!pasteBuffer.trim()) {
       setStatus({
         type: "warning",
-        message: "لم يتم العثور على بيانات للصق.",
+        message: "الصق أسطر الأصول أولاً.",
       });
       return;
     }
@@ -253,13 +353,37 @@ const ManualMultiReport = () => {
     lines.forEach((line) => {
       const cells = line.split(/\t|\|/).map((cell) => cell.trim());
       if (!cells[0]) return;
-      nextAssets.push({
-        asset_name: cells[0] || "",
-        asset_usage_id: cells[1] || "",
-        final_value: cells[2] || "",
-        source_sheet:
-          cells[3] && cells[3].toLowerCase().includes("cost") ? "cost" : "market",
+
+      const rowData = {
+        asset_name: "",
+        asset_usage_id: "",
+        final_value: "",
+        source_sheet: defaultSourceSheet,
+      };
+
+      columnHeaders.forEach((headerKey, idx) => {
+        const value = cells[idx] || "";
+        switch (headerKey) {
+          case "asset_name":
+            rowData.asset_name = value;
+            break;
+          case "asset_usage_id":
+            rowData.asset_usage_id = value;
+            break;
+          case "final_value":
+            rowData.final_value = value;
+            break;
+          case "source_sheet":
+            if (value) {
+              rowData.source_sheet = value.toLowerCase().includes("cost") ? "cost" : "market";
+            }
+            break;
+          default:
+            break;
+        }
       });
+
+      nextAssets.push(rowData);
     });
 
     if (!nextAssets.length) {
@@ -278,9 +402,19 @@ const ManualMultiReport = () => {
     });
   };
 
-  const validateAssets = () => {
+const validateAssets = (requireAssets = true) => {
     const nextErrors = {};
+    const hasData = assets.some(
+      (row) => row.asset_name || row.asset_usage_id || row.final_value
+    );
+
     assets.forEach((row, index) => {
+      const rowHasData =
+        row.asset_name || row.asset_usage_id || row.final_value || row.source_sheet;
+      if (!rowHasData && !requireAssets) {
+        return;
+      }
+
       const rowErrors = {};
       if (!row.asset_name || !row.asset_name.trim()) {
         rowErrors.asset_name = "اسم الأصل مطلوب.";
@@ -291,45 +425,54 @@ const ManualMultiReport = () => {
       }
       const finalValue = Number(row.final_value);
       if (!Number.isInteger(finalValue) || finalValue < 0) {
-        rowErrors.final_value = "final_value يجب أن يكون رقمًا صحيحًا غير سالب.";
+        rowErrors.final_value = "final_value يجب أن يكون رقمًا صحيحًا وغير سالب.";
       }
       if (Object.keys(rowErrors).length) {
         nextErrors[index] = rowErrors;
       }
     });
+
     setAssetErrors(nextErrors);
-    if (!assets.length) {
+    if (!assets.length || (!hasData && requireAssets)) {
       setStatus({
         type: "error",
-        message: "أضف أصلًا واحدًا على الأقل قبل المتابعة.",
+        message: "لا يمكن حفظ الأصول بدون بيانات في الجدول.",
       });
       return false;
     }
     if (Object.keys(nextErrors).length) {
       setStatus({
         type: "error",
-        message: "تحقق من كل الحقول في الجدول (اسم، استخدام، قيمة).",
+        message: "يرجى تصحيح أخطاء الأصول (راجع الحقول المظللة بالأحمر).",
       });
       return false;
     }
-    if (!assetsTotal) {
+    if (!assetsTotal && requireAssets) {
       setStatus({
         type: "error",
-        message: "لا يمكن أن يكون الإجمالي صفرًا.",
+        message: "يجب إدخال مجموع قيم الأصول.",
       });
       return false;
+    }
+    if (requireAssets && assetsTotal > 0) {
+      const declaredValue = Number(formData.value || 0);
+      if (declaredValue && declaredValue !== assetsTotal) {
+        setStatus({
+          type: "error",
+          message: "الإجمالي يجب أن يساوي مجموع الأصول في الخطوة الأولى.",
+        });
+        return false;
+      }
     }
     return true;
   };
-
   const handleAssetsContinue = () => {
     if (!validateAssets()) return;
     setStatus({
       type: "success",
-      message:
-        "تم حفظ بيانات الأصول مبدئيًا. انتقل إلى تبويب Report details لملء باقي الحقول.",
+      message: "تم حفظ بيانات الأصول مبدئيًا. يمكنك متابعة بيانات التقرير الآن.",
     });
-    setCurrentStep(2);
+    setShowAssetsModal(false);
   };
   const handleFieldChange = (field, value) => {
     setFormData((prev) => ({
@@ -361,11 +504,19 @@ const ManualMultiReport = () => {
     );
 
   useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      value: assetsTotal ? String(assetsTotal) : "",
-      final_value: assetsTotal ? String(assetsTotal) : "",
-    }));
+    setFormData((prev) => {
+      if (!assetsTotal) {
+        return { ...prev, value: "", final_value: "" };
+      }
+      if (!prev.value) {
+        return {
+          ...prev,
+          value: String(assetsTotal),
+          final_value: String(assetsTotal),
+        };
+      }
+      return prev;
+    });
   }, [assetsTotal]);
   const validateReportDetails = () => {
     const nextErrors = {};
@@ -377,6 +528,7 @@ const ManualMultiReport = () => {
       { field: "valued_at", message: "تاريخ التقييم مطلوب." },
       { field: "submitted_at", message: "تاريخ التسليم مطلوب." },
       { field: "inspection_date", message: "تاريخ المعاينة مطلوب." },
+      { field: "value", message: "القيمة الإجمالية مطلوبة." },
       { field: "client_name", message: "اسم العميل مطلوب." },
       { field: "telephone", message: "هاتف العميل مطلوب." },
       { field: "email", message: "البريد الإلكتروني مطلوب." },
@@ -430,9 +582,9 @@ const ManualMultiReport = () => {
       setValuerError(null);
     }
 
-    if (Number(formData.value || 0) !== assetsTotal) {
+    if (assetsTotal > 0 && Number(formData.value || 0) !== assetsTotal) {
       nextErrors.value =
-        "الإجمالي يجب أن يساوي مجموع الأصول في الخطوة الأولى.";
+        "الإجمالي يجب أن يساوي مجموع الأصول عند حفظ الأصول المرتبطة.";
     }
 
     setErrors(nextErrors);
@@ -444,13 +596,21 @@ const ManualMultiReport = () => {
     );
   };
   const buildPayload = () => {
-    const normalizedAssets = assets.map((row, index) => ({
-      asset_id: index + 1,
-      asset_name: row.asset_name.trim(),
-      asset_usage_id: Number(row.asset_usage_id),
-      final_value: Number(row.final_value),
-      source_sheet: row.source_sheet || "market",
-    }));
+    const normalizedAssets = assets
+      .filter(
+        (row) =>
+          row.asset_name ||
+          row.asset_usage_id ||
+          row.final_value ||
+          row.source_sheet
+      )
+      .map((row, index) => ({
+        asset_id: index + 1,
+        asset_name: (row.asset_name || "").trim(),
+        asset_usage_id: Number(row.asset_usage_id || 0),
+        final_value: Number(row.final_value || 0),
+        source_sheet: row.source_sheet || "market",
+      }));
 
     const filteredUsers = reportUsers
       .map((user) => user.trim())
@@ -464,12 +624,14 @@ const ManualMultiReport = () => {
       }))
       .filter((valuer) => valuer.valuer_name);
 
+    const declaredValue = Number(formData.value || assetsTotal || 0);
+
     return {
       assets: normalizedAssets,
       reportInfo: {
         ...formData,
-        value: assetsTotal,
-        final_value: assetsTotal,
+        value: declaredValue,
+        final_value: declaredValue,
         report_users: filteredUsers,
         has_other_users: hasOtherUsers,
         valuers: sanitizedValuers,
@@ -477,13 +639,15 @@ const ManualMultiReport = () => {
     };
   };
 
-  const handleSaveReport = async () => {
-    if (!validateAssets() || !validateReportDetails()) {
+  const handleSaveReport = async ({ allowEmptyAssets = false } = {}) => {
+    const assetsValid = validateAssets(!allowEmptyAssets);
+    const reportValid = validateReportDetails();
+    if (!assetsValid || !reportValid) {
       setStatus({
         type: "error",
-        message: "تحقق من البيانات في التابين الأول والثاني قبل الحفظ.",
+        message: "برجاء التأكد من صحة بيانات الأصول وبيانات التقرير قبل المتابعة.",
       });
-      return;
+      return false;
     }
     try {
       setIsSaving(true);
@@ -491,24 +655,70 @@ const ManualMultiReport = () => {
       const payload = buildPayload();
       const response = await createManualMultiApproachReport(payload);
       if (response?.status !== "success") {
-        throw new Error(response?.error || "فشل حفظ التقرير.");
+        throw new Error(response?.error || "حدث خطأ غير متوقع أثناء حفظ البيانات.");
       }
-      setCreatedBatchId(response.batchId);
-      setCreatedReports(response.reports || []);
+      const responseReports = Array.isArray(response?.reports) ? response.reports : [];
+      const normalizedReports = responseReports.length
+        ? responseReports.map((report, idx) => ({
+            ...report,
+            reportInfo: report.reportInfo || payload.reportInfo,
+            asset_data: report.asset_data || payload.assets,
+            localId: report._id || report.id || `${response.batchId || "report"}-${idx}`,
+          }))
+        : [
+            {
+              _id: response?.batchId || payload.reportInfo?.batchId || `report-${Date.now()}`,
+              reportInfo: payload.reportInfo,
+              asset_data: payload.assets,
+              title:
+                payload.reportInfo?.title ||
+                payload.reportInfo?.excel_name ||
+                "Manual report",
+              final_value:
+                payload.reportInfo?.final_value || payload.reportInfo?.value || 0,
+              batchId: response?.batchId || payload.reportInfo?.batchId || "",
+              localId: response?.batchId || payload.reportInfo?.batchId || `report-${Date.now()}`,
+            },
+          ];
+      setCreatedBatchId(response?.batchId || payload.reportInfo?.batchId || "");
+      setCreatedReports((prev) => {
+        const seen = new Set();
+        const merged = [];
+        [...normalizedReports, ...prev].forEach((report) => {
+          const key =
+            report._id ||
+            report.id ||
+            report.localId ||
+            report.reportInfo?.batchId ||
+            report.title;
+          if (seen.has(key)) return;
+          seen.add(key);
+          merged.push(report);
+        });
+        return merged;
+      });
+      if (normalizedReports.length) {
+        const newId =
+          normalizedReports[0]._id ||
+          normalizedReports[0].id ||
+          normalizedReports[0].localId ||
+          "";
+        setSelectedReportId(newId);
+      }
       setStatus({
         type: "success",
-        message:
-          "تم حفظ التقرير وإرساله لقاعدة البيانات. يمكنك الآن رفعه إلى تقييم.",
+        message: "تم حفظ التقارير بنجاح. يمكنك مراجعتها في الجدول أدناه.",
       });
-      setCurrentStep(3);
+      return true;
     } catch (err) {
       setStatus({
         type: "error",
         message:
           err?.response?.data?.error ||
           err?.message ||
-          "تعذر حفظ التقرير اليدوي.",
+          "حدث خطأ غير متوقع.",
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -562,49 +772,125 @@ const ManualMultiReport = () => {
       setSending(false);
     }
   };
-  const renderStepOne = () => (
+  const handleSaveReportAndClose = async () => {
+    const ok = await handleSaveReport({ allowEmptyAssets: true });
+    if (ok) {
+      setShowReportModal(false);
+    }
+  };
+  const handleSaveReportAndGoAssets = async () => {
+    const ok = await handleSaveReport({ allowEmptyAssets: true });
+    if (ok) {
+      setShowReportModal(false);
+      setShowAssetsModal(true);
+    }
+  };
+  const renderAssetsPanel = () => (
     <>
-      <Section title="لصق بيانات الأصول من ملف الأكسيل">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-          <div>
-            <label className="text-sm font-semibold text-gray-700 mb-2 block">
-              الصق الأسطر من الأكسيل (asset_name | usage_id | final_value)
-            </label>
-            <div className="flex flex-col gap-2">
+      <Section title="لصق بيانات الأصول">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <p className="text-sm text-gray-700">اختر تقريراً من القائمة أو ألصق بيانات أصول جديدة.</p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-700">التقارير المحفوظة</label>
+            <select
+              value={selectedReportId}
+              onChange={(e) => handleSelectSavedReport(e.target.value)}
+              className="px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">تقرير جديد</option>
+              {createdReports.map((report, idx) => {
+                const reportId = getReportId(report, idx);
+                const label =
+                  report.reportInfo?.title ||
+                  report.title ||
+                  report.excel_name ||
+                  `Report #${idx + 1}`;
+                return (
+                  <option key={reportId} value={reportId}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+          <div className="lg:col-span-3 space-y-3">
+            <div className="w-full h-56 border border-emerald-300 rounded-lg overflow-hidden shadow bg-white">
+              <div className="grid grid-cols-4 text-xs bg-emerald-600 text-white border-b border-emerald-300">
+                {[0, 1, 2].map((idx) => (
+                  <div
+                    key={`hdr-${idx}`}
+                    className="px-3 py-2 font-semibold border-l last:border-l-0 border-emerald-500"
+                  >
+                    <select
+                      value={columnHeaders[idx]}
+                      onChange={(e) => updateColumnHeader(idx, e.target.value)}
+                      className="w-full px-2 py-1 text-[11px] border rounded-md bg-white text-gray-800 shadow-sm"
+                    >
+                      {headerOptions
+                        .filter((opt) => opt.value !== "source_sheet")
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                ))}
+                <div className="px-3 py-2 font-semibold border-l border-emerald-500">
+                  <select
+                    value={defaultSourceSheet}
+                    onChange={(e) => handleDefaultSourceChange(e.target.value)}
+                    className="w-full px-2 py-1 text-[11px] border rounded-md bg-white text-gray-800 shadow-sm"
+                  >
+                    <option value="market">market</option>
+                    <option value="cost">cost</option>
+                  </select>
+                </div>
+              </div>
               <textarea
-                className="w-full h-40 border border-gray-300 rounded-lg p-3 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="مثال: انسخ الصفوف من الأكسيل وافصل الأعمدة بـ Tab أو |"
+                className="w-full h-[calc(100%-48px)] font-mono text-sm p-3 bg-emerald-50 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                style={{
+                  backgroundImage:
+                    "repeating-linear-gradient(0deg, rgba(16,185,129,0.12), rgba(16,185,129,0.12) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(16,185,129,0.12), rgba(16,185,129,0.12) 1px, transparent 1px, transparent 25%)",
+                  backgroundSize: "100% 32px, 25% 100%",
+                  backgroundPosition: "0 0, 0 0",
+                  backgroundRepeat: "repeat, repeat",
+                }}
+                placeholder={"مثال:\nAsset 1\t101\t250000\tmarket\nAsset 2\t102\t180000\tcost"}
                 value={pasteBuffer}
                 onChange={(e) => setPasteBuffer(e.target.value)}
               />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={parsePastedRows}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white shadow hover:bg-blue-700"
-                >
-                  <ClipboardPaste className="w-4 h-4" />
-                  تطبيق البيانات
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPasteBuffer("")}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  مسح الحقل
-                </button>
-              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                onClick={parsePastedRows}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white shadow hover:bg-blue-700"
+              >
+                <ClipboardPaste className="w-4 h-4" />
+                لصق البيانات
+              </button>
+              <button
+                type="button"
+                onClick={() => setPasteBuffer("")}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                مسح الحقول
+              </button>
             </div>
           </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm leading-relaxed">
-            <p className="font-semibold text-gray-800">تعليمات سريعة:</p>
-            <ul className="mt-2 list-disc pl-5 space-y-1 text-gray-600">
-              <li>انسخ الأعمدة الثلاثة (الاسم، الاستخدام، القيمة).</li>
-              <li>الفواصل يمكن أن تكون Tabs أو Pipes. كل سطر = أصل واحد.</li>
-              <li>راجع الجدول لتحديد نوع الورقة market أو cost.</li>
+          <div className="lg:col-span-1 bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm leading-relaxed shadow-inner">
+            <p className="font-semibold text-emerald-800">ملاحظات سريعة:</p>
+            <ul className="mt-2 list-disc pl-5 space-y-1 text-emerald-900">
+              <li>اختر الترتيب المناسب للأعمدة من القوائم في الأعلى.</li>
+              <li>يمكن الفصل بـ Tab أو |. كل سطر يمثل أصلًا واحدًا.</li>
+              <li>اختر السوق أو التكلفة من العمود الرابع وسيتم تطبيقه على كل الصفوف تلقائيًا.</li>
             </ul>
-            <div className="mt-3 text-xs text-gray-500">
-              عدد الأصول: {assets.length} — مجموع القيم: {assetsTotal.toLocaleString()}
+            <div className="mt-3 text-xs text-emerald-700">
+              عدد الأصول: {assets.length} - إجمالي القيم: {assetsTotal.toLocaleString()}
             </div>
           </div>
         </div>
@@ -616,9 +902,9 @@ const ManualMultiReport = () => {
             <thead className="bg-gray-100 text-gray-700 uppercase text-xs">
               <tr>
                 <th className="px-3 py-2 text-left">#</th>
-                <th className="px-3 py-2 text-left">Asset Name</th>
+                <th className="px-3 py-2 text-left">اسم الأصل</th>
                 <th className="px-3 py-2 text-left">Usage ID</th>
-                <th className="px-3 py-2 text-left">Final Value</th>
+                <th className="px-3 py-2 text-left">القيمة النهائية</th>
                 <th className="px-3 py-2 text-left">Sheet</th>
                 <th className="px-3 py-2"></th>
               </tr>
@@ -686,7 +972,7 @@ const ManualMultiReport = () => {
                         type="button"
                         onClick={() => removeAssetRow(index)}
                         className="inline-flex items-center justify-center text-red-600 hover:text-red-800"
-                        title="حذف السطر"
+                        title="حذف الصف"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -699,7 +985,7 @@ const ManualMultiReport = () => {
         </div>
         <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
           <div className="text-sm text-gray-600">
-            عدد الأصول: <span className="font-semibold text-gray-900">{assets.length}</span> — إجمالي القيمة:
+            عدد الأصول: <span className="font-semibold text-gray-900">{assets.length}</span> - إجمالي القيم:
             <span className="font-semibold text-gray-900"> {assetsTotal.toLocaleString()}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -709,7 +995,7 @@ const ManualMultiReport = () => {
               className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-800 hover:bg-gray-50"
             >
               <Plus className="w-4 h-4" />
-              إضافة سطر
+              إضافة صف
             </button>
             <button
               type="button"
@@ -717,7 +1003,7 @@ const ManualMultiReport = () => {
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white shadow hover:bg-blue-700"
             >
               <Save className="w-4 h-4" />
-              حفظ و استمرار
+              حفظ بيانات الأصول
             </button>
           </div>
         </div>
@@ -728,7 +1014,7 @@ const ManualMultiReport = () => {
     formData.has_other_users && (
       <Section title="المستخدمون الآخرون للتقرير">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-gray-800">المستخدمون الآخرين</h4>
+          <h4 className="text-sm font-semibold text-gray-800">المستخدمون الآخرون</h4>
           <div className="flex gap-2">
             <button
               type="button"
@@ -768,7 +1054,7 @@ const ManualMultiReport = () => {
       </Section>
     );
   const renderValuersSection = () => (
-    <Section title="Valuers">
+    <Section title="بيانات المقيمين">
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-base font-semibold text-gray-800">بيانات المقيمين</h4>
         <div className="flex gap-2">
@@ -831,12 +1117,12 @@ const ManualMultiReport = () => {
       </div>
     </Section>
   );
-  const renderStepTwo = () => (
-    <>
-      <Section title="Report information">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+  const renderReportPanel = () => (
+    <div className="space-y-3 text-sm">
+      <Section title="بيانات التقرير" className="p-3 text-sm [&>h3]:text-base [&>h3]:mb-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <InputField
-            label="Report Title"
+            label="عنوان التقرير"
             required
             value={formData.title}
             onChange={(e) => handleFieldChange("title", e.target.value)}
@@ -845,7 +1131,7 @@ const ManualMultiReport = () => {
             placeholder="اكتب عنوانًا واضحًا للتقرير"
           />
           <SelectField
-            label="Valuation Purpose"
+            label="الغرض من التقييم"
             required
             value={formData.purpose_id}
             onChange={(e) => handleFieldChange("purpose_id", e.target.value)}
@@ -853,7 +1139,7 @@ const ManualMultiReport = () => {
             error={errors.purpose_id}
           />
           <SelectField
-            label="Value Premise"
+            label="طبيعة القيمة"
             required
             value={formData.value_premise_id}
             onChange={(e) => handleFieldChange("value_premise_id", e.target.value)}
@@ -861,7 +1147,7 @@ const ManualMultiReport = () => {
             error={errors.value_premise_id}
           />
           <SelectField
-            label="Report Type"
+            label="نوع التقرير"
             required
             value={formData.report_type}
             onChange={(e) => handleFieldChange("report_type", e.target.value)}
@@ -869,7 +1155,7 @@ const ManualMultiReport = () => {
             error={errors.report_type}
           />
           <InputField
-            label="Valued At"
+            label="تاريخ التقييم"
             required
             type="date"
             value={formData.valued_at}
@@ -877,7 +1163,7 @@ const ManualMultiReport = () => {
             error={errors.valued_at}
           />
           <InputField
-            label="Submitted At"
+            label="تاريخ التسليم"
             required
             type="date"
             value={formData.submitted_at}
@@ -885,7 +1171,7 @@ const ManualMultiReport = () => {
             error={errors.submitted_at}
           />
           <InputField
-            label="Inspection Date"
+            label="تاريخ المعاينة"
             required
             type="date"
             value={formData.inspection_date}
@@ -893,15 +1179,20 @@ const ManualMultiReport = () => {
             error={errors.inspection_date}
           />
           <InputField
-            label="Value (auto from assets)"
+            label="القيمة الإجمالية"
             required
-            type="text"
+            type="number"
+            step="any"
             value={formData.value}
-            readOnly
+            onChange={(e) => {
+              handleFieldChange("value", e.target.value);
+              handleFieldChange("final_value", e.target.value);
+            }}
             error={errors.value}
+            placeholder={assetsTotal ? assetsTotal.toString() : "0"}
           />
           <SelectField
-            label="Valuation Currency"
+            label="عملة التقييم"
             required
             value={formData.valuation_currency}
             onChange={(e) => handleFieldChange("valuation_currency", e.target.value)}
@@ -909,45 +1200,42 @@ const ManualMultiReport = () => {
             error={errors.valuation_currency}
           />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
           <TextAreaField
-            label="Assumptions"
+            label="الافتراضات"
             rows={3}
             value={formData.assumptions}
             onChange={(e) => handleFieldChange("assumptions", e.target.value)}
           />
           <TextAreaField
-            label="Special Assumptions"
+            label="الافتراضات الخاصة"
             rows={3}
             value={formData.special_assumptions}
             onChange={(e) => handleFieldChange("special_assumptions", e.target.value)}
           />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <InputField
-            label="Excel Name (اختياري)"
-            value={formData.excel_name}
-            onChange={(e) => handleFieldChange("excel_name", e.target.value)}
-            placeholder="manual-report.xlsx"
-          />
-          <InputField
-            label="Batch ID (اختياري)"
-            value={formData.batchId}
-            onChange={(e) => handleFieldChange("batchId", e.target.value)}
-            placeholder="MAN-xxxx"
-          />
-          <InputField
-            label="PDF Path"
-            value={formData.pdf_path}
-            onChange={(e) => handleFieldChange("pdf_path", e.target.value)}
-            placeholder="C:\\Reports\\final.pdf"
-          />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">ملف PDF</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                handleFieldChange("pdf_path", file ? file.path || file.name : "");
+              }}
+              className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+            {formData.pdf_path && (
+              <p className="text-xs text-gray-500 mt-1 break-all">المسار المختار: {formData.pdf_path}</p>
+            )}
+          </div>
         </div>
       </Section>
 
-      <Section title="Client information">
+      <Section title="بيانات العميل" className="p-3 text-sm [&>h3]:text-base [&>h3]:mb-2">
         <InputField
-          label="Client Name"
+          label="اسم العميل"
           required
           value={formData.client_name}
           onChange={(e) => {
@@ -959,9 +1247,9 @@ const ManualMultiReport = () => {
           error={errors.client_name}
           placeholder="اسم العميل"
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <InputField
-            label="Telephone"
+            label="رقم الجوال"
             required
             value={formData.telephone}
             onChange={(e) => handleFieldChange("telephone", e.target.value)}
@@ -969,7 +1257,7 @@ const ManualMultiReport = () => {
             placeholder="+9665xxxxxxxx"
           />
           <InputField
-            label="Email"
+            label="البريد الإلكتروني"
             required
             type="email"
             value={formData.email}
@@ -978,19 +1266,19 @@ const ManualMultiReport = () => {
             placeholder="example@domain.com"
           />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
           <InputField
-            label="Region"
+            label="المنطقة"
             value={formData.region}
             onChange={(e) => handleFieldChange("region", e.target.value)}
           />
           <InputField
-            label="City"
+            label="المدينة"
             value={formData.city}
             onChange={(e) => handleFieldChange("city", e.target.value)}
           />
           <InputField
-            label="Owner Name"
+            label="اسم المالك"
             value={formData.owner_name}
             onChange={(e) => handleFieldChange("owner_name", e.target.value)}
           />
@@ -1020,19 +1308,23 @@ const ManualMultiReport = () => {
 
       {renderValuersSection()}
 
-      <div className="flex items-center justify-between mt-6">
+      <div className="flex items-center justify-end mt-4 flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setCurrentStep(1)}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={handleSaveReportAndClose}
+          disabled={isSaving}
+          className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md border border-gray-300 text-gray-800 hover:bg-gray-50 ${
+            isSaving ? "opacity-50 cursor-not-allowed" : ""
+          }`}
         >
-          العودة إلى خطوة الأصول
+          <Save className="w-4 h-4" />
+          حفظ وإغلاق
         </button>
         <button
           type="button"
-          onClick={handleSaveReport}
+          onClick={handleSaveReportAndGoAssets}
           disabled={isSaving}
-          className={`inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-md shadow ${
+          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md shadow ${
             isSaving ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >
@@ -1044,121 +1336,153 @@ const ManualMultiReport = () => {
           ) : (
             <>
               <Save className="w-4 h-4" />
-              حفظ و استمرار
+              حفظ والمتابعة للأصول
             </>
           )}
         </button>
       </div>
-    </>
+    </div>
   );
-  const renderReportSummary = () => (
-    <>
-      <Section title="معلومات عامة عن الحفظ">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <InputField label="Batch ID" value={createdBatchId} readOnly placeholder="سيظهر بعد الحفظ" />
-          <InputField
-            label="عدد التابات (Tabs)"
-            type="number"
-            min={1}
-            value={tabsNum}
-            onChange={(e) => setTabsNum(e.target.value)}
-          />
-          <InputField label="عدد التقارير" value={createdReports.length} readOnly />
-        </div>
-      </Section>
-
-      <Section title="التقارير المحفوظة">
-        {!createdReports.length && (
-          <p className="text-sm text-gray-600">لم يتم إنشاء أي تقرير بعد. ارجع للخطوة السابقة واضغط حفظ.</p>
-        )}
-        {createdReports.map((report) => (
-          <div key={report._id || report.excel_name || report.title} className="border border-gray-200 rounded-lg mb-4">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 gap-2">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">اسم التقرير: {report.title || report.excel_name}</p>
-                <p className="text-xs text-gray-600">
-                  إجمالي الأصول: {report.asset_data?.length || 0} — القيمة النهائية: {
-                    report.final_value?.toLocaleString?.() || 0
-                  }
-                </p>
-              </div>
-              <span className="text-xs text-gray-500">Batch: {createdBatchId}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-xs">
-                <thead className="bg-white text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Asset Name</th>
-                    <th className="px-3 py-2 text-left">Usage ID</th>
-                    <th className="px-3 py-2 text-left">Value</th>
-                    <th className="px-3 py-2 text-left">Sheet</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(report.asset_data || []).map((asset, idx) => (
-                    <tr key={`created-asset-${idx}`} className="border-t">
-                      <td className="px-3 py-1.5 text-gray-800">{asset.asset_name}</td>
-                      <td className="px-3 py-1.5 text-gray-600">{asset.asset_usage_id}</td>
-                      <td className="px-3 py-1.5 text-gray-800">{Number(asset.final_value).toLocaleString()}</td>
-                      <td className="px-3 py-1.5 text-gray-600">{asset.source_sheet}</td>
+  const renderReportsTable = () => (
+    <Section title="جدول التقارير">
+      <div className="flex items-center gap-3 mb-3">
+        <InputField
+          label="عدد التبويبات (Tabs)"
+          type="number"
+          min={1}
+          value={tabsNum}
+          onChange={(e) => setTabsNum(e.target.value)}
+          className="w-48"
+        />
+      </div>
+      {!createdReports.length && (
+        <p className="text-sm text-gray-600">لا توجد تقارير محفوظة بعد. قم بحفظ تقرير لإظهاره هنا.</p>
+      )}
+      {createdReports.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+            <thead className="bg-gray-100 text-gray-700 uppercase text-xs">
+              <tr>
+                <th className="px-3 py-2 text-left w-10"></th>
+                <th className="px-3 py-2 text-left">التقرير</th>
+                <th className="px-3 py-2 text-left">عدد الأصول</th>
+                <th className="px-3 py-2 text-left">القيمة النهائية</th>
+                <th className="px-3 py-2 text-left">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {createdReports.map((report, idx) => {
+                const reportId = getReportId(report, idx);
+                const isExpanded = expandedReports.includes(reportId);
+                const assetList = report.asset_data || report.assets || [];
+                const reportInfo = report.reportInfo || {};
+                const title =
+                  reportInfo.title ||
+                  report.title ||
+                  report.excel_name ||
+                  `Report #${idx + 1}`;
+                const finalValue =
+                  report.final_value ??
+                  reportInfo.final_value ??
+                  reportInfo.value ??
+                  0;
+                return (
+                  <React.Fragment key={reportId}>
+                    <tr className="border-t border-gray-100 bg-white">
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleReportExpansion(reportId)}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                          aria-label={isExpanded ? "إخفاء الأصول" : "عرض الأصول المرتبطة"}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="text-sm font-semibold text-gray-900">{title}</p>
+                        <p className="text-xs text-gray-500">{reportInfo.excel_name || report.excel_name || ""}</p>
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">{assetList.length}</td>
+                      <td className="px-3 py-2 text-gray-700">
+                        {Number(finalValue || 0).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectSavedReport(reportId)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 text-gray-800 text-xs font-semibold hover:bg-slate-200 shadow-sm"
+                          >
+                            <Table className="w-4 h-4" />
+                            عرض البيانات
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedReportId(reportId);
+                              handleSendToTaqeem();
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-semibold shadow hover:from-emerald-400 hover:to-emerald-500"
+                          >
+                            <Send className="w-4 h-4" />
+                            إرسال التقرير إلى تقييم
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-      </Section>
-
-      <div className="flex items-center justify-between mt-6 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCurrentStep(2)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            العودة لتعديل البيانات
-          </button>
-          <button
-            type="button"
-            onClick={resetWizard}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md border border-red-200 text-red-700 hover:bg-red-50"
-          >
-            <RefreshCw className="w-4 h-4" />
-            إنشاء تقرير جديد
-          </button>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={5} className="bg-slate-50 border-t border-gray-200">
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-white text-gray-500 uppercase">
+                                <tr>
+                                  <th className="px-3 py-2 text-left">Asset Name</th>
+                                  <th className="px-3 py-2 text-left">Usage ID</th>
+                                  <th className="px-3 py-2 text-left">Value</th>
+                                  <th className="px-3 py-2 text-left">Sheet</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {assetList.map((asset, assetIdx) => (
+                                  <tr key={`asset-${reportId}-${assetIdx}`} className="border-t">
+                                    <td className="px-3 py-1.5 text-gray-800">{asset.asset_name}</td>
+                                    <td className="px-3 py-1.5 text-gray-600">{asset.asset_usage_id}</td>
+                                    <td className="px-3 py-1.5 text-gray-800">
+                                      {Number(asset.final_value || 0).toLocaleString()}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-gray-600">{asset.source_sheet}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-        <button
-          type="button"
-          onClick={handleSendToTaqeem}
-          disabled={sending}
-          className={`inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-md shadow ${
-            sending ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700"
-          }`}
-        >
-          {sending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              جاري الإرسال...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              رفع التقرير إلى تقييم
-            </>
-          )}
-        </button>
-      </div>
-    </>
+      )}
+    </Section>
   );
+
   return (
     <div className="min-h-screen bg-gray-50 py-4 px-3">
-      <div className="max-w-6xl mx-auto flex flex-col">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div className="max-w-6xl mx-auto flex flex-col gap-4">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">نسخ بيانات الأكسيل للتقارير</h1>
+            <h1 className="text-2xl font-bold text-gray-900">إدارة التقارير اليدوية متعددة المناهج</h1>
             <p className="text-sm text-gray-600">
-              أنشئ تقرير Multi-Approach يدويًا بنفس تجربة Duplicate report & send new، ثم ارفع البيانات إلى نظام تقييم.
+              من هنا يمكنك إنشاء تقارير Multi-Approach وتكرارها وإرسالها في مكان واحد.
             </p>
           </div>
           <button
@@ -1167,36 +1491,55 @@ const ManualMultiReport = () => {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200"
           >
             <RefreshCw className="w-4 h-4" />
-            إعادة ضبط المعالج
+            إعادة تعيين النموذج
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {steps.map((step) => (
-              <div
-                key={step.id}
-                className={`rounded-lg border px-4 py-3 ${
-                  currentStep === step.id ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-white"
-                }`}
-              >
-                <p className="text-xs uppercase text-gray-500">الخطوة {step.id}</p>
-                <p className="text-sm font-semibold text-gray-900">{step.title}</p>
-                <p className="text-xs text-gray-600 mt-1">{step.description}</p>
-              </div>
-            ))}
-          </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-wrap items-center gap-3 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setShowReportModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg hover:from-blue-500 hover:to-indigo-500 transition"
+          >
+            <Table className="w-4 h-4" />
+            بيانات التقرير
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAssetsModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-full border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition shadow-sm"
+          >
+            <ClipboardPaste className="w-4 h-4" />
+            لصق بيانات الأصول
+          </button>
         </div>
 
         <InfoBanner tone={status?.type || "info"} message={status?.message} />
         <InfoBanner tone={automationStatus?.type || "info"} message={automationStatus?.message} />
 
-        {currentStep === 1 && renderStepOne()}
-        {currentStep === 2 && renderStepTwo()}
-        {currentStep === 3 && renderReportSummary()}
+        {renderReportsTable()}
+
+        <Modal
+          open={showAssetsModal}
+          onClose={() => setShowAssetsModal(false)}
+          title="لصق بيانات الأصول"
+          maxWidth="max-w-6xl"
+        >
+          <div className="space-y-4">
+            {renderAssetsPanel()}
+          </div>
+        </Modal>
+
+        <Modal
+          open={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          title="بيانات التقرير"
+          maxWidth="max-w-5xl"
+        >
+          <div className="space-y-4">{renderReportPanel()}</div>
+        </Modal>
       </div>
     </div>
   );
 };
-
 export default ManualMultiReport;
