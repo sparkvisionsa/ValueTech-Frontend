@@ -28,6 +28,7 @@ import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
 import ManualMultiReport from './screens/ManualMultiReport';
+import { RamProvider } from './context/RAMContext';
 import ValuationSystem from './screens/ValuationSystem';
 import WordCopy from './screens/WordCopy';
 import Apps from './screens/Apps';
@@ -163,7 +164,9 @@ const App = () => {
                 <NavStatusProvider>
                     <ElrajhiUploadProvider>
                         <ValueNavProvider>
-                            <AppContent />
+                            <RamProvider>
+                                <AppContent />
+                            </RamProvider>
                         </ValueNavProvider>
                     </ElrajhiUploadProvider>
                 </NavStatusProvider>

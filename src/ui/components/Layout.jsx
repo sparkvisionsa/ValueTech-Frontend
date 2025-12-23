@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import { AlertTriangle, Bell, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useNavStatus } from '../context/NavStatusContext';
 import { useValueNav } from '../context/ValueNavContext';
+import { useRam } from '../context/RAMContext'; // Updated import
 import navigation from '../constants/navigation';
 const { viewTitles, valueSystemGroups, findTabInfo } = navigation;
 
@@ -39,20 +40,40 @@ const Layout = ({ children, currentView, onViewChange }) => {
         resetAll
     } = useValueNav();
 
+    // Use RAM context
+    const {
+        ramInfo,
+        readingRam,
+        error: ramError,
+        readRam,
+        startPolling,
+        stopPolling,
+        isAvailable: isRamAvailable
+    } = useRam();
+
     const isAdmin = user?.phone === '011111';
     const blocked = isAuthenticated && (isFeatureBlocked(currentView) || updateBlocked());
     const blockMessage = blockReason(currentView);
     const mode = systemState?.mode || 'active';
     const [downtimeParts, setDowntimeParts] = useState(null);
     const [hideUpdateNotice, setHideUpdateNotice] = useState(false);
-    const [ramInfo, setRamInfo] = useState(null);
-    const [readingRam, setReadingRam] = useState(false);
-    const ramInFlight = useRef(false);
 
     useEffect(() => {
         // Reset notice dismissal whenever a new update arrives
         setHideUpdateNotice(false);
     }, [latestUpdate]);
+
+    useEffect(() => {
+        // Start RAM polling when component mounts
+        if (isRamAvailable) {
+            startPolling(5000);
+        }
+
+        // Cleanup when component unmounts
+        return () => {
+            stopPolling();
+        };
+    }, [startPolling, stopPolling, isRamAvailable]);
 
     useEffect(() => {
         if (!systemState || (!systemState.downtimeDays && !systemState.expectedReturn && !systemState.downtimeHours)) {
@@ -150,46 +171,6 @@ const Layout = ({ children, currentView, onViewChange }) => {
         }
     };
 
-    const handleReadRam = async () => {
-        if (ramInFlight.current) return;
-        if (!window?.electronAPI?.readRam) {
-            setRamInfo({ error: 'RAM reader not available in this build.' });
-            return;
-        }
-
-        setReadingRam(true);
-        ramInFlight.current = true;
-        try {
-            const result = await window.electronAPI.readRam();
-            if (result?.ok) {
-                setRamInfo({
-                    usedGb: result.usedGb,
-                    totalGb: result.totalGb,
-                    freeGb: result.freeGb,
-                    readAt: Date.now()
-                });
-            } else {
-                setRamInfo({ error: result?.error || 'Unable to read RAM.' });
-            }
-        } catch (err) {
-            setRamInfo({ error: err?.message || 'Failed to read RAM.' });
-        } finally {
-            setReadingRam(false);
-            ramInFlight.current = false;
-        }
-    };
-
-    useEffect(() => {
-        // Auto-refresh RAM usage without manual clicks
-        const pollRam = () => {
-            handleReadRam();
-        };
-
-        pollRam();
-        const id = setInterval(pollRam, 5000);
-        return () => clearInterval(id);
-    }, []);
-
     const isMandatoryUpdate = latestUpdate?.rolloutType === 'mandatory';
     const shouldShowUpdateNotice = isAuthenticated && !isAdmin && latestUpdate && userUpdateState?.status !== 'applied' && !hideUpdateNotice;
 
@@ -266,7 +247,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 ? 'bg-green-100 text-green-800'
                 : mode === 'partial'
                     ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-red-100 text-red-800'
+                    : 'bg-red-100 text-red-800'
                 }`}>
                 {mode}
             </span>
@@ -411,7 +392,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50"> {/* Simple background */}
+        <div className="flex h-screen bg-gray-50">
             {/* Sidebar */}
             <Sidebar currentView={currentView} onViewChange={onViewChange} />
 
@@ -431,36 +412,38 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                 {statusBanner}
                                 <button
                                     type="button"
-                                    onClick={handleReadRam}
-                                    disabled={readingRam}
+                                    onClick={readRam}
+                                    disabled={readingRam || !isRamAvailable}
                                     className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-60"
+                                    title={!isRamAvailable ? "RAM reader not available" : "Refresh RAM info"}
                                 >
                                     {readingRam ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
                                     ) : (
                                         <HardDrive className="w-4 h-4" />
                                     )}
-                                    Read RAM
+                                    {readingRam ? 'Reading...' : 'Read RAM'}
                                 </button>
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
                             {renderStatusPill('Taqeem', taqeemStatus)}
                             {renderStatusPill('Company', companyStatus)}
-                            {ramInfo && (
+                            {(ramInfo || ramError) && (
                                 <div
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm shadow-sm ${ramInfo.error
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm shadow-sm ${ramError
                                         ? 'border-red-200 bg-red-50 text-red-800'
                                         : 'border-slate-200 bg-slate-50 text-gray-800'
                                         }`}
                                 >
                                     <HardDrive className="w-4 h-4" />
-                                    {ramInfo.error ? (
-                                        <span>{ramInfo.error}</span>
+                                    {ramError ? (
+                                        <span>{ramError}</span>
                                     ) : (
                                         <span>
                                             Used {ramInfo.usedGb} GB of {ramInfo.totalGb} GB
                                             {typeof ramInfo.freeGb === 'number' ? ` (Free ${ramInfo.freeGb} GB)` : ''}
+                                            {ramInfo.usagePercentage && ` (${ramInfo.usagePercentage}%)`}
                                         </span>
                                     )}
                                 </div>
@@ -484,12 +467,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                     <AlertTriangle className="w-4 h-4 text-blue-600" />
                                     <span className="font-semibold text-blue-900">Downtime ends in</span>
                                 </div>
-                        <div className="flex flex-wrap gap-2">
-                            {[
-                                { label: 'Days', value: downtimeParts.days },
-                                { label: 'Hours', value: downtimeParts.hours },
-                                { label: 'Minutes', value: downtimeParts.minutes },
-                                { label: 'Seconds', value: downtimeParts.seconds }
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { label: 'Days', value: downtimeParts.days },
+                                        { label: 'Hours', value: downtimeParts.hours },
+                                        { label: 'Minutes', value: downtimeParts.minutes },
+                                        { label: 'Seconds', value: downtimeParts.seconds }
                                     ].map((item) => (
                                         <div
                                             key={item.label}
@@ -498,21 +481,21 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                             <div className="text-lg font-bold text-blue-800 leading-tight">{item.value}</div>
                                             <div className="text-[11px] uppercase tracking-wide text-blue-500">{item.label}</div>
                                         </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
-                    {isAuthenticated && !isAdmin && updateBlocked() && (
-                        <div className="flex items-center gap-2 text-sm text-orange-800 bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg">
-                            <AlertTriangle className="w-4 h-4" />
-                            <span>{blockMessage || 'A mandatory update must be applied before continuing.'}</span>
-                        </div>
+                        )}
+                        {isAuthenticated && !isAdmin && updateBlocked() && (
+                            <div className="flex items-center gap-2 text-sm text-orange-800 bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg">
+                                <AlertTriangle className="w-4 h-4" />
+                                <span>{blockMessage || 'A mandatory update must be applied before continuing.'}</span>
+                            </div>
                         )}
                         {updateNotice}
                     </div>
                 </header>
 
-                {/* Page Content - Remove any conflicting backgrounds */}
+                {/* Page Content */}
                 <main className="flex-1 overflow-auto p-6 bg-transparent relative">
                     <PageChrome />
                     {blocked && (
@@ -526,24 +509,6 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             <p className="text-sm text-gray-600 mb-4">
                                 Please refresh status or apply the latest update to continue.
                             </p>
-                            {/* <div className="flex flex-wrap gap-2">
-                                <button
-                                    onClick={fetchSystemState}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700"
-                                >
-                                    <RefreshCcw className="w-4 h-4" />
-                                    Refresh status
-                                </button>
-                                {latestUpdate && (
-                                    <button
-                                        onClick={handleDownloadUpdate}
-                                        className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-800 border border-blue-200 hover:bg-blue-50"
-                                    >
-                                        <Download className="w-4 h-4" />
-                                        Download update
-                                    </button>
-                                )}
-                            </div> */}
                         </div>
                     )}
                     <div className={blocked ? 'pointer-events-none opacity-60' : ''}>
@@ -554,8 +519,5 @@ const Layout = ({ children, currentView, onViewChange }) => {
         </div>
     );
 };
-
-// Helper function to get view titles
-const getViewTitle = (view) => viewTitles[view] || 'Value Tech';
 
 export default Layout;
