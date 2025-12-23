@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useRam } from "./RAMContext";
 
 const ElrajhiUploadContext = createContext(null);
 
@@ -19,6 +20,7 @@ const defaultRememberedFiles = {
 
 export const ElrajhiUploadProvider = ({ children }) => {
     // All state is in-memory only (clears on logout/app restart).
+    const { ramInfo } = useRam();
     const [activeTab, setActiveTab] = useState("no-validation");
     const [numTabs, setNumTabs] = useState(1);
 
@@ -44,6 +46,17 @@ export const ElrajhiUploadProvider = ({ children }) => {
     const [sendingValidation, setSendingValidation] = useState(false);
     const [pdfOnlySending, setPdfOnlySending] = useState(false);
     const [loadingValuers, setLoadingValuers] = useState(false);
+
+    useEffect(() => {
+        if (!ramInfo?.recommendedTabs) return;
+
+        setNumTabs((prev) => {
+            // Only auto-set if still at default (1)
+            if (prev !== 1) return prev;
+            return ramInfo.recommendedTabs;
+        });
+    }, [ramInfo?.recommendedTabs]);
+
 
     // Clean any legacy persisted keys from previous versions so nothing lingers after restart/logout.
     useEffect(() => {

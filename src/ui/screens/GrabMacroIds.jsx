@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useRam } from "../context/RAMContext";
 import {
     Download,
     CheckCircle,
@@ -39,6 +40,17 @@ const GrabMacroIds = () => {
     // Control state
     const [isProcessPaused, setIsProcessPaused] = useState(false);
     const [activeProcessType, setActiveProcessType] = useState(null); // 'grab' or 'retry'
+    const [initialTabSet, setInitialTabSet] = useState(false);
+
+    const { ramInfo } = useRam();
+
+
+    useEffect(() => {
+        if (ramInfo?.recommendedTabs && !initialTabSet) {
+            setTabsNum(ramInfo.recommendedTabs.toString());
+            setInitialTabSet(true);
+        }
+    }, [ramInfo]);
 
     // Handle macro IDs grabbing using Electron IPC
     const handleGrabMacroIds = async () => {

@@ -162,13 +162,13 @@ const App = () => {
         <SessionProvider>
             <SystemControlProvider>
                 <NavStatusProvider>
-                    <ElrajhiUploadProvider>
-                        <ValueNavProvider>
-                            <RamProvider>
+                    <RamProvider>
+                        <ElrajhiUploadProvider>
+                            <ValueNavProvider>
                                 <AppContent />
-                            </RamProvider>
-                        </ValueNavProvider>
-                    </ElrajhiUploadProvider>
+                            </ValueNavProvider>
+                        </ElrajhiUploadProvider>
+                    </RamProvider>
                 </NavStatusProvider>
             </SystemControlProvider>
         </SessionProvider>

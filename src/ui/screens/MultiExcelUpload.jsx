@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useRam } from "../context/RAMContext";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import {
     FileSpreadsheet,
@@ -319,6 +320,8 @@ const MultiExcelUpload = () => {
     const [validationItems, setValidationItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
 
+    const { ramInfo } = useRam();
+
     const handleExcelChange = (e) => {
         const files = Array.from(e.target.files || []);
         setExcelFiles(files);
@@ -334,7 +337,14 @@ const MultiExcelUpload = () => {
     const handleTabsNumChange = (e) => {
         const value = parseInt(e.target.value);
         if (!isNaN(value) && value >= 1) {
+            // Optional: Add a very high but reasonable limit
+            // const maxTabs = 50; // or whatever you want
+            // setTabsNum(Math.min(value, maxTabs));
+
             setTabsNum(value);
+        } else if (e.target.value === "") {
+            // Handle empty input
+            setTabsNum(1);
         }
         resetMessages();
     };
@@ -522,6 +532,17 @@ const MultiExcelUpload = () => {
             setValidating(false);
         }
     };
+
+
+    useEffect(() => {
+        if (!ramInfo?.recommendedTabs) return;
+
+        setTabsNum((prev) => {
+            // Only auto-set if still at default (1)
+            if (prev !== 1) return prev;
+            return ramInfo.recommendedTabs;
+        });
+    }, [ramInfo?.recommendedTabs]);
 
     useEffect(() => {
         if (activeTab !== "validation") return;
@@ -807,7 +828,7 @@ const MultiExcelUpload = () => {
                         <input
                             type="number"
                             min="1"
-                            max="10"
+                            max="200"
                             value={tabsNum}
                             onChange={handleTabsNumChange}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -822,8 +843,8 @@ const MultiExcelUpload = () => {
             {(error || success) && (
                 <div
                     className={`rounded-lg p-3 flex items-start gap-2 ${error
-                            ? "bg-red-50 text-red-700 border border-red-100"
-                            : "bg-green-50 text-green-700 border border-green-100"
+                        ? "bg-red-50 text-red-700 border border-red-100"
+                        : "bg-green-50 text-green-700 border border-green-100"
                         }`}
                 >
                     {error ? (

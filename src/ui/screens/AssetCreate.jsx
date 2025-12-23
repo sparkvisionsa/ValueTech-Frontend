@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, use } from "react";
+import { useRam } from "../context/RAMContext";
 import {
     Search,
     CheckCircle,
@@ -42,6 +43,15 @@ const AssetCreate = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [progress, setProgress] = useState(null);
     const [showControls, setShowControls] = useState(false);
+
+    const { ramInfo } = useRam();
+
+    // Set default tabs based on RAM recommendation
+    useEffect(() => {
+        if (ramInfo?.recommendedTabs && !tabsInput) {
+            setTabsInput(ramInfo.recommendedTabs.toString());
+        }
+    }, [ramInfo]);
 
     // Check if form is valid
     const isFormValid = reportId.trim() && tabsInput.trim() && assetCount.trim();
@@ -562,7 +572,7 @@ const AssetCreate = () => {
                                             setError("");
                                         }}
                                         min="1"
-                                        max="10"
+                                        max="200"
                                         disabled={isCreating}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
                                         placeholder="Enter number of tabs (default: 3)"

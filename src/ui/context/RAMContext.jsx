@@ -2,6 +2,18 @@ import React, { createContext, useContext, useState, useRef, useEffect, useCallb
 
 const RamContext = createContext();
 
+const calculateRecommendedTabs = (freeGb) => {
+    if (freeGb == null) return 1;
+
+    const freeMb = freeGb * 1024;
+
+    if (freeMb < 300) return 1;
+
+    const extraTabs = Math.floor((freeMb - 300) / 200);
+    return 1 + extraTabs;
+};
+
+
 export const useRam = () => {
     const context = useContext(RamContext);
     if (!context) {
@@ -35,11 +47,13 @@ export const RamProvider = ({ children }) => {
         try {
             const result = await window.electronAPI.readRam();
             if (result?.ok) {
+                const recommendedTabs = calculateRecommendedTabs(result.freeGb);
                 const ramData = {
                     usedGb: result.usedGb,
                     totalGb: result.totalGb,
                     freeGb: result.freeGb,
                     usagePercentage: ((result.usedGb / result.totalGb) * 100).toFixed(1),
+                    recommendedTabs,
                     readAt: Date.now()
                 };
                 setRamInfo(ramData);

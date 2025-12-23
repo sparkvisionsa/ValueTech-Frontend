@@ -130,7 +130,7 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
                 
                 result = await fill_macro_form(
                     page,
-                    macro_id,
+                    asset.id,
                     asset,
                     macro_form_config["field_map"],
                     macro_form_config["field_types"],

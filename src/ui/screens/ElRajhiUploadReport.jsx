@@ -5,6 +5,7 @@ import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } fro
 import httpClient from "../../api/httpClient";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 import EditReportModal from "../components/EditReportModal";
+import { useRam } from "../context/RAMContext";
 
 import {
     FileSpreadsheet,
@@ -450,6 +451,7 @@ const UploadReportElrajhi = () => {
             });
         }
     };
+
 
 
     const [downloadingExcel, setDownloadingExcel] = useState(false);
@@ -2242,11 +2244,11 @@ const UploadReportElrajhi = () => {
                             <input
                                 type="number"
                                 min="1"
-                                max="50"
+                                max={200}
                                 value={numTabs}
                                 onChange={(e) => {
                                     const value = parseInt(e.target.value, 10);
-                                    if (!Number.isNaN(value) && value >= 1 && value <= 10) {
+                                    if (!Number.isNaN(value) && value >= 1 && value <= 200) {
                                         setNumTabs(value);
                                     }
                                 }}
@@ -2254,8 +2256,7 @@ const UploadReportElrajhi = () => {
                             />
                             <button
                                 type="button"
-                                onClick={() => setNumTabs((prev) => Math.min(10, prev + 1))}
-                                disabled={numTabs >= 10}
+                                onClick={() => setNumTabs((prev) => Math.min(200, prev + 1))}
                                 className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 +
@@ -2446,11 +2447,11 @@ const UploadReportElrajhi = () => {
                             <input
                                 type="number"
                                 min="1"
-                                max="50"
+                                max={200}
                                 value={numTabs}
                                 onChange={(e) => {
                                     const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value >= 1 && value <= 10) {
+                                    if (!isNaN(value) && value >= 1 && value <= 200) {
                                         setNumTabs(value);
                                     }
                                 }}
@@ -2458,8 +2459,8 @@ const UploadReportElrajhi = () => {
                             />
                             <button
                                 type="button"
-                                onClick={() => setNumTabs(prev => Math.min(10, prev + 1))}
-                                disabled={numTabs >= 10}
+                                onClick={() => setNumTabs(prev => Math.min(200, prev + 1))}
+                                disabled={numTabs <= 1}
                                 className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 +
@@ -2738,11 +2739,11 @@ const UploadReportElrajhi = () => {
                             <input
                                 type="number"
                                 min="1"
-                                max="50"
+                                max={200}
                                 value={numTabs}
                                 onChange={(e) => {
                                     const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value >= 1 && value <= 10) {
+                                    if (!isNaN(value) && value >= 1 && value <= 200) {
                                         setNumTabs(value);
                                     }
                                 }}
@@ -2750,8 +2751,7 @@ const UploadReportElrajhi = () => {
                             />
                             <button
                                 type="button"
-                                onClick={() => setNumTabs(prev => Math.min(10, prev + 1))}
-                                disabled={numTabs >= 10}
+                                onClick={() => setNumTabs(prev => Math.min(200, prev + 1))}
                                 className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 +

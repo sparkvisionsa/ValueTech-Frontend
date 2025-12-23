@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useRam } from "../context/RAMContext";
 import {
     Upload, CheckCircle, RefreshCw,
     Database, Search, Clock, AlertCircle,
@@ -447,6 +448,7 @@ const SubmitMacro = () => {
     const [isStopping, setIsStopping] = useState(false);
     const [checkPaused, setCheckPaused] = useState(false);
     const [halfCheckPaused, setHalfCheckPaused] = useState(false);
+    const [initialTabSet, setInitialTabSet] = useState(false);
     const [activeCheckType, setActiveCheckType] = useState(null); // 'full' or 'half'
 
     // Pause/resume state for macro fill
@@ -455,6 +457,15 @@ const SubmitMacro = () => {
 
     // Get progress state for current report
     const currentProgress = reportId ? progressStates[reportId] : null;
+
+    const { ramInfo } = useRam();
+
+    useEffect(() => {
+        if (ramInfo?.recommendedTabs && !initialTabSet) {
+            setTabsNum(ramInfo.recommendedTabs.toString());
+            setInitialTabSet(true);
+        }
+    }, []);
 
     // Handle macro submission
     const handleSubmitMacro = async () => {
@@ -1035,7 +1046,7 @@ const SubmitMacro = () => {
                                         <input
                                             type="number"
                                             min="1"
-                                            max="10"
+                                            max="200"
                                             value={tabsNum}
                                             onChange={(e) => {
                                                 setTabsNum(e.target.value);
