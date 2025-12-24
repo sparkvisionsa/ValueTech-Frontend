@@ -309,7 +309,6 @@ const MultiExcelUpload = () => {
     const [activeTab, setActiveTab] = useState("no-validation");
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
-    const [tabsNum, setTabsNum] = useState(1);
     const [batchId, setBatchId] = useState("");
     const [uploadResult, setUploadResult] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -321,6 +320,7 @@ const MultiExcelUpload = () => {
     const [validationMessage, setValidationMessage] = useState(null);
 
     const { ramInfo } = useRam();
+    const recommendedTabs = ramInfo?.recommendedTabs || 1;
 
     const handleExcelChange = (e) => {
         const files = Array.from(e.target.files || []);
@@ -331,21 +331,6 @@ const MultiExcelUpload = () => {
     const handlePdfChange = (e) => {
         const files = Array.from(e.target.files || []);
         setPdfFiles(files);
-        resetMessages();
-    };
-
-    const handleTabsNumChange = (e) => {
-        const value = parseInt(e.target.value);
-        if (!isNaN(value) && value >= 1) {
-            // Optional: Add a very high but reasonable limit
-            // const maxTabs = 50; // or whatever you want
-            // setTabsNum(Math.min(value, maxTabs));
-
-            setTabsNum(value);
-        } else if (e.target.value === "") {
-            // Handle empty input
-            setTabsNum(1);
-        }
         resetMessages();
     };
 
@@ -362,7 +347,6 @@ const MultiExcelUpload = () => {
     const resetAll = () => {
         setExcelFiles([]);
         setPdfFiles([]);
-        setTabsNum(1);
         setBatchId("");
         setUploadResult(null);
         resetMessages();
@@ -533,17 +517,6 @@ const MultiExcelUpload = () => {
         }
     };
 
-
-    useEffect(() => {
-        if (!ramInfo?.recommendedTabs) return;
-
-        setTabsNum((prev) => {
-            // Only auto-set if still at default (1)
-            if (prev !== 1) return prev;
-            return ramInfo.recommendedTabs;
-        });
-    }, [ramInfo?.recommendedTabs]);
-
     useEffect(() => {
         if (activeTab !== "validation") return;
         runValidation(excelFiles, pdfMatchInfo.pdfMap);
@@ -551,7 +524,6 @@ const MultiExcelUpload = () => {
 
     const isReadyToUpload = useMemo(() => {
         if (excelFiles.length === 0 || pdfFiles.length === 0) return false;
-        if (tabsNum < 1) return false;
         if (activeTab === "validation") {
             if (validating) return false;
             if (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) return false;
@@ -560,7 +532,7 @@ const MultiExcelUpload = () => {
             if (anyIssues) return false;
         }
         return true;
-    }, [excelFiles.length, pdfFiles.length, tabsNum, activeTab, validating, validationItems, pdfMatchInfo]);
+    }, [excelFiles.length, pdfFiles.length, activeTab, validating, validationItems, pdfMatchInfo]);
 
     const handleUploadAndCreate = async () => {
         try {
@@ -573,9 +545,6 @@ const MultiExcelUpload = () => {
             }
             if (pdfFiles.length === 0) {
                 throw new Error("Please select at least one PDF file");
-            }
-            if (tabsNum < 1) {
-                throw new Error("Number of tabs must be at least 1");
             }
 
             // Step 1: Upload files to backend
@@ -599,12 +568,12 @@ const MultiExcelUpload = () => {
 
             const electronResult = await window.electronAPI.createReportsByBatch(
                 batchIdFromApi,
-                tabsNum
+                recommendedTabs
             );
 
             if (electronResult?.status === "SUCCESS") {
                 setSuccess(
-                    `Reports created successfully! ${insertedCount} report(s) processed with ${tabsNum} tab(s).`
+                    `Reports created successfully! ${insertedCount} report(s) processed with ${recommendedTabs} tab(s).`
                 );
             } else {
                 throw new Error(electronResult?.error || "Failed to create reports in Taqeem");
@@ -818,24 +787,24 @@ const MultiExcelUpload = () => {
 
                 <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
                     <div className="flex items-center gap-2 mb-3">
-                        <Hash className="w-5 h-5 text-emerald-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">Number of Tabs</h3>
+                        <Table className="w-5 h-5 text-emerald-600" />
+                        <h3 className="text-sm font-semibold text-gray-800">Tabs Configuration</h3>
                     </div>
                     <p className="text-xs text-gray-500 mb-3">
-                        Specify how many tabs to open in Taqeem browser for report creation.
+                        Number of tabs is automatically determined based on available RAM
                     </p>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min="1"
-                            max="200"
-                            value={tabsNum}
-                            onChange={handleTabsNumChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter number of tabs"
-                        />
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
+                        <Hash className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-semibold text-gray-800">
+                            {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-xs text-gray-600 ml-2">
+                            (auto-configured)
+                        </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">Recommended: 1-3 tabs for stable performance</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                        Each tab will process a portion of the reports for parallel processing.
+                    </p>
                 </div>
             </div>
 
@@ -1021,7 +990,10 @@ const MultiExcelUpload = () => {
                             <div className="p-3 bg-gray-50 rounded">
                                 <p className="text-gray-600">Tabs to Open</p>
                                 <p className="text-lg font-semibold text-gray-900">
-                                    {tabsNum}
+                                    {recommendedTabs}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Auto-configured
                                 </p>
                             </div>
                         </div>
@@ -1094,7 +1066,7 @@ const MultiExcelUpload = () => {
                         <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
                             <li>Select multiple Excel files containing report data</li>
                             <li>Select matching PDF files (same filename as Excel)</li>
-                            <li>Specify how many browser tabs to use (for parallel processing)</li>
+                            <li>Number of browser tabs is automatically determined based on available RAM</li>
                             <li>In "With validation" tab, fix issues until the upload button becomes available</li>
                             <li>Click "Upload & Create Reports" to:
                                 <ul className="ml-4 mt-1 list-disc list-inside">

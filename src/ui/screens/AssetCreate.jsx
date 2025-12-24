@@ -13,7 +13,8 @@ import {
     FileCheck,
     Pause,
     Resume,
-    StopCircle
+    StopCircle,
+    Info
 } from "lucide-react";
 
 // Import your API functions
@@ -22,7 +23,6 @@ import { reportExistenceCheck } from "../../api/report"; // Adjust the import pa
 const AssetCreate = () => {
     // Form state
     const [reportId, setReportId] = useState("");
-    const [tabsInput, setTabsInput] = useState("");
     const [assetCount, setAssetCount] = useState("");
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -46,15 +46,8 @@ const AssetCreate = () => {
 
     const { ramInfo } = useRam();
 
-    // Set default tabs based on RAM recommendation
-    useEffect(() => {
-        if (ramInfo?.recommendedTabs && !tabsInput) {
-            setTabsInput(ramInfo.recommendedTabs.toString());
-        }
-    }, [ramInfo]);
-
     // Check if form is valid
-    const isFormValid = reportId.trim() && tabsInput.trim() && assetCount.trim();
+    const isFormValid = reportId.trim() && assetCount.trim();
     const canCreateAssets = isFormValid && (reportExists === true || dbCheckResult?.success === true);
 
     // Effect to listen for progress updates
@@ -169,7 +162,8 @@ const AssetCreate = () => {
             return;
         }
 
-        const tabsNum = parseInt(tabsInput) || 3;
+        // Get tabs from RAM info or use default of 3
+        const tabsNum = ramInfo?.recommendedTabs || 3;
 
         setError("");
         setIsLoading(true);
@@ -275,7 +269,6 @@ const AssetCreate = () => {
     // Reset process
     const resetProcess = () => {
         setReportId("");
-        setTabsInput("");
         setAssetCount("");
         setError("");
         setIsLoading(false);
@@ -338,6 +331,11 @@ const AssetCreate = () => {
         );
     };
 
+    // Get the tabs count to display
+    const getTabsCount = () => {
+        return ramInfo?.recommendedTabs || 3;
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8">
             <div className="max-w-2xl mx-auto px-4">
@@ -375,8 +373,8 @@ const AssetCreate = () => {
                                     <h4 className="font-medium text-gray-800 mb-3 text-center">Creation Details:</h4>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between">
-                                            <span className="text-gray-600">Tabs:</span>
-                                            <span className="font-medium">{tabsInput}</span>
+                                            <span className="text-gray-600">Tabs Used:</span>
+                                            <span className="font-medium">{getTabsCount()}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-gray-600">Asset Count:</span>
@@ -558,28 +556,27 @@ const AssetCreate = () => {
                                     )}
                                 </div>
 
-                                {/* Tabs Input */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        <Plus className="w-4 h-4 inline mr-1" />
-                                        Number of Tabs *
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={tabsInput}
-                                        onChange={(e) => {
-                                            setTabsInput(e.target.value);
-                                            setError("");
-                                        }}
-                                        min="1"
-                                        max="200"
-                                        disabled={isCreating}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                        placeholder="Enter number of tabs (default: 3)"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Specify the number of tabs to create (usually 3)
-                                    </p>
+                                {/* Tabs Information Box */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <div className="flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <h4 className="font-medium text-blue-800 mb-1">Tabs Configuration</h4>
+                                            <p className="text-blue-700 mb-2">
+                                                Assets will be created using <strong className="text-blue-900">{getTabsCount()} tabs</strong> per browser instance.
+                                            </p>
+                                            <div className="text-xs text-blue-600">
+                                                This value is automatically determined based on your system's available RAM
+                                                to ensure optimal performance and stability.
+                                                {ramInfo?.message && (
+                                                    <div className="mt-1 italic">{ramInfo.message}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="bg-blue-100 text-blue-800 font-bold text-xl px-3 py-2 rounded-lg">
+                                            {getTabsCount()}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Asset Count */}
@@ -598,7 +595,7 @@ const AssetCreate = () => {
                                         min="1"
                                         disabled={isCreating}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                        placeholder="Enter number of assets"
+                                        placeholder="Enter number of assets to create"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
                                         Enter the total number of assets to create
@@ -606,7 +603,7 @@ const AssetCreate = () => {
                                 </div>
 
                                 {/* Configuration Preview */}
-                                {(tabsInput || assetCount || reportId) && (
+                                {(assetCount || reportId) && (
                                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                         <h4 className="font-medium text-gray-800 mb-2">Configuration Preview:</h4>
                                         <div className="space-y-2 text-sm">
@@ -622,12 +619,10 @@ const AssetCreate = () => {
                                                     )}
                                                 </div>
                                             )}
-                                            {tabsInput && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-600">Tabs:</span>
-                                                    <span className="font-medium">{tabsInput}</span>
-                                                </div>
-                                            )}
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Tabs per Browser:</span>
+                                                <span className="font-medium">{getTabsCount()}</span>
+                                            </div>
                                             {assetCount && (
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Asset Count:</span>

@@ -395,8 +395,6 @@ const UploadReportElrajhi = () => {
     const {
         activeTab,
         setActiveTab,
-        numTabs,
-        setNumTabs,
         excelFile,
         setExcelFile,
         pdfFiles,
@@ -497,6 +495,11 @@ const UploadReportElrajhi = () => {
     const [isPausedBatchCheck, setIsPausedBatchCheck] = useState(false);
     const [isPausedBatchRetry, setIsPausedBatchRetry] = useState(false);
     const [currentOperationBatchId, setCurrentOperationBatchId] = useState(null);
+
+    const { ramInfo } = useRam();
+
+    // Use recommendedTabs from ramInfo
+    const recommendedTabs = ramInfo?.recommendedTabs || 1;
 
     // Pause/Resume/Stop handlers for Main flow (No Validation)
     const handlePauseMain = async () => {
@@ -769,7 +772,7 @@ const UploadReportElrajhi = () => {
                 text: `Reports saved (${insertedCount} assets). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
             });
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, numTabs, false, sendToConfirmerValidation);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, recommendedTabs, false, sendToConfirmerValidation);
 
             if (electronResult?.status === "SUCCESS") {
                 const resultMap = (electronResult.results || []).reduce((acc, res) => {
@@ -874,7 +877,7 @@ const UploadReportElrajhi = () => {
                 text: `PDF reports saved (${pdfCount} assets with PDFs). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
             });
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, numTabs, true, sendToConfirmerValidation);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, recommendedTabs, true, sendToConfirmerValidation);
 
             if (electronResult?.status === "SUCCESS") {
                 const resultMap = (electronResult.results || []).reduce((acc, res) => {
@@ -996,7 +999,7 @@ const UploadReportElrajhi = () => {
         });
 
         try {
-            const result = await window.electronAPI.checkElrajhiBatches(batchId || null, numTabs);
+            const result = await window.electronAPI.checkElrajhiBatches(batchId || null, recommendedTabs);
             if (result?.status !== "SUCCESS") {
                 throw new Error(result?.error || "Check failed");
             }
@@ -1054,7 +1057,7 @@ const UploadReportElrajhi = () => {
         try {
             setCheckingBatchId(batchId || reportId);
             // Use the new function for consistency
-            const result = await window.electronAPI.retryElrajhiReportReportIds([reportId], numTabs);
+            const result = await window.electronAPI.retryElrajhiReportReportIds([reportId], recommendedTabs);
             if (result?.status !== "SUCCESS") {
                 throw new Error(result?.error || "Reupload failed");
             }
@@ -1407,7 +1410,7 @@ const UploadReportElrajhi = () => {
                 `Upload complete. Inserted ${insertedCount} urgent assets into DB. ${sendToConfirmerMain ? "Sending to Taqeem..." : "Final submission skipped."}`
             );
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, numTabs, false, sendToConfirmerMain);
+            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, recommendedTabs, false, sendToConfirmerMain);
 
             if (electronResult?.status === "SUCCESS") {
                 const resultMap = (electronResult.results || []).reduce((acc, res) => {
@@ -1791,7 +1794,7 @@ const UploadReportElrajhi = () => {
 
             } else if (action === "retry") {
                 // Use the new retryElrajhiReportReportIds function
-                const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, numTabs);
+                const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, recommendedTabs);
                 if (result?.status !== "SUCCESS") {
                     throw new Error(result?.error || "Retry multiple reports failed");
                 }
@@ -2230,43 +2233,19 @@ const UploadReportElrajhi = () => {
                 <div className="flex flex-wrap items-start gap-4">
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-700">
-                            Number of tabs to open in Taqeem:
+                            Tabs configuration (auto-detected):
                         </label>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs((prev) => Math.max(1, prev - 1))}
-                                disabled={numTabs <= 1}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                -
-                            </button>
-                            <input
-                                type="number"
-                                min="1"
-                                max={200}
-                                value={numTabs}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value, 10);
-                                    if (!Number.isNaN(value) && value >= 1 && value <= 200) {
-                                        setNumTabs(value);
-                                    }
-                                }}
-                                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center text-sm"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs((prev) => Math.min(200, prev + 1))}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                +
-                            </button>
-                            <span className="text-xs text-gray-500 ml-1">
-                                (1-10)
+                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
+                            <Table className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-semibold text-gray-800">
+                                {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs text-gray-600 ml-2">
+                                (based on available RAM)
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
-                            Each tab will process a portion of the reports.
+                            Each tab will process a portion of the reports automatically.
                         </p>
                     </div>
 
@@ -2300,7 +2279,7 @@ const UploadReportElrajhi = () => {
                                 ) : (
                                     <Send className="w-4 h-4" />
                                 )}
-                                Send all reports ({numTabs} tab{numTabs !== 1 ? "s" : ""})
+                                Send all reports ({recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""})
                             </button>
                             {sendingValidation && (
                                 <ControlButtons
@@ -2322,7 +2301,7 @@ const UploadReportElrajhi = () => {
                                 ) : (
                                     <Files className="w-4 h-4" />
                                 )}
-                                Send only reports with PDFs ({numTabs} tab{numTabs !== 1 ? "s" : ""})
+                                Send only reports with PDFs ({recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""})
                             </button>
                             {pdfOnlySending && (
                                 <ControlButtons
@@ -2430,44 +2409,21 @@ const UploadReportElrajhi = () => {
                         />
                         <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-
                     <div className="grid grid-cols-[auto,1fr] gap-y-2 gap-x-3 items-center">
                         <label className="text-xs font-semibold text-gray-700 col-span-2">
-                            Number of tabs to open in Taqeem
+                            Tabs configuration:
                         </label>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs(prev => Math.max(1, prev - 1))}
-                                disabled={numTabs <= 1}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                -
-                            </button>
-                            <input
-                                type="number"
-                                min="1"
-                                max={200}
-                                value={numTabs}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value >= 1 && value <= 200) {
-                                        setNumTabs(value);
-                                    }
-                                }}
-                                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center text-sm"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs(prev => Math.min(200, prev + 1))}
-                                disabled={numTabs <= 1}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                +
-                            </button>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
+                            <Table className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-semibold text-gray-800">
+                                {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs text-gray-600 ml-2">
+                                (auto-configured)
+                            </span>
                         </div>
                         <p className="text-[11px] text-gray-500 col-span-2">
-                            Each tab will process a portion of the reports.
+                            Each tab will process a portion of the reports automatically based on available RAM.
                         </p>
                     </div>
 
@@ -2714,60 +2670,44 @@ const UploadReportElrajhi = () => {
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                 <div className="flex items-center gap-3 mb-3">
                     <FolderOpen className="w-5 h-5 text-blue-600" />
-                    <div>
-                        <p className="text-sm font-semibold text-gray-900">Tabs Configuration</p>
-                        <p className="text-xs text-gray-500">
-                            Set the number of tabs to open in Taqeem for batch checking operations
-                        </p>
-                    </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-700">
-                            Number of tabs to open in Taqeem:
-                        </label>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs(prev => Math.max(1, prev - 1))}
-                                disabled={numTabs <= 1}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                -
-                            </button>
-                            <input
-                                type="number"
-                                min="1"
-                                max={200}
-                                value={numTabs}
-                                onChange={(e) => {
-                                    const value = parseInt(e.target.value);
-                                    if (!isNaN(value) && value >= 1 && value <= 200) {
-                                        setNumTabs(value);
-                                    }
-                                }}
-                                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-center text-sm"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setNumTabs(prev => Math.min(200, prev + 1))}
-                                className="px-3 py-1 bg-gray-200 rounded-md text-gray-700 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                +
-                            </button>
-                            <span className="text-xs text-gray-500 ml-1">
-                                (1-10)
-                            </span>
+                <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                        <FolderOpen className="w-5 h-5 text-blue-600" />
+                        <div>
+                            <p className="text-sm font-semibold text-gray-900">Tabs Configuration</p>
+                            <p className="text-xs text-gray-500">
+                                Number of tabs is automatically determined based on available RAM
+                            </p>
                         </div>
-                        <p className="text-xs text-gray-500">
-                            Each tab will process a portion of the reports during batch checking.
-                        </p>
                     </div>
 
-                    <div className="text-xs text-gray-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                        <p className="font-semibold text-gray-700 mb-1">Current setting: {numTabs} tab{numTabs !== 1 ? "s" : ""}</p>
-                        <p>This setting is used when checking batches and reuploading reports.</p>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-gray-700">
+                                Number of tabs to open in Taqeem:
+                            </label>
+                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
+                                <Table className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-semibold text-gray-800">
+                                    {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
+                                </span>
+                                <span className="text-xs text-gray-600 ml-2">
+                                    (auto-configured)
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                Each tab will process a portion of the reports during batch checking.
+                            </p>
+                        </div>
+
+                        <div className="text-xs text-gray-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <p className="font-semibold text-gray-700 mb-1">
+                                Current setting: {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
+                            </p>
+                            <p>This setting is automatically determined based on your system's available RAM.</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2904,7 +2844,7 @@ const UploadReportElrajhi = () => {
                                                                     text: `Retrying batch ${batch.batchId}...`
                                                                 });
                                                                 try {
-                                                                    const result = await window.electronAPI.retryElrajhiReport(batch.batchId, numTabs);
+                                                                    const result = await window.electronAPI.retryElrajhiReport(batch.batchId, recommendedTabs);
                                                                     if (result?.status !== "SUCCESS") {
                                                                         throw new Error(result?.error || "Retry failed");
                                                                     }

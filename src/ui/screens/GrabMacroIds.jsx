@@ -12,7 +12,8 @@ import {
     Search,
     Pause,
     Play,
-    StopCircle
+    StopCircle,
+    Info
 } from "lucide-react";
 
 import { checkMissingPages } from "../../api/report";
@@ -23,7 +24,6 @@ const GrabMacroIds = () => {
 
     // Report ID state
     const [reportId, setReportId] = useState("");
-    const [tabsNum, setTabsNum] = useState("1");
 
     // Error state
     const [error, setError] = useState("");
@@ -40,17 +40,13 @@ const GrabMacroIds = () => {
     // Control state
     const [isProcessPaused, setIsProcessPaused] = useState(false);
     const [activeProcessType, setActiveProcessType] = useState(null); // 'grab' or 'retry'
-    const [initialTabSet, setInitialTabSet] = useState(false);
 
     const { ramInfo } = useRam();
 
-
-    useEffect(() => {
-        if (ramInfo?.recommendedTabs && !initialTabSet) {
-            setTabsNum(ramInfo.recommendedTabs.toString());
-            setInitialTabSet(true);
-        }
-    }, [ramInfo]);
+    // Get the tabs count to display
+    const getTabsCount = () => {
+        return ramInfo?.recommendedTabs || 3;
+    };
 
     // Handle macro IDs grabbing using Electron IPC
     const handleGrabMacroIds = async () => {
@@ -59,11 +55,8 @@ const GrabMacroIds = () => {
             return;
         }
 
-        const tabsNumValue = parseInt(tabsNum);
-        if (isNaN(tabsNumValue) || tabsNumValue < 1) {
-            setError("Please enter a valid number of tabs (minimum 1)");
-            return;
-        }
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
 
         setError("");
         setSuccessMessage("");
@@ -109,11 +102,8 @@ const GrabMacroIds = () => {
             return;
         }
 
-        const tabsNumValue = parseInt(tabsNum);
-        if (isNaN(tabsNumValue) || tabsNumValue < 1) {
-            setError("Please enter a valid number of tabs (minimum 1)");
-            return;
-        }
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
 
         setError("");
         setSuccessMessage("");
@@ -288,7 +278,6 @@ const GrabMacroIds = () => {
     const resetProcess = () => {
         setCurrentStep('report-id-input');
         setReportId("");
-        setTabsNum("1");
         setError("");
         setSuccessMessage("");
         setIsGrabbingMacros(false);
@@ -347,55 +336,53 @@ const GrabMacroIds = () => {
                                 </div>
                                 <div>
                                     <h2 className="text-xl font-semibold text-gray-800">Enter Report Details</h2>
-                                    <p className="text-gray-600">Provide the report ID and number of tabs to extract macro IDs from</p>
+                                    <p className="text-gray-600">Provide the report ID to extract macro IDs from</p>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Report ID Input */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Report ID *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={reportId}
-                                            onChange={(e) => {
-                                                setReportId(e.target.value);
-                                                setError("");
-                                                setSuccessMessage("");
-                                                setMissingPagesInfo(null);
-                                            }}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                            placeholder="Enter report ID"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            The ID of the report to extract macro IDs from
-                                        </p>
-                                    </div>
+                                {/* Report ID Input */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Report ID *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={reportId}
+                                        onChange={(e) => {
+                                            setReportId(e.target.value);
+                                            setError("");
+                                            setSuccessMessage("");
+                                            setMissingPagesInfo(null);
+                                        }}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder="Enter report ID"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        The ID of the report to extract macro IDs from
+                                    </p>
+                                </div>
 
-                                    {/* Tabs Number Input */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Number of Tabs *
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={tabsNum}
-                                            onChange={(e) => {
-                                                setTabsNum(e.target.value);
-                                                setError("");
-                                                setSuccessMessage("");
-                                                setMissingPagesInfo(null);
-                                            }}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                            placeholder="Enter number of tabs"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Number of tabs in the report (minimum: 1)
-                                        </p>
+                                {/* Tabs Information Box */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <div className="flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <h4 className="font-medium text-blue-800 mb-1">Processing Configuration</h4>
+                                            <p className="text-blue-700 mb-2">
+                                                Macro IDs will be grabbed using <strong className="text-blue-900">{getTabsCount()} parallel tabs</strong> per browser instance.
+                                            </p>
+                                            <div className="text-xs text-blue-600">
+                                                This value is automatically determined based on your system's available RAM
+                                                to ensure optimal performance and stability.
+                                                {ramInfo?.message && (
+                                                    <div className="mt-1 italic">{ramInfo.message}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="bg-blue-100 text-blue-800 font-bold text-xl px-3 py-2 rounded-lg">
+                                            {getTabsCount()}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -423,7 +410,7 @@ const GrabMacroIds = () => {
                                 <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                                     <button
                                         onClick={handleGrabMacroIds}
-                                        disabled={!reportId.trim() || !tabsNum.trim() || isGrabbingMacros || isRetryingMacros || isCheckingMissingPages}
+                                        disabled={!reportId.trim() || isGrabbingMacros || isRetryingMacros || isCheckingMissingPages}
                                         className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-semibold flex items-center gap-2 transition-colors"
                                     >
                                         {isGrabbingMacros ? (
@@ -436,7 +423,7 @@ const GrabMacroIds = () => {
 
                                     <button
                                         onClick={handleRetryGrabMacroIds}
-                                        disabled={!reportId.trim() || !tabsNum.trim() || isGrabbingMacros || isRetryingMacros || isCheckingMissingPages}
+                                        disabled={!reportId.trim() || isGrabbingMacros || isRetryingMacros || isCheckingMissingPages}
                                         className="px-8 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white rounded-lg font-semibold flex items-center gap-2 transition-colors"
                                     >
                                         {isRetryingMacros ? (
@@ -489,14 +476,14 @@ const GrabMacroIds = () => {
                                 )}
 
                                 {/* Information Box */}
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div className="bg-gray-100 border border-gray-300 rounded-lg p-4">
                                     <div className="flex items-center gap-3">
-                                        <Database className="w-5 h-5 text-blue-500" />
+                                        <Database className="w-5 h-5 text-gray-500" />
                                         <div>
-                                            <p className="font-medium text-blue-800">What this does:</p>
-                                            <p className="text-sm text-blue-600">
+                                            <p className="font-medium text-gray-800">What this does:</p>
+                                            <p className="text-sm text-gray-600">
                                                 Extracts all macro IDs from the specified report and displays them in a list format for easy copying or downloading.
-                                                The number of tabs helps determine how many sections to process in the report.
+                                                The process uses parallel tabs for optimal performance.
                                             </p>
                                         </div>
                                     </div>
@@ -585,7 +572,7 @@ const GrabMacroIds = () => {
                                 <p className="text-blue-600 mb-4">
                                     {isProcessPaused
                                         ? `The ${activeProcessType === 'retry' ? 'retry' : 'grab'} process for report ${reportId} is paused. Click Resume to continue.`
-                                        : `${activeProcessType === 'retry' ? 'Retrying' : 'Grabbing'} macro IDs from report ${reportId} with ${tabsNum} tab${tabsNum !== "1" ? 's' : ''}. Please wait...`}
+                                        : `${activeProcessType === 'retry' ? 'Retrying' : 'Grabbing'} macro IDs from report ${reportId} using ${getTabsCount()} parallel tab${getTabsCount() !== 1 ? 's' : ''}. Please wait...`}
                                 </p>
 
                                 {/* Status Indicator */}

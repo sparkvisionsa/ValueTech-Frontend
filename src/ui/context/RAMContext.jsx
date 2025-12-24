@@ -2,14 +2,14 @@ import React, { createContext, useContext, useState, useRef, useEffect, useCallb
 
 const RamContext = createContext();
 
-const calculateRecommendedTabs = (freeGb) => {
+const calculateRecommendedTabs = (freeGb, first = 300, after = 200) => {
     if (freeGb == null) return 1;
 
     const freeMb = freeGb * 1024;
 
-    if (freeMb < 300) return 1;
+    if (freeMb < first) return 1;
 
-    const extraTabs = Math.floor((freeMb - 300) / 200);
+    const extraTabs = Math.floor((freeMb - first) / after);
     return 1 + extraTabs;
 };
 

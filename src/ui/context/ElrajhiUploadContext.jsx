@@ -122,8 +122,6 @@ export const ElrajhiUploadProvider = ({ children }) => {
         () => ({
             activeTab,
             setActiveTab,
-            numTabs,
-            setNumTabs,
             excelFile,
             setExcelFile,
             pdfFiles,
@@ -168,7 +166,6 @@ export const ElrajhiUploadProvider = ({ children }) => {
         }),
         [
             activeTab,
-            numTabs,
             excelFile,
             pdfFiles,
             validationFolderFiles,

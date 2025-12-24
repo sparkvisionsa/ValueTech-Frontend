@@ -17,7 +17,7 @@ def get_motor_client():
     MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
     return AsyncIOMotorClient(MONGO_URI)
 
-async def update_report_with_macro_ids(report_id, macro_ids_with_pages, db_name='test', collection_name='multiapproachreports'):
+async def update_report_with_macro_ids(report_id, macro_ids_with_pages, db_name='test', collection_name='reports'):
     client = None
     try:
         client = get_motor_client()

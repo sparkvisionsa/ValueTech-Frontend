@@ -3,7 +3,7 @@ import { useRam } from "../context/RAMContext";
 import {
     Upload, CheckCircle, RefreshCw,
     Database, Search, Clock, AlertCircle,
-    Pause, Play, FileText, X
+    Pause, Play, FileText, X, Info
 } from "lucide-react";
 
 // Updated API functions with pause/resume for check operations
@@ -431,7 +431,6 @@ const SubmitMacro = () => {
 
     // Report ID state
     const [reportId, setReportId] = useState("");
-    const [tabsNum, setTabsNum] = useState("1");
 
     // Error state
     const [error, setError] = useState("");
@@ -448,7 +447,6 @@ const SubmitMacro = () => {
     const [isStopping, setIsStopping] = useState(false);
     const [checkPaused, setCheckPaused] = useState(false);
     const [halfCheckPaused, setHalfCheckPaused] = useState(false);
-    const [initialTabSet, setInitialTabSet] = useState(false);
     const [activeCheckType, setActiveCheckType] = useState(null); // 'full' or 'half'
 
     // Pause/resume state for macro fill
@@ -460,12 +458,10 @@ const SubmitMacro = () => {
 
     const { ramInfo } = useRam();
 
-    useEffect(() => {
-        if (ramInfo?.recommendedTabs && !initialTabSet) {
-            setTabsNum(ramInfo.recommendedTabs.toString());
-            setInitialTabSet(true);
-        }
-    }, []);
+    // Get the tabs count to display
+    const getTabsCount = () => {
+        return ramInfo?.recommendedTabs || 3;
+    };
 
     // Handle macro submission
     const handleSubmitMacro = async () => {
@@ -474,11 +470,8 @@ const SubmitMacro = () => {
             return;
         }
 
-        const tabsNumValue = parseInt(tabsNum);
-        if (isNaN(tabsNumValue) || tabsNumValue < 1) {
-            setError("Please enter a valid number of tabs (minimum 1)");
-            return;
-        }
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
 
         setError("");
         setIsSubmitting(true);
@@ -588,11 +581,8 @@ const SubmitMacro = () => {
             return;
         }
 
-        const tabsNumValue = parseInt(tabsNum);
-        if (isNaN(tabsNumValue) || tabsNumValue < 1) {
-            setError("Please enter a valid number of tabs (minimum 1)");
-            return;
-        }
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
 
         setError("");
         setIsSubmitting(true);
@@ -702,6 +692,9 @@ const SubmitMacro = () => {
             return;
         }
 
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
+
         setError("");
         setIsSubmitting(true);
         setActiveCheckType('full');
@@ -709,9 +702,9 @@ const SubmitMacro = () => {
         setCurrentStep('checking');
 
         try {
-            console.log(`Checking macro status for report: ${reportId}`);
+            console.log(`Checking macro status for report: ${reportId} with tabs: ${tabsNumValue}`);
 
-            const result = await checkMacroStatus(reportId, tabsNum);
+            const result = await checkMacroStatus(reportId, tabsNumValue);
             console.log("Macro check result:", result);
 
             // Check if the operation was successful
@@ -743,6 +736,9 @@ const SubmitMacro = () => {
             return;
         }
 
+        // Get tabs from RAM info or use default of 3
+        const tabsNumValue = getTabsCount();
+
         setError("");
         setIsSubmitting(true);
         setActiveCheckType('half');
@@ -750,9 +746,9 @@ const SubmitMacro = () => {
         setCurrentStep('half-checking');
 
         try {
-            console.log(`Half checking macro status for report: ${reportId}`);
+            console.log(`Half checking macro status for report: ${reportId} with tabs: ${tabsNumValue}`);
 
-            const result = await halfCheckMacroStatus(reportId, tabsNum);
+            const result = await halfCheckMacroStatus(reportId, tabsNumValue);
             console.log("Half check macro result:", result);
 
             if (result.status === "SUCCESS") {
@@ -964,7 +960,6 @@ const SubmitMacro = () => {
     const resetProcess = () => {
         setCurrentStep('report-id-input');
         setReportId("");
-        setTabsNum("1");
         setError("");
         setIsSubmitting(false);
         setSubmissionResult(null);
@@ -1017,47 +1012,46 @@ const SubmitMacro = () => {
                     {currentStep === 'report-id-input' && (
                         <div className="space-y-6">
                             <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Report ID Input */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Report ID *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={reportId}
-                                            onChange={(e) => {
-                                                setReportId(e.target.value);
-                                                setError("");
-                                            }}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Enter report ID"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            The ID of the report to submit macro for
-                                        </p>
-                                    </div>
+                                {/* Report ID Input */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Report ID *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={reportId}
+                                        onChange={(e) => {
+                                            setReportId(e.target.value);
+                                            setError("");
+                                        }}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Enter report ID"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        The ID of the report to submit macro for
+                                    </p>
+                                </div>
 
-                                    {/* Tabs Number Input */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Number of Tabs *
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            max="200"
-                                            value={tabsNum}
-                                            onChange={(e) => {
-                                                setTabsNum(e.target.value);
-                                                setError("");
-                                            }}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Enter number of tabs"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Number of parallel tabs (1-10, recommended: 3)
-                                        </p>
+                                {/* Tabs Information Box */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <div className="flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <h4 className="font-medium text-blue-800 mb-1">Parallel Processing Configuration</h4>
+                                            <p className="text-blue-700 mb-2">
+                                                Macros will be processed using <strong className="text-blue-900">{getTabsCount()} parallel tabs</strong> per browser instance.
+                                            </p>
+                                            <div className="text-xs text-blue-600">
+                                                This value is automatically determined based on your system's available RAM
+                                                to ensure optimal performance and stability.
+                                                {ramInfo?.message && (
+                                                    <div className="mt-1 italic">{ramInfo.message}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="bg-blue-100 text-blue-800 font-bold text-xl px-3 py-2 rounded-lg">
+                                            {getTabsCount()}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1089,7 +1083,7 @@ const SubmitMacro = () => {
                                     </button>
                                     <button
                                         onClick={handleSubmitMacro}
-                                        disabled={!reportId.trim() || !tabsNum.trim() || isSubmitting || !isLoggedIn}
+                                        disabled={!reportId.trim() || isSubmitting || !isLoggedIn}
                                         className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded font-semibold flex items-center gap-2 justify-center"
                                     >
                                         {isSubmitting ? (
@@ -1101,7 +1095,7 @@ const SubmitMacro = () => {
                                     </button>
                                     <button
                                         onClick={handleRetryMacro}
-                                        disabled={!reportId.trim() || !tabsNum.trim() || isSubmitting || !isLoggedIn}
+                                        disabled={!reportId.trim() || isSubmitting || !isLoggedIn}
                                         className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded font-semibold flex items-center gap-2 justify-center"
                                     >
                                         {isSubmitting ? (
@@ -1131,7 +1125,7 @@ const SubmitMacro = () => {
                                             <p className="text-sm text-gray-600">
                                                 <strong>Full Check:</strong> Checks all macros in the report (can be paused/resumed)<br />
                                                 <strong>Half Check:</strong> Only checks previously incomplete macros (faster, can be paused/resumed)<br />
-                                                <strong>Submit Macro:</strong> Submits macros for the report with pause/resume support
+                                                <strong>Submit Macro:</strong> Submits macros for the report with pause/resume support<br />
                                                 <strong>Retry Macro:</strong> Retry failed macros for the report with pause/resume support
                                             </p>
                                         </div>
@@ -1275,6 +1269,10 @@ const SubmitMacro = () => {
                                                 <span className="font-mono">{reportId}</span>
                                             </div>
                                             <div className="flex justify-between">
+                                                <span className="text-gray-600">Parallel Tabs:</span>
+                                                <span>{getTabsCount()}</span>
+                                            </div>
+                                            <div className="flex justify-between">
                                                 <span className="text-gray-600">Total Macros:</span>
                                                 <span>{submissionResult.result.total || 0}</span>
                                             </div>
@@ -1306,6 +1304,10 @@ const SubmitMacro = () => {
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Report ID:</span>
                                                 <span className="font-mono">{reportId}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Parallel Tabs:</span>
+                                                <span>{getTabsCount()}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Total Assets:</span>
@@ -1373,6 +1375,10 @@ const SubmitMacro = () => {
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Report ID:</span>
                                                     <span className="font-mono">{reportId}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Parallel Tabs:</span>
+                                                    <span>{getTabsCount()}</span>
                                                 </div>
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Check Type:</span>
@@ -1453,6 +1459,10 @@ const SubmitMacro = () => {
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Report ID:</span>
                                                     <span className="font-mono">{reportId}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Parallel Tabs:</span>
+                                                    <span>{getTabsCount()}</span>
                                                 </div>
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">Check Type:</span>

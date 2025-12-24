@@ -223,7 +223,7 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
 async def run_macro_edit(browser, report_id, tabs_num=3):
     
     try:
-        record = await db.multiapproachreports.find_one({"report_id": report_id})
+        record = await db.reports.find_one({"report_id": report_id})
         if not record: 
             return {"status": "FAILED", "error": "Record not found"}
         
@@ -238,7 +238,7 @@ async def run_macro_edit(browser, report_id, tabs_num=3):
             return {"status": "FAILED", "error": error_msg}
         
         # Update start time
-        await db.multiapproachreports.update_one(
+        await db.reports.update_one(
             {"_id": record["_id"]},
             {"$set": {"editStartTime": datetime.now(timezone.utc)}}
         )
