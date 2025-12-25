@@ -1,25 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCcw, Activity } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
+import navigation from '../constants/navigation';
 
-const MODULES = [
-    { id: 'login', label: 'Login' },
-    { id: 'registration', label: 'Registration' },
-    { id: 'taqeem-login', label: 'Taqeem Login' },
-    { id: 'profile', label: 'My Profile' },
-    { id: 'check-status', label: 'Check Browser' },
-    { id: 'validate-report', label: 'Validate Report' },
-    { id: 'asset-create', label: 'Create Asset' },
-    { id: 'upload-excel', label: 'Upload Excel' },
-    { id: 'common-fields', label: 'Add Common Fields' },
-    { id: 'grab-macro-ids', label: 'Grab Macro IDs' },
-    { id: 'macro-edit', label: 'Edit Macro' },
-    { id: 'delete-report', label: 'Delete Report' },
-    { id: 'get-companies', label: 'Get Companies' },
-    { id: 'packages', label: 'Packages & Balance' },
-    { id: 'company-members', label: 'Company Members (company head only)' },
-    { id: 'system-updates', label: 'System Updates' }
+const { valueSystemGroups, tabToGroup } = navigation;
+const MODULE_GROUP_ORDER = [
+    'uploadReports',
+    'uploadSingleReport',
+    'taqeemInfo',
+    'deleteReport',
+    'evaluationSources',
+    'settings',
+    'companyConsole',
+    'adminConsole'
 ];
+
+const buildOrderedGroups = (groups, order) => {
+    const seen = new Set();
+    const ordered = [];
+    order.forEach((id) => {
+        if (groups[id]) {
+            ordered.push(groups[id]);
+            seen.add(id);
+        }
+    });
+    Object.values(groups).forEach((group) => {
+        if (!seen.has(group.id)) {
+            ordered.push(group);
+        }
+    });
+    return ordered;
+};
+
+const MODULE_GROUPS = buildOrderedGroups(valueSystemGroups, MODULE_GROUP_ORDER);
 
 const SystemOperatingStatus = () => {
     const { systemState, updateSystemState, fetchSystemState, isAdmin } = useSystemControl();
@@ -105,12 +118,32 @@ const SystemOperatingStatus = () => {
         setDraft((prev) => ({ ...prev, [field]: value }));
     };
 
+    const toggleGroup = (group) => {
+        setDraft((prev) => {
+            const groupTabIds = group.tabs.map((tab) => tab.id);
+            const hasGroup = prev.allowedModules.includes(group.id);
+            const hasAnyChild = groupTabIds.some((id) => prev.allowedModules.includes(id));
+            if (hasGroup || hasAnyChild) {
+                const allowedModules = prev.allowedModules.filter(
+                    (id) => id !== group.id && !groupTabIds.includes(id)
+                );
+                return { ...prev, allowedModules };
+            }
+            return { ...prev, allowedModules: [...prev.allowedModules, group.id] };
+        });
+    };
+
     const toggleModule = (moduleId) => {
         setDraft((prev) => {
             const exists = prev.allowedModules.includes(moduleId);
-            const allowedModules = exists
-                ? prev.allowedModules.filter((m) => m !== moduleId)
-                : [...prev.allowedModules, moduleId];
+            if (exists) {
+                return { ...prev, allowedModules: prev.allowedModules.filter((m) => m !== moduleId) };
+            }
+            const allowedModules = [...prev.allowedModules, moduleId];
+            const groupId = tabToGroup?.[moduleId];
+            if (groupId && !allowedModules.includes(groupId)) {
+                allowedModules.push(groupId);
+            }
             return { ...prev, allowedModules };
         });
     };
@@ -411,21 +444,39 @@ const SystemOperatingStatus = () => {
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-gray-700 mb-2">Allowed modules</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    {MODULES.map((mod) => (
-                                        <label
-                                            key={mod.id}
-                                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${allowedLookup.has(mod.id) ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
-                                                }`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={allowedLookup.has(mod.id)}
-                                                onChange={() => toggleModule(mod.id)}
-                                            />
-                                            <span className="text-sm text-gray-800">{mod.label}</span>
-                                        </label>
-                                    ))}
+                                <div className="space-y-4">
+                                    {MODULE_GROUPS.map((group) => {
+                                        const groupChecked = allowedLookup.has(group.id)
+                                            || group.tabs.some((tab) => allowedLookup.has(tab.id));
+                                        return (
+                                            <div key={group.id} className="space-y-2">
+                                                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={groupChecked}
+                                                        onChange={() => toggleGroup(group)}
+                                                    />
+                                                    <span>{group.title}</span>
+                                                </label>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {group.tabs.map((mod) => (
+                                                        <label
+                                                            key={mod.id}
+                                                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${allowedLookup.has(mod.id) ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                                                                }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={allowedLookup.has(mod.id)}
+                                                                onChange={() => toggleModule(mod.id)}
+                                                            />
+                                                            <span className="text-sm text-gray-800">{mod.label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

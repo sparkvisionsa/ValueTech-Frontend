@@ -41,6 +41,14 @@ const valueSystemGroups = {
             { id: 'check-status', label: 'Check Browser', description: 'فحص المتصفح قبل إجراءات تقييم.' }
         ]
     },
+    companyConsole: {
+        id: 'companyConsole',
+        title: 'Company Dashboard',
+        tabs: [
+            { id: 'company-members', label: 'Company Members', description: 'Manage team accounts and permissions.' },
+            { id: 'company-statics', label: 'Company Statics', description: 'Track user and report activity for your company.' }
+        ]
+    },
     settings: {
         id: 'settings',
         title: 'Settings',
@@ -54,6 +62,16 @@ const valueSystemGroups = {
         title: 'Delete Report',
         tabs: [
             { id: 'delete-report', label: 'Delete Report', description: 'حذف تقرير محدد مع التحقق.' }
+        ]
+    },
+    adminConsole: {
+        id: 'adminConsole',
+        title: 'Super Admin Console',
+        tabs: [
+            { id: 'system-status', label: 'System Operating Status', description: 'Monitor and control system availability.' },
+            { id: 'system-updates', label: 'System Updates', description: 'Publish and manage system update releases.' },
+            { id: 'admin-packages', label: 'Packages', description: 'Manage packages and subscriptions.' },
+            { id: 'statics', label: 'Statics', description: 'Review system-wide statistics and activity.' }
         ]
     }
 };
@@ -70,6 +88,20 @@ const valueSystemCards = [
         title: 'Evaluation sources',
         description: 'مصادر إنشاء ملفات التقييم (وورد، نظام التقييم).',
         groups: ['evaluationSources']
+    },
+    {
+        id: 'company-console',
+        title: 'Company Dashboard',
+        description: 'Team members, access, and company statics in one hub.',
+        groups: ['companyConsole'],
+        defaultGroup: 'companyConsole'
+    },
+    {
+        id: 'admin-console',
+        title: 'Super Admin',
+        description: 'System controls, updates, packages, and live statics in one command center.',
+        groups: ['adminConsole'],
+        defaultGroup: 'adminConsole'
     }
 ];
 
@@ -88,13 +120,17 @@ const viewTitles = {
     'taqeem-login': 'Taqeem Login',
     'get-companies': 'Get Companies',
     'check-status': 'Check Browser',
+    'company-members': 'Company Members',
+    'company-statics': 'Company Statics',
     profile: 'Profile',
     packages: 'Packages',
+    'admin-packages': 'Packages',
     'valuation-system': 'نظام التقييم',
     'word-copy': 'نسخ بيانات الأكسيل للتقرير',
     'delete-report': 'Delete Report',
     'system-status': 'System Operating Status',
     'system-updates': 'System Updates',
+    statics: 'Statics',
     'coming-soon': 'Coming Soon'
 };
 

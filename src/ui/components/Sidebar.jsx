@@ -1,13 +1,15 @@
 import React from 'react';
-import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings } from 'lucide-react';
+import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
+import { useSession } from '../context/SessionContext';
 import navigation from '../constants/navigation';
 
 const { valueSystemGroups } = navigation;
 
 const Sidebar = ({ currentView, onViewChange }) => {
-    const { isFeatureBlocked } = useSystemControl();
+    const { isFeatureBlocked, isAdmin } = useSystemControl();
+    const { user } = useSession();
     const {
         selectedCard,
         selectedDomain,
@@ -24,10 +26,10 @@ const Sidebar = ({ currentView, onViewChange }) => {
         setSelectedCompany
     } = useValueNav();
 
-    const isAdmin = false;
     const isAppsActive = currentView === 'apps';
     const isSettingsActive = activeGroup === 'settings';
     const settingsBlocked = isFeatureBlocked('settings');
+    const isCompanyHead = user?.type === 'company' || user?.role === 'company-head';
     const clickDelayMs = 160;
     const delayViewChange = (nextView) => {
         if (!onViewChange) return;
@@ -44,6 +46,18 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'uploadSingleReport', label: 'Upload Single Report' },
         { id: 'taqeemInfo', label: 'Taqeem Info' },
         { id: 'deleteReport', label: 'Delete Report' }
+    ];
+
+    const adminLinks = [
+        { id: 'system-status', label: 'System Operating Status', icon: MonitorDot },
+        { id: 'system-updates', label: 'System Updates', icon: Wrench },
+        { id: 'admin-packages', label: 'Packages', icon: Package },
+        { id: 'statics', label: 'Statics', icon: BarChart3 }
+    ];
+
+    const companyLinks = [
+        { id: 'company-members', label: 'Company Members', icon: Users },
+        { id: 'company-statics', label: 'Company Statics', icon: BarChart3 }
     ];
 
     const renderDomains = () => {
@@ -215,50 +229,100 @@ const Sidebar = ({ currentView, onViewChange }) => {
                             </li>
                         );
                     })}
-                    {isAdmin && (
-                        <>
-                            <li className="sidebar-animate" style={{ animationDelay: '360ms' }}>
+                </ul>
+            </div>
+        );
+    };
+
+    const renderAdminLinks = () => {
+        if (!isAdmin || selectedCard !== 'admin-console') return null;
+        return (
+            <div
+                className="rounded-lg border border-amber-400/30 bg-gradient-to-br from-amber-950/40 via-slate-950/60 to-slate-900/70 px-2 py-2 shadow-[inset_0_1px_0_rgba(252,211,77,0.08)] sidebar-animate"
+                style={{ animationDelay: '200ms' }}
+            >
+                <div className="px-2 pb-1 text-[9px] font-semibold uppercase tracking-wide text-amber-200">Super Admin</div>
+                <ul className="space-y-1">
+                    {adminLinks.map((item, index) => {
+                        const Icon = item.icon;
+                        const blocked = isFeatureBlocked(item.id);
+                        const isActive = currentView === item.id;
+                        return (
+                            <li
+                                key={item.id}
+                                className="sidebar-animate"
+                                style={{ animationDelay: `${240 + index * 35}ms` }}
+                            >
                                 <button
-                                    onClick={() => delayViewChange('system-status')}
-                                    className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all duration-150 text-[11px] ${
-                                        currentView === 'system-status'
-                                            ? 'bg-gradient-to-r from-cyan-600/90 to-blue-600 text-white shadow-[0_8px_20px_rgba(14,116,144,0.35)]'
+                                    onClick={() => {
+                                        if (blocked) return;
+                                        delayViewChange(item.id);
+                                    }}
+                                    disabled={blocked}
+                                    className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
+                                        isActive
+                                            ? 'bg-gradient-to-r from-amber-500/90 to-orange-500 text-white shadow-[0_8px_20px_rgba(251,146,60,0.35)]'
                                             : 'bg-slate-900/40 text-slate-200 hover:bg-slate-800/70'
-                                    }`}
+                                    } ${blocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     <span
                                         className={`absolute left-1 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full ${
-                                            currentView === 'system-status'
-                                                ? 'bg-cyan-200'
-                                                : 'bg-transparent group-hover:bg-cyan-300/50'
+                                            isActive ? 'bg-amber-200' : 'bg-transparent group-hover:bg-amber-300/50'
                                         }`}
                                     />
-                                    <MonitorDot className="w-3.5 h-3.5 opacity-90" />
-                                    <span className="font-medium">System Operating Status</span>
+                                    <Icon className="w-3.5 h-3.5 opacity-90" />
+                                    <span className="font-medium">{item.label}</span>
                                 </button>
                             </li>
-                            <li className="sidebar-animate" style={{ animationDelay: '395ms' }}>
+                        );
+                    })}
+                </ul>
+            </div>
+        );
+    };
+
+    const renderCompanyLinks = () => {
+        if (!isCompanyHead || selectedCard !== 'company-console') return null;
+        return (
+            <div
+                className="rounded-lg border border-emerald-400/30 bg-gradient-to-br from-emerald-950/35 via-slate-950/60 to-slate-900/70 px-2 py-2 shadow-[inset_0_1px_0_rgba(52,211,153,0.08)] sidebar-animate"
+                style={{ animationDelay: '200ms' }}
+            >
+                <div className="px-2 pb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-200">Company</div>
+                <ul className="space-y-1">
+                    {companyLinks.map((item, index) => {
+                        const Icon = item.icon;
+                        const blocked = isFeatureBlocked(item.id);
+                        const isActive = currentView === item.id;
+                        return (
+                            <li
+                                key={item.id}
+                                className="sidebar-animate"
+                                style={{ animationDelay: `${240 + index * 35}ms` }}
+                            >
                                 <button
-                                    onClick={() => delayViewChange('system-updates')}
-                                    className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md transition-all duration-150 text-[11px] ${
-                                        currentView === 'system-updates'
-                                            ? 'bg-gradient-to-r from-cyan-600/90 to-blue-600 text-white shadow-[0_8px_20px_rgba(14,116,144,0.35)]'
+                                    onClick={() => {
+                                        if (blocked) return;
+                                        delayViewChange(item.id);
+                                    }}
+                                    disabled={blocked}
+                                    className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
+                                        isActive
+                                            ? 'bg-gradient-to-r from-emerald-500/90 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)]'
                                             : 'bg-slate-900/40 text-slate-200 hover:bg-slate-800/70'
-                                    }`}
+                                    } ${blocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     <span
                                         className={`absolute left-1 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full ${
-                                            currentView === 'system-updates'
-                                                ? 'bg-cyan-200'
-                                                : 'bg-transparent group-hover:bg-cyan-300/50'
+                                            isActive ? 'bg-emerald-200' : 'bg-transparent group-hover:bg-emerald-300/50'
                                         }`}
                                     />
-                                    <Wrench className="w-3.5 h-3.5 opacity-90" />
-                                    <span className="font-medium">System Updates</span>
+                                    <Icon className="w-3.5 h-3.5 opacity-90" />
+                                    <span className="font-medium">{item.label}</span>
                                 </button>
                             </li>
-                        </>
-                    )}
+                        );
+                    })}
                 </ul>
             </div>
         );
@@ -313,6 +377,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                 <nav className="flex-1 px-2 py-1.5 overflow-y-auto space-y-1.5">
                     {renderDomains()}
                     {renderCompanyList()}
+                    {renderCompanyLinks()}
+                    {renderAdminLinks()}
                     {renderMainLinks()}
                 </nav>
 

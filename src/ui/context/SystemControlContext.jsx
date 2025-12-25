@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSession } from './SessionContext';
+import navigation from '../constants/navigation';
+
+const { valueSystemGroups } = navigation;
 
 const SystemControlContext = createContext(null);
 
@@ -18,6 +21,9 @@ const DEFAULT_STATE = {
 };
 
 const DEMO_MODULES = ['apps', 'taqeem-login', 'profile', 'asset-create', 'packages', 'get-companies'];
+const isGroupId = (viewId) => Boolean(valueSystemGroups?.[viewId]);
+const groupHasAllowedTab = (groupId, list) =>
+    valueSystemGroups?.[groupId]?.tabs?.some((tab) => list.includes(tab.id));
 
 const computeDowntimeTarget = (state) => {
     if (!state || state.mode !== 'inactive') return null;
@@ -244,7 +250,7 @@ export const SystemControlProvider = ({ children }) => {
     }, [systemState, token, autoActivating, updateSystemState, fetchSystemState, isAdmin]);
 
     const hasPermission = (viewId) => {
-        const alwaysAllowed = ['apps', 'login', 'registration', 'taqeem-login', 'profile'];
+        const alwaysAllowed = ['apps', 'login', 'registration', 'taqeem-login', 'profile', 'coming-soon'];
         if (alwaysAllowed.includes(viewId)) return true;
         if (!user) return true;
         if (isAdmin) return true;
@@ -258,6 +264,9 @@ export const SystemControlProvider = ({ children }) => {
         // Members or any account linked to a company (non-head) must follow permissions
         if (user.role === 'member' || isCompanyLinked) {
             if (perms.length === 0) return false;
+            if (isGroupId(viewId)) {
+                return perms.includes(viewId) || groupHasAllowedTab(viewId, perms);
+            }
             return perms.includes(viewId);
         }
 
@@ -283,6 +292,12 @@ export const SystemControlProvider = ({ children }) => {
         if (systemState.mode === 'partial') {
             if (!Array.isArray(systemState.allowedModules) || systemState.allowedModules.length === 0) {
                 return true;
+            }
+            if (isGroupId(viewId)) {
+                return !(
+                    systemState.allowedModules.includes(viewId) ||
+                    groupHasAllowedTab(viewId, systemState.allowedModules)
+                );
             }
             return !systemState.allowedModules.includes(viewId);
         }

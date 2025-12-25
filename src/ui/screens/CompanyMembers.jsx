@@ -1,19 +1,43 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../context/SessionContext';
+import navigation from '../constants/navigation';
 
-const FEATURE_OPTIONS = [
-    { id: 'taqeem-login', label: 'Taqeem Login' },
-    { id: 'get-companies', label: 'Get Companies' },
-    { id: 'check-status', label: 'Check Browser' },
-    { id: 'validate-report', label: 'Validate Report' },
-    { id: 'asset-create', label: 'Create Asset' },
-    { id: 'upload-excel', label: 'Upload Excel' },
-    { id: 'common-fields', label: 'Add Common Fields' },
-    { id: 'grab-macro-ids', label: 'Grab Macro IDs' },
-    { id: 'macro-edit', label: 'Edit Macro' },
-    { id: 'delete-report', label: 'Delete Report' },
-    { id: 'packages', label: 'Packages' }
+const { valueSystemGroups, tabToGroup } = navigation;
+const FEATURE_GROUP_ORDER = [
+    'uploadReports',
+    'uploadSingleReport',
+    'taqeemInfo',
+    'deleteReport',
+    'evaluationSources',
+    'settings'
 ];
+
+const buildOrderedGroups = (groups, order) => {
+    const seen = new Set();
+    const ordered = [];
+    order.forEach((id) => {
+        if (groups[id]) {
+            ordered.push(groups[id]);
+            seen.add(id);
+        }
+    });
+    Object.values(groups).forEach((group) => {
+        if (!seen.has(group.id)) {
+            ordered.push(group);
+        }
+    });
+    return ordered;
+};
+
+const FEATURE_GROUPS = buildOrderedGroups(valueSystemGroups, FEATURE_GROUP_ORDER)
+    .filter((group) => FEATURE_GROUP_ORDER.includes(group.id));
+const FEATURE_LABELS = FEATURE_GROUPS.reduce((acc, group) => {
+    acc[group.id] = group.title;
+    group.tabs.forEach((tab) => {
+        acc[tab.id] = tab.label;
+    });
+    return acc;
+}, {});
 
 const CompanyMembers = () => {
     const { token, user } = useSession();
@@ -47,12 +71,32 @@ const CompanyMembers = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
+    const toggleGroup = (group) => {
+        setForm((prev) => {
+            const groupTabIds = group.tabs.map((tab) => tab.id);
+            const hasGroup = prev.permissions.includes(group.id);
+            const hasAnyChild = groupTabIds.some((id) => prev.permissions.includes(id));
+            if (hasGroup || hasAnyChild) {
+                const permissions = prev.permissions.filter(
+                    (id) => id !== group.id && !groupTabIds.includes(id)
+                );
+                return { ...prev, permissions };
+            }
+            return { ...prev, permissions: [...prev.permissions, group.id] };
+        });
+    };
+
     const togglePermission = (value) => {
         setForm((prev) => {
             const exists = prev.permissions.includes(value);
-            const permissions = exists
-                ? prev.permissions.filter((p) => p !== value)
-                : [...prev.permissions, value];
+            if (exists) {
+                return { ...prev, permissions: prev.permissions.filter((p) => p !== value) };
+            }
+            const permissions = [...prev.permissions, value];
+            const groupId = tabToGroup?.[value];
+            if (groupId && !permissions.includes(groupId)) {
+                permissions.push(groupId);
+            }
             return { ...prev, permissions };
         });
     };
@@ -187,19 +231,34 @@ const CompanyMembers = () => {
 
                     <div>
                         <p className="block text-sm font-medium text-gray-700 mb-2">Allowed features</p>
-                        <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
-                            {FEATURE_OPTIONS.map((feature) => (
-                                <label
-                                    key={feature.id}
-                                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.permissions.includes(feature.id) ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={form.permissions.includes(feature.id)}
-                                        onChange={() => togglePermission(feature.id)}
-                                    />
-                                    <span className="text-gray-800">{feature.label}</span>
-                                </label>
+                        <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+                            {FEATURE_GROUPS.map((group) => (
+                                <div key={group.id} className="space-y-2">
+                                    <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.permissions.includes(group.id)
+                                                || group.tabs.some((tab) => form.permissions.includes(tab.id))}
+                                            onChange={() => toggleGroup(group)}
+                                        />
+                                        <span>{group.title}</span>
+                                    </label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {group.tabs.map((feature) => (
+                                            <label
+                                                key={feature.id}
+                                                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.permissions.includes(feature.id) ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={form.permissions.includes(feature.id)}
+                                                    onChange={() => togglePermission(feature.id)}
+                                                />
+                                                <span className="text-gray-800">{feature.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -232,10 +291,10 @@ const CompanyMembers = () => {
                                         <p className="text-sm text-gray-600">📱 {member.phone}</p>
                                         <div className="flex flex-wrap gap-2 mt-2">
                                             {(member.permissions || []).map((perm) => {
-                                                const feature = FEATURE_OPTIONS.find((f) => f.id === perm);
+                                                const featureLabel = FEATURE_LABELS[perm];
                                                 return (
                                                     <span key={perm} className="px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                                                        {feature?.label || perm}
+                                                        {featureLabel || perm}
                                                     </span>
                                                 );
                                             })}

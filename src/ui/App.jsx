@@ -13,6 +13,7 @@ import Profile from './screens/Profile';
 import CheckBrowser from './screens/CheckBrowser';
 import ValidateReport from './screens/ValidateReport';
 import CompanyMembers from './screens/CompanyMembers';
+import CompanyStatics from './screens/CompanyStatics';
 import AssetCreate from './screens/AssetCreate';
 import UploadExcel from './screens/UploadExcel';
 import AddCommonFields from './screens/AddCommonFields';
@@ -24,6 +25,7 @@ import Packages from './screens/Packages';
 import TaqeemAuth from './screens/TaqeemAuth';
 import SystemOperatingStatus from './screens/SystemOperatingStatus';
 import SystemUpdates from './screens/SystemUpdates';
+import Statics from './screens/Statics';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
@@ -97,6 +99,9 @@ const AppContent = () => {
             case 'company-members':
                 return <CompanyMembers />;
 
+            case 'company-statics':
+                return <CompanyStatics />;
+
             case 'upload-excel':
                 return <UploadExcel />;
 
@@ -118,11 +123,17 @@ const AppContent = () => {
             case 'packages':
                 return <Packages />;
 
+            case 'admin-packages':
+                return <Packages />;
+
             case 'system-status':
                 return <SystemOperatingStatus />;
 
             case 'system-updates':
                 return <SystemUpdates />;
+
+            case 'statics':
+                return <Statics />;
 
             case 'upload-report-elrajhi':
                 return <ElRajhiUploadReport />;

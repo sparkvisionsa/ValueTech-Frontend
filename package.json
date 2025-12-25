@@ -9,7 +9,9 @@
   "scripts": {
     "build": "webpack --mode production",
     "build-react": "npm run build",
-    "dev": "npm run build-react && electron .",
+    "dev": "node build-scripts/dev_runner.js",
+    "dev:renderer": "webpack --mode development --watch --stats=errors-warnings",
+    "dev:electron": "electron .",
     "build-py-worker": "bash build-scripts/build_py_worker.sh",
     "prepare-build": "npm run build-react && npm run build-py-worker",
     "dist-linux": "npm run prepare-build && electron-builder --linux --x64",

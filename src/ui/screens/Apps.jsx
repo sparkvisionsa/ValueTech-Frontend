@@ -1,14 +1,17 @@
 ﻿import React, { useMemo } from 'react';
-import { AppWindow, UploadCloud, Compass, ChevronRight, Info } from 'lucide-react';
+import { AppWindow, UploadCloud, Compass, ChevronRight, Info, ShieldCheck, Building2 } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
+import { useSession } from '../context/SessionContext';
 import navigation from '../constants/navigation';
 
 const { valueSystemCards, valueSystemGroups } = navigation;
 
 const cardIcons = {
     'uploading-reports': UploadCloud,
-    'evaluation-sources': Compass
+    'evaluation-sources': Compass,
+    'admin-console': ShieldCheck,
+    'company-console': Building2
 };
 
 const cardThemes = {
@@ -26,6 +29,20 @@ const cardThemes = {
         badge: 'from-emerald-500 to-teal-600',
         ring: 'ring-emerald-300/50'
     },
+    'admin-console': {
+        glow: 'bg-amber-400/25',
+        border: 'border-amber-400/40',
+        accent: 'text-amber-200',
+        badge: 'from-amber-500 to-orange-600',
+        ring: 'ring-amber-300/50'
+    },
+    'company-console': {
+        glow: 'bg-orange-400/25',
+        border: 'border-orange-400/40',
+        accent: 'text-orange-200',
+        badge: 'from-orange-500 to-rose-600',
+        ring: 'ring-orange-300/50'
+    },
     default: {
         glow: 'bg-slate-400/25',
         border: 'border-slate-700/60',
@@ -36,7 +53,8 @@ const cardThemes = {
 };
 
 const Apps = ({ onViewChange }) => {
-    const { isFeatureBlocked, blockReason } = useSystemControl();
+    const { isFeatureBlocked, blockReason, isAdmin } = useSystemControl();
+    const { user } = useSession();
     const {
         selectedCard,
         selectedDomain,
@@ -48,6 +66,7 @@ const Apps = ({ onViewChange }) => {
     } = useValueNav();
 
     const breadcrumbText = useMemo(() => breadcrumbs.map((b) => b.label).join(' > '), [breadcrumbs]);
+    const isCompanyHead = user?.type === 'company' || user?.role === 'company-head';
 
     const stageHint = useMemo(() => {
         if (!selectedCard) return 'Pick a card to begin.';
@@ -62,9 +81,9 @@ const Apps = ({ onViewChange }) => {
         return '';
     }, [selectedCard, selectedDomain, selectedCompany, activeGroup]);
 
-    const handleCardClick = (cardId) => {
-        chooseCard(cardId);
-        setActiveGroup(null);
+    const handleCardClick = (card) => {
+        chooseCard(card.id);
+        setActiveGroup(card.defaultGroup || null);
         if (onViewChange) onViewChange('apps');
     };
 
@@ -74,7 +93,7 @@ const Apps = ({ onViewChange }) => {
         if (!group) return null;
 
         return (
-            <div className="mt-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
+            <div className="mt-6 flex flex-col gap-4">
                 <div className="flex items-center justify-center gap-2">
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-[0_10px_20px_rgba(15,23,42,0.18)]">
                         <AppWindow className="w-4 h-4" />
@@ -84,7 +103,7 @@ const Apps = ({ onViewChange }) => {
                         <h3 className="font-display text-[15px] font-semibold text-slate-900 leading-tight text-compact">{group.title}</h3>
                     </div>
                 </div>
-                <div className="grid w-full max-w-6xl justify-items-center gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                <div className="grid w-full gap-4 px-2 sm:px-4 justify-items-center grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {group.tabs.map((tab, index) => {
                         const blocked = isFeatureBlocked(tab.id);
                         const reason = blocked ? blockReason(tab.id) : null;
@@ -94,7 +113,7 @@ const Apps = ({ onViewChange }) => {
                                 type="button"
                                 onClick={() => !blocked && onViewChange && onViewChange(tab.id)}
                                 disabled={blocked}
-                                className={`group relative w-full max-w-[200px] aspect-square overflow-hidden text-left rounded-2xl border px-4 py-3 transition-all card-animate ${blocked
+                                className={`group relative h-[200px] w-[200px] overflow-hidden text-left rounded-2xl border p-2.5 transition-all card-animate ${blocked
                                     ? 'border-amber-300/50 bg-amber-900/40 text-amber-100 cursor-not-allowed'
                                     : 'border-slate-800/70 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-slate-100 hover:border-slate-700 hover:shadow-[0_16px_30px_rgba(15,23,42,0.25)]'
                                     }`}
@@ -132,7 +151,11 @@ const Apps = ({ onViewChange }) => {
             {showCards && (
                 <div className="w-full flex justify-center">
                     <div className="grid w-full max-w-5xl justify-items-center gap-4 sm:grid-cols-2">
-                        {valueSystemCards.map((card, index) => {
+                        {valueSystemCards.filter((card) => {
+                            if (card.id === 'admin-console') return isAdmin;
+                            if (card.id === 'company-console') return isCompanyHead;
+                            return true;
+                        }).map((card, index) => {
                             const Icon = cardIcons[card.id] || Info;
                             const theme = cardThemes[card.id] || cardThemes.default;
                             const isActive = selectedCard === card.id;
@@ -140,7 +163,7 @@ const Apps = ({ onViewChange }) => {
                                 <button
                                     key={card.id}
                                     type="button"
-                                    onClick={() => handleCardClick(card.id)}
+                                    onClick={() => handleCardClick(card)}
                                     className={`group relative w-full max-w-[280px] aspect-square overflow-hidden rounded-3xl border bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-left transition-all shadow-[0_16px_30px_rgba(15,23,42,0.25)] card-animate ${theme.border} ${isActive
                                         ? `ring-2 ${theme.ring} scale-[1.01]`
                                         : 'hover:-translate-y-1 hover:shadow-[0_22px_40px_rgba(15,23,42,0.35)]'

@@ -15,6 +15,8 @@ export const useValueNav = () => {
 };
 
 const cardLabel = (cardId) => valueSystemCards.find((c) => c.id === cardId)?.title || cardId;
+const findCardForGroup = (groupId) =>
+    valueSystemCards.find((card) => Array.isArray(card.groups) && card.groups.includes(groupId));
 
 const domainLabels = {
     'real-estate': 'Real state',
@@ -140,16 +142,23 @@ export const ValueNavProvider = ({ children }) => {
             setActiveTab(null);
             return;
         }
-        if (!selectedCard) {
-            setSelectedCard('uploading-reports');
+        const owningCard = findCardForGroup(info.groupId);
+        if (owningCard?.id) {
+            setSelectedCard(owningCard.id);
         }
-        // preserve existing domain/company if already set; otherwise default to equipments
-        if (!selectedDomain) {
-            setSelectedDomain('equipments');
+
+        if (owningCard?.id === 'uploading-reports') {
+            // preserve existing domain/company if already set; otherwise default to equipments
+            if (!selectedDomain) {
+                setSelectedDomain('equipments');
+            }
+        } else {
+            setSelectedDomain(null);
+            setSelectedCompany(null);
         }
         setActiveGroup(info.groupId);
         setActiveTab(viewId);
-    }, [selectedCard, selectedDomain]);
+    }, [selectedDomain]);
 
     const breadcrumbs = useMemo(() => {
         const items = [{ label: 'Apps', key: 'apps' }];
