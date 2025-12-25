@@ -16,9 +16,9 @@ db = client["test"]
 async def check_incomplete_macros(browser, report_id, browsers_num=3):
     try:
         # First, fetch report to map macro IDs
-        report = await db.multiapproachreports.find_one({"report_id": report_id})
+        report = await db.reports.find_one({"report_id": report_id})
         if not report:
-            return {"status": "FAILED", "error": f"Report {report_id} not found in multiapproachreports"}
+            return {"status": "FAILED", "error": f"Report {report_id} not found in reports"}
 
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
         main_page = await browser.get(base_url)
@@ -29,7 +29,7 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
         if delete_btn:
             print("[INFO] Delete button exists, assuming all macros complete.")
             # Mark all assets as complete
-            await db.multiapproachreports.update_one(
+            await db.reports.update_one(
                 {"report_id": report_id},
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
@@ -174,19 +174,19 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
                                 submit_state = 0 if "غير مكتملة" in status_text else 1
 
                                 # Update database
-                                update_result = await db.multiapproachreports.update_one(
+                                update_result = await db.reports.update_one(
                                     {"report_id": report_id, "asset_data.id": str(macro_id)},
                                     {"$set": {"asset_data.$.submitState": submit_state}}
                                 )
 
                                 # If no document was matched, try to update using array index
                                 if update_result.matched_count == 0:
-                                    report_after = await db.multiapproachreports.find_one({"report_id": report_id})
+                                    report_after = await db.reports.find_one({"report_id": report_id})
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
                                             if asset.get("id") == macro_id:
-                                                await db.multiapproachreports.update_one(
+                                                await db.reports.update_one(
                                                     {"report_id": report_id},
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                                                 )
@@ -276,9 +276,9 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[HALF CHECK] Starting optimized half check for report {report_id}")
 
         # First, fetch report to get incomplete macros and their page numbers
-        report = await db.multiapproachreports.find_one({"report_id": report_id})
+        report = await db.reports.find_one({"report_id": report_id})
         if not report:
-            return {"status": "FAILED", "error": f"Report {report_id} not found in multiapproachreports"}
+            return {"status": "FAILED", "error": f"Report {report_id} not found in reports"}
 
         # Check for delete button first (same logic as full check)
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
@@ -289,7 +289,7 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         if delete_btn:
             print("[HALF CHECK] Delete button exists, assuming all macros complete.")
             # Mark all assets as complete
-            await db.multiapproachreports.update_one(
+            await db.reports.update_one(
                 {"report_id": report_id},
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
@@ -507,19 +507,19 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                 submit_state = 0 if "غير مكتملة" in status_text else 1
 
                                 # Update database - same logic as full check
-                                update_result = await db.multiapproachreports.update_one(
+                                update_result = await db.reports.update_one(
                                     {"report_id": report_id, "asset_data.id": str(macro_id)},
                                     {"$set": {"asset_data.$.submitState": submit_state}}
                                 )
 
                                 # If no document was matched, try to update using array index
                                 if update_result.matched_count == 0:
-                                    report_after = await db.multiapproachreports.find_one({"report_id": report_id})
+                                    report_after = await db.reports.find_one({"report_id": report_id})
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
                                             if asset.get("id") == str(macro_id):  # DB stores as string
-                                                await db.multiapproachreports.update_one(
+                                                await db.reports.update_one(
                                                     {"report_id": report_id},
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                                                 )
@@ -592,7 +592,7 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
             print(f"[HALF CHECK] WARNING: {len(missing_macros)} incomplete macros not found on their expected pages: {sorted(list(missing_macros))}")
             # Mark missing macros as complete since we couldn't find them
             for macro_id in missing_macros:
-                await db.multiapproachreports.update_one(
+                await db.reports.update_one(
                     {"report_id": report_id, "asset_data.id": str(macro_id)},
                     {"$set": {"asset_data.$.submitState": 1}}
                 )

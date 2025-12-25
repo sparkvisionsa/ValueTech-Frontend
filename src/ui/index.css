@@ -1,3 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@300;400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        --font-display: "Space Grotesk", "Sora", sans-serif;
+        --font-body: "Sora", "Space Grotesk", sans-serif;
+        --app-bg: radial-gradient(1200px 520px at 8% -10%, rgba(14, 165, 233, 0.14), transparent 60%),
+            radial-gradient(1000px 520px at 92% 0%, rgba(16, 185, 129, 0.12), transparent 58%),
+            linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+        --ink-strong: #0f172a;
+        --ink-muted: #475569;
+        --surface: #ffffff;
+        --surface-muted: rgba(255, 255, 255, 0.7);
+        --accent: #0ea5e9;
+    }
+
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+
+    body {
+        font-family: var(--font-body);
+        color: var(--ink-strong);
+        background: var(--app-bg);
+        background-attachment: fixed;
+    }
+}
+
+@layer utilities {
+    @keyframes sidebar-fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(6px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes page-rise {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes card-rise {
+        from {
+            opacity: 0;
+            transform: translateY(14px) scale(0.98);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @keyframes float-soft {
+        0%,
+        100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-8px);
+        }
+    }
+
+    .sidebar-animate {
+        animation: sidebar-fade-up 320ms ease-out both;
+    }
+
+    .page-animate {
+        animation: page-rise 420ms ease-out both;
+    }
+
+    .card-animate {
+        animation: card-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .float-slow {
+        animation: float-soft 9s ease-in-out infinite;
+    }
+
+    .float-slower {
+        animation: float-soft 12s ease-in-out infinite;
+    }
+
+    .font-display {
+        font-family: var(--font-display);
+    }
+
+    .text-compact {
+        letter-spacing: -0.02em;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .sidebar-animate,
+        .page-animate,
+        .card-animate,
+        .float-slow,
+        .float-slower {
+            animation: none;
+        }
+    }
+}

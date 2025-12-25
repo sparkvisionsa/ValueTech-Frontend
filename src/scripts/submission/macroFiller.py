@@ -258,7 +258,7 @@ async def run_macro_edit(browser, report_id, tabs_num=3):
         )
         
         # Update end time
-        await db.multiapproachreports.update_one(
+        await db.reports.update_one(
             {"_id": record["_id"]},
             {"$set": {"editEndTime": datetime.now(timezone.utc)}}
         )
@@ -272,7 +272,7 @@ async def run_macro_edit(browser, report_id, tabs_num=3):
         tb = traceback.format_exc()
         
         try:
-            await db.multiapproachreports.update_one(
+            await db.reports.update_one(
                 {"report_id": report_id},
                 {"$set": {"editEndTime": datetime.now(timezone.utc)}}
             )
