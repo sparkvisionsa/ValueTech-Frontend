@@ -113,7 +113,9 @@ const UploadExcel = () => {
             const mappedData = {
                 // Basic asset fields
                 'asset_name': processed.asset_name || processed.assetName,
-                'asset_usage_id': processed.asset_usage_id || processed.assetUsageId,
+                'asset_usage_id': String(
+                    processed.asset_usage_id ?? processed.assetUsageId ?? ""
+                ),
 
                 // Market approach fields
                 'market_approach': processed.market_approach || processed.marketApproach ||

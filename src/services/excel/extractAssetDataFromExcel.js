@@ -119,7 +119,7 @@ const extractAssetDataFromExcel = async (excelFilePath, options = {}) => {
 
                     const isNumericField = [
                         'final_value', 'market_approach_value', 'cost_approach_value',
-                        'value', 'amount', 'price', 'quantity'
+                        'value', 'amount', 'price', 'quantity', 'asset_usage_id'
                     ].includes(header);
 
                     asset[key] = getCellValue({ value }, isNumericField);
