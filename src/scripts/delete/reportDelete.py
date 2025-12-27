@@ -49,6 +49,14 @@ MAIN_NEXT_SEL = 'a.page-link[rel="next"]'
 # ==============================
 # Dialog/Confirm helpers
 # ==============================
+
+
+
+
+
+
+
+
 async def _ensure_confirm_ok(page):
     """
     Auto-accept alert/confirm/prompt and suppress ALL 'beforeunload' leave dialogs.
@@ -173,23 +181,46 @@ async def _try_click_inline_confirm(page):
         log(f"[confirm] Inline confirm scan failed: {e}", "ERR")
 
 
+# async def try_delete_report(page):
+#     log("Scanning for 'Delete Report' button…", "INFO")
+#     btn = await page.find(DELETE_REPORT_BTN)
+#     if not btn:
+#         log("Delete button not present.", "INFO")
+#         return False
+
+#     log("Found 'Delete Report' button — clicking (auto-accept confirm)…", "STEP")
+#     await _ensure_confirm_ok(page)
+#     try:
+#         await btn.click()
+#         await asyncio.sleep(1.0)
+#         log("Delete clicked. If a confirm dialog existed, it was auto-accepted.", "OK")
+#     except Exception as e:
+#         log(f"Delete report click failed: {e}", "ERR")
+#         return False
+#     return True
+
+
 async def try_delete_report(page):
-    log("Scanning for 'Delete Report' button…", "INFO")
     btn = await page.find(DELETE_REPORT_BTN)
     if not btn:
-        log("Delete button not present.", "INFO")
         return False
 
-    log("Found 'Delete Report' button — clicking (auto-accept confirm)…", "STEP")
-    await _ensure_confirm_ok(page)
-    try:
-        await btn.click()
-        await asyncio.sleep(1.0)
-        log("Delete clicked. If a confirm dialog existed, it was auto-accepted.", "OK")
-    except Exception as e:
-        log(f"Delete report click failed: {e}", "ERR")
+    await btn.scroll_into_view()
+    await btn.click()
+
+    # give time for confirm + server action
+    await asyncio.sleep(2.0)
+
+    # verify
+    # await page.get(page)
+    await asyncio.sleep(1.0)
+
+    # if still has delete button, it wasn't deleted
+    if await page.find(DELETE_REPORT_BTN):
         return False
+
     return True
+
 
 
 # ==============================
@@ -953,6 +984,23 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10):
 
         report_url = build_report_url(report_id)
         page = await new_window(report_url)
+
+
+        import nodriver as uc
+
+        def install_auto_accept_dialogs(page):
+            async def _handler(ev):
+                if ev.__class__.__name__ == "JavascriptDialogOpening":
+                    msg = getattr(ev, "message", "")
+                    log(f"[dialog] {msg}", "INFO")
+                    await page.send(uc.cdp.page.handle_java_script_dialog(accept=True, prompt_text=""))
+            page.add_handler(uc.cdp.page, _handler)
+        install_auto_accept_dialogs(page)
+
+
+
+    
+
         
         for round_idx in range(1, max_rounds + 1):
             current_round = round_idx
