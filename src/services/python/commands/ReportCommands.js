@@ -88,6 +88,14 @@ class ReportCommands {
         });
     }
 
+    async downloadRegistrationCertificates(reports, downloadPath) {
+        return this._sendCommand({
+            action: 'download-registration-certificates',
+            reports,
+            downloadPath
+        });
+    }
+
     async reuploadElrajhiReport(reportId) {
         return this._sendCommand({
             action: 'elrajhi-reupload-report',

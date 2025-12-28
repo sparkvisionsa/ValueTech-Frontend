@@ -2,7 +2,6 @@
 import { AppWindow, UploadCloud, Compass, ChevronRight, Info, ShieldCheck, Building2 } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
-import { useSession } from '../context/SessionContext';
 import navigation from '../constants/navigation';
 
 const { valueSystemCards, valueSystemGroups } = navigation;
@@ -53,8 +52,7 @@ const cardThemes = {
 };
 
 const Apps = ({ onViewChange }) => {
-    const { isFeatureBlocked, blockReason, isAdmin } = useSystemControl();
-    const { user } = useSession();
+    const { isFeatureBlocked, blockReason } = useSystemControl();
     const {
         selectedCard,
         selectedDomain,
@@ -66,8 +64,6 @@ const Apps = ({ onViewChange }) => {
     } = useValueNav();
 
     const breadcrumbText = useMemo(() => breadcrumbs.map((b) => b.label).join(' > '), [breadcrumbs]);
-    const isCompanyHead = user?.type === 'company' || user?.role === 'company-head';
-
     const stageHint = useMemo(() => {
         if (!selectedCard) return 'Pick a card to begin.';
         if (selectedCard === 'uploading-reports' && !selectedDomain) return 'Choose Real state or Equipments from the sidebar.';
@@ -152,8 +148,7 @@ const Apps = ({ onViewChange }) => {
                 <div className="w-full flex justify-center">
                     <div className="grid w-full max-w-5xl justify-items-center gap-4 sm:grid-cols-2">
                         {valueSystemCards.filter((card) => {
-                            if (card.id === 'admin-console') return isAdmin;
-                            if (card.id === 'company-console') return isCompanyHead;
+                            if (card.id === 'admin-console' || card.id === 'company-console') return false;
                             return true;
                         }).map((card, index) => {
                             const Icon = cardIcons[card.id] || Info;

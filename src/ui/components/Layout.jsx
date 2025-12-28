@@ -7,7 +7,10 @@ import { useNavStatus } from '../context/NavStatusContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useRam } from '../context/RAMContext'; // Updated import
 import navigation from '../constants/navigation';
-const { viewTitles, valueSystemGroups, findTabInfo } = navigation;
+const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards } = navigation;
+
+const findCardForGroup = (groupId) =>
+    valueSystemCards.find((card) => Array.isArray(card.groups) && card.groups.includes(groupId));
 
 const Layout = ({ children, currentView, onViewChange }) => {
     const { isAuthenticated, user, logout } = useSession();
@@ -310,7 +313,6 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const currentTabInfo = findTabInfo(currentView);
     const headerTitle = currentTabInfo?.tab?.label || viewTitles[currentView] || 'Value Tech';
     const groupTabs = activeGroup ? valueSystemGroups[activeGroup]?.tabs || [] : [];
-    const firstGroupTab = groupTabs?.[0]?.id;
     const showHeaderTabs = currentView !== 'apps' && groupTabs && groupTabs.length > 0;
 
     const handleBreadcrumbClick = (item) => {
@@ -320,8 +322,11 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 onViewChange('apps');
                 break;
             case 'card':
-                chooseCard(item.key);
-                setActiveGroup(null);
+                {
+                    const cardEntry = valueSystemCards.find((card) => card.id === item.key);
+                    chooseCard(item.key);
+                    setActiveGroup(cardEntry?.defaultGroup || null);
+                }
                 setActiveTab(null);
                 onViewChange('apps');
                 break;
@@ -339,15 +344,22 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 onViewChange('apps');
                 break;
             case 'group':
-                chooseCard('uploading-reports');
-                if (selectedDomain) {
-                    chooseDomain(selectedDomain);
-                }
-                setActiveGroup(item.key);
-                if (firstGroupTab) {
-                    onViewChange(firstGroupTab);
-                } else {
-                    onViewChange('apps');
+                {
+                    const owningCard = findCardForGroup(item.key);
+                    if (owningCard?.id) {
+                        chooseCard(owningCard.id);
+                    }
+                    if (owningCard?.id === 'uploading-reports' && selectedDomain) {
+                        chooseDomain(selectedDomain);
+                    }
+                    setActiveGroup(item.key);
+                    const targetTabs = valueSystemGroups[item.key]?.tabs || [];
+                    const targetFirstTab = targetTabs?.[0]?.id;
+                    if (targetFirstTab) {
+                        onViewChange(targetFirstTab);
+                    } else {
+                        onViewChange('apps');
+                    }
                 }
                 break;
             case 'tab':

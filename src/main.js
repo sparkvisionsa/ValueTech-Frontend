@@ -11,6 +11,13 @@ let mainWindow;
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || '';
 const SHOULD_OPEN_DEVTOOLS = process.env.ELECTRON_DEVTOOLS === '1' || process.argv.includes('--devtools');
 const STARTUP_TIMEOUT_MS = 60000;
+const LOADING_ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
+const LOADING_ICON_DATA_URL = fs.existsSync(LOADING_ICON_PATH)
+    ? `data:image/png;base64,${fs.readFileSync(LOADING_ICON_PATH, 'base64')}`
+    : '';
+const LOADING_ICON_HTML = LOADING_ICON_DATA_URL
+    ? `<div class="icon-wrap"><img src="${LOADING_ICON_DATA_URL}" alt="App icon" /></div>`
+    : '<div class="icon-wrap icon-fallback" aria-hidden="true">V</div>';
 const LOADING_HTML = 'data:text/html,' + encodeURIComponent(`<!doctype html>
 <html lang="en">
 <head>
@@ -18,15 +25,20 @@ const LOADING_HTML = 'data:text/html,' + encodeURIComponent(`<!doctype html>
   <title>Loading</title>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; background: #0f1115; color: #f5f5f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
-    .wrap { text-align: center; }
-    .spinner { width: 24px; height: 24px; border: 3px solid rgba(245,245,245,0.2); border-top-color: #f5f5f5; border-radius: 50%; margin: 0 auto 12px; animation: spin 0.8s linear infinite; }
+    .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .icon-wrap { width: 72px; height: 72px; border-radius: 16px; background: #1b1f2a; display: grid; place-items: center; box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
+    .icon-wrap img { width: 70%; height: 70%; object-fit: contain; }
+    .icon-fallback { font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+    .spinner { width: 24px; height: 24px; border: 3px solid rgba(245,245,245,0.2); border-top-color: #f5f5f5; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .title { font-size: 14px; letter-spacing: 0.6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="wrap">
+    ${LOADING_ICON_HTML}
     <div class="spinner"></div>
-    <div>Starting renderer...</div>
+    <div class="title">Starting</div>
   </div>
 </body>
 </html>`);

@@ -49,6 +49,7 @@ from scripts.submission.ElRajhiFiller import (
 )
 
 from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
+from scripts.submission.registrationCertificateDownloader import download_registration_certificates
 from scripts.submission.duplicateReport import run_duplicate_report
 from scripts.submission.mutliReportFiller import create_reports_by_batch
 
@@ -87,6 +88,7 @@ from scripts.loginFlow.companyNavigate import navigate_to_company
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+    sys.stdin.reconfigure(encoding="utf-8")
 
 # Mongo connection (shared with submission flows)
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
@@ -343,6 +345,11 @@ async def handle_command(cmd):
         result = await check_elrajhi_batches(browser, batch_id, tabs_num)
         result["commandId"] = cmd.get("commandId")
 
+        print(json.dumps(result), flush=True)
+
+    elif action == "download-registration-certificates":
+        result = await download_registration_certificates(cmd)
+        result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
     elif action == "elrajhi-reupload-report":
@@ -630,7 +637,8 @@ async def handle_command(cmd):
                 "create-macros", "grab-macro-ids", "macro-edit",
                 "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
                 "full-check", "half-check", "register", "close", "ping",
-                "duplicate-report", "get-reports-by-batch"
+                "duplicate-report", "get-reports-by-batch",
+                "download-registration-certificates"
             ],
             "commandId": cmd.get("commandId")
         }

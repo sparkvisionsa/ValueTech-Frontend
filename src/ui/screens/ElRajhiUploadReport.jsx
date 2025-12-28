@@ -32,18 +32,6 @@ import {
     Square,
 } from "lucide-react";
 
-const TabButton = ({ active, onClick, children }) => (
-    <button
-        onClick={onClick}
-        className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${active
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-    >
-        {children}
-    </button>
-);
-
 const normalizeCellValue = (value) => {
     if (value === null || value === undefined) return "";
     if (typeof value === "object") {
@@ -235,7 +223,7 @@ const validateReportInfoAndMarket = (reportRow = {}, marketRows = []) => {
     return { issues, snapshot };
 };
 
-const detectValuerColumnsOrThrow = (exampleRow) => {
+const detectValuerColumns = (exampleRow) => {
     const keys = Object.keys(exampleRow || {});
     const idKeys = [];
     const nameKeys = [];
@@ -284,6 +272,18 @@ const detectValuerColumnsOrThrow = (exampleRow) => {
     sortValuerKeys(nameKeys, "valuername");
     sortValuerKeys(pctKeys, "percentage");
 
+    const hasAnyValuerCols = idKeys.length > 0 || nameKeys.length > 0 || pctKeys.length > 0;
+
+    if (!hasAnyValuerCols) {
+        return {
+            idKeys: [],
+            nameKeys: [],
+            pctKeys: [],
+            allKeys: [],
+            hasValuerColumns: false,
+        };
+    }
+
     const hasBaseName = nameKeys.length > 0;
     const hasBasePct = pctKeys.length > 0;
 
@@ -293,7 +293,8 @@ const detectValuerColumnsOrThrow = (exampleRow) => {
         );
     }
 
-    return { idKeys, nameKeys, pctKeys };
+    const allKeys = Array.from(new Set([...idKeys, ...nameKeys, ...pctKeys]));
+    return { idKeys, nameKeys, pctKeys, allKeys, hasValuerColumns: true };
 };
 
 const buildValuersForAsset = (assetRow, valuerCols) => {
@@ -393,14 +394,10 @@ const worksheetToObjects = (worksheet) => {
 
 const UploadReportElrajhi = () => {
     const {
-        activeTab,
-        setActiveTab,
         excelFile,
         setExcelFile,
         pdfFiles,
         setPdfFiles,
-        validationFolderFiles,
-        setValidationFolderFiles,
         validationExcelFile,
         setValidationExcelFile,
         validationPdfFiles,
@@ -459,14 +456,17 @@ const UploadReportElrajhi = () => {
     const [downloadingValidationExcel, setDownloadingValidationExcel] = useState(false);
     const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
     const [sendToConfirmerValidation, setSendToConfirmerValidation] = useState(false);
+    const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
     const [batchList, setBatchList] = useState([]);
     const [batchReports, setBatchReports] = useState({});
     const [expandedBatch, setExpandedBatch] = useState(null);
     const [checkingBatchId, setCheckingBatchId] = useState(null);
     const [retryingBatchId, setRetryingBatchId] = useState(null);
+    const [downloadingCertificatesBatchId, setDownloadingCertificatesBatchId] = useState(null);
     const [checkingAllBatches, setCheckingAllBatches] = useState(false);
     const [batchLoading, setBatchLoading] = useState(false);
     const [batchMessage, setBatchMessage] = useState(null);
+    const [certificateStatusByReport, setCertificateStatusByReport] = useState({});
     const [selectedReports, setSelectedReports] = useState(new Set());
     const [bulkActionBusy, setBulkActionBusy] = useState(null);
     const [actionMenuBatch, setActionMenuBatch] = useState(null);
@@ -477,6 +477,7 @@ const UploadReportElrajhi = () => {
     const [mainReportSnapshot, setMainReportSnapshot] = useState(null);
     const [validationReportIssues, setValidationReportIssues] = useState([]);
     const [validationReportSnapshot, setValidationReportSnapshot] = useState(null);
+    const [validationTableTab, setValidationTableTab] = useState("report-info");
 
     const resetMainValidationState = () => {
         setMainReportIssues([]);
@@ -724,16 +725,19 @@ const UploadReportElrajhi = () => {
             });
 
             if (!validationExcelFile) {
-                throw new Error("Select a folder with Excel file before sending.");
+                throw new Error("Select an Excel file before sending.");
             }
 
             if (validationReportIssues.length) {
                 throw new Error("Resolve the report info validation issues before sending.");
             }
+            if (wantsPdfUpload && !validationPdfFiles.length) {
+                throw new Error("Add PDF files or turn off PDF upload to use temporary PDFs.");
+            }
             // Upload to backend
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
-                validationPdfFiles
+                wantsPdfUpload ? validationPdfFiles : []
             );
 
             console.log("ELRAJHI BATCH:", data);
@@ -826,7 +830,7 @@ const UploadReportElrajhi = () => {
             });
 
             if (!validationExcelFile) {
-                throw new Error("Select a folder with Excel file before sending.");
+                throw new Error("Select an Excel file before sending.");
             }
 
             if (validationReportIssues.length) {
@@ -961,11 +965,118 @@ const UploadReportElrajhi = () => {
         }
     };
 
-    useEffect(() => {
-        if (activeTab === "check-reports") {
-            loadBatchList();
+    const ensureBatchReportsLoaded = async (batchId) => {
+        if (!batchId) return [];
+        if (batchReports[batchId]?.length) return batchReports[batchId];
+        const data = await fetchElrajhiBatchReports(batchId);
+        const reports = Array.isArray(data?.reports) ? data.reports : [];
+        setBatchReports((prev) => ({
+            ...prev,
+            [batchId]: reports,
+        }));
+        return reports;
+    };
+
+    const buildCertificateTargets = (reports = []) =>
+        reports
+            .map((report) => ({
+                reportId: report.report_id || report.reportId || "",
+                assetName: report.asset_name || report.assetName || report.asset || "",
+            }))
+            .filter((report) => report.reportId);
+
+    const applyCertificateResults = (results = []) => {
+        setCertificateStatusByReport((prev) => {
+            const next = { ...prev };
+            results.forEach((item) => {
+                if (item?.status === "DOWNLOADED" && item?.reportId) {
+                    next[item.reportId] = "downloaded";
+                }
+            });
+            return next;
+        });
+    };
+
+    const downloadCertificatesForReports = async (batchId, reports, label) => {
+        if (!window?.electronAPI?.downloadRegistrationCertificates) {
+            setBatchMessage({
+                type: "error",
+                text: "Desktop integration unavailable. Restart the app.",
+            });
+            return;
         }
-    }, [activeTab]);
+
+        const targets = buildCertificateTargets(reports);
+        if (!targets.length) {
+            setBatchMessage({
+                type: "info",
+                text: "No reports with IDs found to download certificates.",
+            });
+            return;
+        }
+
+        const folderResult = await window.electronAPI.selectFolder();
+        if (!folderResult?.folderPath) {
+            setBatchMessage({
+                type: "info",
+                text: "Folder selection canceled.",
+            });
+            return;
+        }
+
+        setDownloadingCertificatesBatchId(batchId);
+        setBatchMessage({
+            type: "info",
+            text: `Downloading ${targets.length} certificate(s)${label ? ` for ${label}` : ""}...`,
+        });
+
+        try {
+            const result = await window.electronAPI.downloadRegistrationCertificates({
+                downloadPath: folderResult.folderPath,
+                reports: targets,
+            });
+            if (result?.status !== "SUCCESS") {
+                throw new Error(result?.error || "Certificate download failed");
+            }
+
+            if (Array.isArray(result?.results)) {
+                applyCertificateResults(result.results);
+            }
+
+            const summary = result?.summary || {};
+            const downloaded = summary.downloaded ?? 0;
+            const failed = summary.failed ?? 0;
+            const skipped = summary.skipped ?? 0;
+
+            setBatchMessage({
+                type: failed > 0 ? "info" : "success",
+                text: `Certificates downloaded: ${downloaded}. Skipped: ${skipped}. Failed: ${failed}.`,
+            });
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err.message || "Failed to download certificates.",
+            });
+        } finally {
+            setDownloadingCertificatesBatchId(null);
+        }
+    };
+
+    const handleBatchDownloadCertificates = async (batchId) => {
+        try {
+            const reports = await ensureBatchReportsLoaded(batchId);
+            await downloadCertificatesForReports(batchId, reports, `batch ${batchId}`);
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err?.message || "Failed to prepare batch reports for download.",
+            });
+        }
+    };
+
+    useEffect(() => {
+        loadBatchList();
+    }, []);
 
     const toggleBatchExpand = async (batchId) => {
         if (expandedBatch === batchId) {
@@ -1244,7 +1355,7 @@ const UploadReportElrajhi = () => {
             setValidationReportIssues(reportValidation.issues);
             setValidationReportSnapshot(reportValidation.snapshot);
 
-            const valuerCols = detectValuerColumnsOrThrow(marketRows[0]);
+            const valuerCols = detectValuerColumns(marketRows[0]);
 
             const pdfMap = {};
             pdfList.forEach((file) => {
@@ -1259,25 +1370,25 @@ const UploadReportElrajhi = () => {
                 const row = marketRows[i];
                 if (!row.asset_name) continue;
 
-                const valuers = buildValuersForAsset(row, valuerCols);
-                if (!valuers.length) {
-                    throw new Error(
-                        `Asset "${row.asset_name}" (row ${i + 2}) has no valuers.`
+                const hasValuerData = valuerCols.hasValuerColumns
+                    && valuerCols.allKeys.some((key) => hasValue(row[key]));
+                const valuers = hasValuerData ? buildValuersForAsset(row, valuerCols) : [];
+                let roundedTotal = null;
+
+                if (hasValuerData) {
+                    const total = valuers.reduce(
+                        (sum, v) => sum + Number(v.percentage || 0),
+                        0
                     );
-                }
+                    roundedTotal = Math.round(total * 100) / 100;
 
-                const total = valuers.reduce(
-                    (sum, v) => sum + Number(v.percentage || 0),
-                    0
-                );
-                const roundedTotal = Math.round(total * 100) / 100;
-
-                if (Math.abs(roundedTotal - 100) > 0.001) {
-                    invalidTotals.push({
-                        assetName: row.asset_name,
-                        rowNumber: i + 2,
-                        total: roundedTotal,
-                    });
+                    if (Math.abs(roundedTotal - 100) > 0.001) {
+                        invalidTotals.push({
+                            assetName: row.asset_name,
+                            rowNumber: i + 2,
+                            total: roundedTotal,
+                        });
+                    }
                 }
 
                 const pdf_name = pdfMap[normalizeKey(row.asset_name)] || null;
@@ -1287,6 +1398,7 @@ const UploadReportElrajhi = () => {
                     client_name: row.client_name || row.owner_name || "",
                     pdf_name,
                     valuers,
+                    hasValuerData,
                     totalPercentage: roundedTotal,
                 });
             }
@@ -1301,6 +1413,7 @@ const UploadReportElrajhi = () => {
                 client_name: asset.client_name || "Pending client",
                 pdf_name: asset.pdf_name,
                 valuers: asset.valuers,
+                hasValuerData: asset.hasValuerData,
                 totalPercentage: asset.totalPercentage,
             }));
 
@@ -1308,6 +1421,7 @@ const UploadReportElrajhi = () => {
             setValidationReports(reports);
 
             const matchedCount = reports.filter((r) => !!r.pdf_name).length;
+            const hasAnyValuerData = assets.some((asset) => asset.hasValuerData);
 
             if (!silent) {
                 if (reportValidation.issues.length) {
@@ -1322,9 +1436,12 @@ const UploadReportElrajhi = () => {
                         text: `Found ${invalidTotals.length} asset(s) with invalid totals. Example: Asset "${firstInvalid.assetName}" (row ${firstInvalid.rowNumber}) totals ${firstInvalid.total}%. Must be 100%.`,
                     });
                 } else {
+                    const valuerNote = hasAnyValuerData
+                        ? ""
+                        : " No valuer data found; totals check skipped.";
                     setValidationMessage({
                         type: "success",
-                        text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name. Report info looks valid.`,
+                        text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.${valuerNote} Report info looks valid.`,
                     });
                 }
             }
@@ -1456,75 +1573,72 @@ const UploadReportElrajhi = () => {
         }
     };
 
-    const handleValidationFolderChange = (e) => {
+    const handleValidationExcelChange = (e) => {
         resetValidationBanner();
         resetValidationCardState();
-        const incomingFiles = Array.from(e.target.files || []);
-        setValidationFolderFiles(incomingFiles);
-        const excel = incomingFiles.find((file) => /\.(xlsx|xls)$/i.test(file.name));
-        const pdfList = incomingFiles.filter((file) => /\.pdf$/i.test(file.name));
-        setValidationExcelFile(excel || null);
-        setValidationPdfFiles(pdfList);
+        const files = Array.from(e.target.files || []);
+        const excel = files[0] || null;
+        setValidationExcelFile(excel);
         setRememberedFiles((prev) => ({
             ...prev,
             validationExcel: excel ? excel.name : null,
-            validationPdfs: pdfList.map((p) => p.name),
         }));
     };
 
+    const handleValidationPdfsChange = (e) => {
+        resetValidationBanner();
+        const files = Array.from(e.target.files || []);
+        setValidationPdfFiles(files);
+        setRememberedFiles((prev) => ({
+            ...prev,
+            validationPdfs: files.map((file) => file.name),
+        }));
+    };
+
+    const handlePdfToggle = (checked) => {
+        setWantsPdfUpload(checked);
+        if (!checked) {
+            setValidationPdfFiles([]);
+            setRememberedFiles((prev) => ({
+                ...prev,
+                validationPdfs: [],
+            }));
+        }
+    };
+
+    const hasAnyValuerData = marketAssets.some((a) => a.hasValuerData);
     const allAssetsTotalsValid = marketAssets.every(
-        (a) => Math.abs((a.totalPercentage || 0) - 100) < 0.001
+        (a) => !a.hasValuerData || Math.abs((a.totalPercentage || 0) - 100) < 0.001
     );
     const canSendReports = marketAssets.length > 0 && allAssetsTotalsValid && !loadingValuers && !validationReportIssues.length;
-    const maxValuerSlots = Math.max(
-        1,
-        marketAssets.reduce(
-            (max, asset) => Math.max(max, (asset.valuers || []).length),
-            0
-        )
-    );
-
-    const calculateAssetTotal = (asset) => {
-        const total = (asset?.valuers || []).reduce(
-            (sum, member) =>
-                sum + Number(member.percentage ?? member.contribution ?? 0),
-            0
-        );
-        return Math.round(total * 100) / 100;
-    };
+    const pdfReportCount = validationReports.filter((report) => report.pdf_name).length;
+    const canSendPdfOnly = canSendReports && wantsPdfUpload && pdfReportCount > 0;
 
     const resetValidationSection = () => {
         resetValidationFlow();
-        setValidationFolderFiles([]);
         setValidationExcelFile(null);
         setValidationPdfFiles([]);
         setSendToConfirmerValidation(false);
         setIsPausedValidation(false);
         setIsPausedPdfOnly(false);
+        setWantsPdfUpload(false);
         resetValidationCardState();
     };
 
-    const registerValidationFolder = async () => {
+    const registerValidationSelection = async () => {
         resetValidationBanner();
 
-        if (!validationFolderFiles.length) {
-            setValidationMessage({
-                type: "error",
-                text: "Select a folder that includes Excel and PDF files.",
-            });
-            return;
-        }
         if (!validationExcelFile) {
             setValidationMessage({
                 type: "error",
-                text: "The folder must include at least one Excel file for report info.",
+                text: "Select an Excel file before validation.",
             });
             return;
         }
-        if (!validationPdfFiles.length) {
+        if (wantsPdfUpload && !validationPdfFiles.length) {
             setValidationMessage({
                 type: "error",
-                text: "Add at least one PDF in the folder to continue.",
+                text: "Add at least one PDF file or disable PDF upload.",
             });
             return;
         }
@@ -1533,7 +1647,7 @@ const UploadReportElrajhi = () => {
         try {
             const parseResult = await parseExcelForValidation(
                 validationExcelFile,
-                validationPdfFiles,
+                wantsPdfUpload ? validationPdfFiles : [],
                 { silent: false }
             );
 
@@ -1562,20 +1676,26 @@ const UploadReportElrajhi = () => {
             }
 
             const totalsValid = assets.every(
-                (asset) => Math.abs((asset.totalPercentage || 0) - 100) < 0.001
+                (asset) => !asset.hasValuerData || Math.abs((asset.totalPercentage || 0) - 100) < 0.001
             );
 
             if (!totalsValid) {
                 setValidationMessage({
                     type: "error",
-                    text: "Valuer percentages must total 100% for every asset before saving.",
+                    text: "Valuer percentages must total 100% for every asset with valuer data before saving.",
                 });
                 return;
             }
 
+            const pdfCount = wantsPdfUpload ? validationPdfFiles.length : 0;
+            const valuerNote = assets.some((asset) => asset.hasValuerData)
+                ? ""
+                : " No valuer data found; totals check skipped.";
+            const pdfNote = wantsPdfUpload ? ` and ${pdfCount} PDF(s)` : "";
+
             setValidationMessage({
                 type: "success",
-                text: `Folder staged. Found ${assets.length} asset(s) and ${validationPdfFiles.length} PDF(s). Matched ${matchedCount} PDF(s) by asset name. Report info is valid.`,
+                text: `Files staged. Found ${assets.length} asset(s)${pdfNote}. Matched ${matchedCount} PDF(s) by asset name.${valuerNote} Report info is valid.`,
             });
         } finally {
             setSavingValidation(false);
@@ -1758,7 +1878,9 @@ const UploadReportElrajhi = () => {
                     ? "Retry"
                     : action === "send"
                         ? "Finalize"
-                        : "Approve";
+                        : action === "approve"
+                            ? "Approve"
+                            : "Download certificates";
 
         setBulkActionBusy(action);
         setBatchMessage({
@@ -1829,6 +1951,8 @@ const UploadReportElrajhi = () => {
                     type: "error",
                     text: "Approve via single-report automation is not wired to desktop integration yet.",
                 });
+            } else if (action === "certificate") {
+                await downloadCertificatesForReports(batchId, selected, "selected reports");
             }
         } catch (err) {
             setBatchMessage({
@@ -1851,468 +1975,494 @@ const UploadReportElrajhi = () => {
     const batchPageStart = (currentPageSafe - 1) * pageSize;
     const displayedBatches = batchList.slice(batchPageStart, batchPageStart + pageSize);
 
+    const reportInfoFields = [
+        { label: "Purpose of Valuation", value: validationReportSnapshot?.purpose },
+        { label: "Value Attributes", value: validationReportSnapshot?.valueAttributes },
+        { label: "Report", value: validationReportSnapshot?.reportType },
+        { label: "Client Name", value: validationReportSnapshot?.clientName },
+        { label: "Client Telephone", value: validationReportSnapshot?.telephone },
+        { label: "Client Email", value: validationReportSnapshot?.email },
+        {
+            label: "Date of Valuation",
+            value: validationReportSnapshot?.valuedAt ? formatDateForDisplay(validationReportSnapshot.valuedAt) : "",
+        },
+        {
+            label: "Report Issuing Date",
+            value: validationReportSnapshot?.submittedAt ? formatDateForDisplay(validationReportSnapshot.submittedAt) : "",
+        },
+    ];
+
+    const reportInfoFieldLabels = reportInfoFields.map((field) => field.label);
+    const reportInfoIssuesByField = validationReportIssues.reduce((acc, issue) => {
+        const key = issue.field || "General";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(issue);
+        return acc;
+    }, {});
+    const extraReportInfoIssues = validationReportIssues.filter(
+        (issue) => !reportInfoFieldLabels.includes(issue.field)
+    );
+    const hasReportInfoData = Boolean(validationReportSnapshot) || validationReportIssues.length > 0;
+
 
     const validationContent = (
-        <div className="space-y-5">
-            <div className="space-y-4">
-                <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">Step 1</span>
-                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
-                            <Upload className="w-4 h-4 text-blue-700" />
-                            <div>
-                                <p className="text-sm font-semibold text-gray-900 leading-tight">
-                                    Upload folder (Excel + PDFs)
-                                </p>
-                                <p className="text-[11px] text-gray-600 leading-tight">
-                                    Choose the folder that contains the Excel report file and all related PDFs.
-                                </p>
+        <div className="space-y-2">
+            <div className="space-y-1">
+                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[200px] flex-1">
+                            <div className="flex items-center gap-2 text-[10px] text-blue-900">
+                                <FolderOpen className="w-4 h-4" />
+                                <span className="font-semibold">
+                                    {validationExcelFile
+                                        ? validationExcelFile.name
+                                        : rememberedFiles.validationExcel
+                                            ? `Last: ${rememberedFiles.validationExcel}`
+                                            : "Choose Excel file"}
+                                </span>
                             </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-gray-700 border border-slate-200">
-                                <FileSpreadsheet className="w-3 h-3" />
-                                {validationExcelFile
-                                    ? validationExcelFile.name
-                                    : rememberedFiles.validationExcel
-                                        ? `Last: ${rememberedFiles.validationExcel}`
-                                        : "No Excel selected"}
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                className="hidden"
+                                onChange={handleValidationExcelChange}
+                            />
+                            <span className="text-[10px] font-semibold text-blue-900">Browse</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-blue-900/15 bg-blue-50 px-2 py-2 text-[10px] font-semibold text-blue-900 leading-tight">
+                            <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
+                                checked={wantsPdfUpload}
+                                onChange={(e) => handlePdfToggle(e.target.checked)}
+                            />
+                            <span>Upload PDFs</span>
+                            <span className="text-[10px] font-medium text-blue-900/70">
+                                Need to upload PDF files for reports, or skip to use temp PDFs?
                             </span>
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 text-gray-700 border border-slate-200">
-                                <Files className="w-3 h-3" />
-                                {validationPdfFiles.length
-                                    ? `${validationPdfFiles.length} PDF(s)`
-                                    : rememberedFiles.validationPdfs.length
-                                        ? `Last: ${rememberedFiles.validationPdfs.length} PDF(s)`
-                                        : "0 PDF(s)"}
-                            </span>
-                        </div>
-                    </div>
-                    <label className="flex items-center justify-between px-4 py-4 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition w-1/4 min-w-[260px]">
-                        <div className="flex items-center gap-2 text-sm text-gray-800">
-                            <FolderOpen className="w-4 h-4" />
-                            <span className="font-semibold">
-                                {validationFolderFiles.length
-                                    ? `${validationFolderFiles.length} file(s) in folder`
-                                    : "Pick a folder"}
-                            </span>
-                        </div>
-                        <input
-                            type="file"
-                            multiple
-                            webkitdirectory="true"
-                            className="hidden"
-                            onChange={handleValidationFolderChange}
-                        />
-                        <span className="text-xs text-blue-600 font-semibold">Browse</span>
-                    </label>
-                    <div className="flex flex-wrap gap-3">
-                        <div className="flex-1 min-w-[180px] p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
-                            <p className="font-semibold text-gray-900 text-sm">Excel detected</p>
-                            <p className="text-xs text-gray-700">
-                                {validationExcelFile
-                                    ? validationExcelFile.name
-                                    : rememberedFiles.validationExcel
-                                        ? `Last: ${rememberedFiles.validationExcel}`
-                                        : "—"}
-                            </p>
-                        </div>
-                        <div className="flex-1 min-w-[180px] p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
-                            <p className="font-semibold text-gray-900 text-sm">PDFs detected</p>
-                            <p className="text-xs text-gray-700">
-                                {validationPdfFiles.length
-                                    ? `${validationPdfFiles.length} file(s)`
-                                    : rememberedFiles.validationPdfs.length
-                                        ? `Last: ${rememberedFiles.validationPdfs.length} file(s)`
-                                        : "0 file(s)"}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            onClick={registerValidationFolder}
-                            disabled={savingValidation || loadingValuers}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                        >
-                            {(savingValidation || loadingValuers) ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Upload className="w-4 h-4" />
-                            )}
-                            Save folder for validation
-                        </button>
-                        <button
-                            type="button"
-                            onClick={resetValidationSection}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
-                        >
-                            <RefreshCw className="w-4 h-4" />
-                            Reset
-                        </button>
+                        </label>
+                        {wantsPdfUpload && (
+                            <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[200px] flex-1">
+                                <div className="flex items-center gap-2 text-[10px] text-blue-900">
+                                    <Files className="w-4 h-4" />
+                                    <span className="font-semibold">
+                                        {validationPdfFiles.length
+                                            ? `${validationPdfFiles.length} file(s) selected`
+                                            : rememberedFiles.validationPdfs.length
+                                                ? `Last: ${rememberedFiles.validationPdfs.length} PDF(s)`
+                                                : "Choose PDF files"}
+                                    </span>
+                                </div>
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept=".pdf"
+                                    className="hidden"
+                                    onChange={handleValidationPdfsChange}
+                                />
+                                <span className="text-[10px] font-semibold text-blue-900">Browse</span>
+                            </label>
+                        )}
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={registerValidationSelection}
+                                disabled={savingValidation || loadingValuers}
+                                className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2.5 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
+                            >
+                                {(savingValidation || loadingValuers) ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Upload className="w-4 h-4" />
+                                )}
+                                Validate files
+                            </button>
+                            <button
+                                type="button"
+                                onClick={resetValidationSection}
+                                className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2.5 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Reset
+                            </button>
                     </div>
                 </div>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
-                        <div className="flex items-center gap-2">
-                            <Info className="w-5 h-5 text-emerald-600" />
-                            <div>
-                                <p className="text-sm font-semibold text-gray-900">
-                                    Valuer contributions
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                    Pulled from the Excel &quot;market&quot; sheet. Each asset row must have valuers totaling 100%. Listing all assets and their valuers below.
-                                </p>
-                                {marketAssets.length > 1 && (
-                                    <p className="text-[11px] text-gray-500">
-                                        All {marketAssets.length} assets were validated for valuers and totals.
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                                <thead className="bg-gray-50 text-gray-600">
-                                    <tr>
-                                        <th className="px-3 py-2 text-left">Asset</th>
-                                        {Array.from({ length: maxValuerSlots }).map((_, idx) => (
-                                            <th key={`valuer-col-${idx}`} className="px-3 py-2 text-left">
-                                                Valuer {idx + 1}
-                                            </th>
-                                        ))}
-                                        <th className="px-3 py-2 text-left">Total (%)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {marketAssets.map((asset, assetIdx) => {
-                                        const assetTotal = calculateAssetTotal(asset);
-                                        const isComplete = Math.abs(assetTotal - 100) < 0.001;
-
-                                        return (
-                                            <tr
-                                                key={`${asset.asset_name || "asset"}-${assetIdx}`}
-                                                className="border-t align-top"
-                                            >
-                                                <td className="px-3 py-2 text-gray-900 font-medium">
-                                                    {asset.asset_name || `Asset ${assetIdx + 1}`}
-                                                </td>
-                                                {Array.from({ length: maxValuerSlots }).map((_, valIdx) => {
-                                                    const valuer = (asset.valuers || [])[valIdx];
-
-                                                    return (
-                                                        <td
-                                                            key={`asset-${assetIdx}-valuer-${valIdx}`}
-                                                            className="px-3 py-2 text-gray-800"
-                                                        >
-                                                            {valuer ? (
-                                                                <div className="space-y-0.5">
-                                                                    <div className="text-xs text-gray-500">
-                                                                        ID: {valuer.valuerId || "—"}
-                                                                    </div>
-                                                                    <div className="text-sm font-semibold text-gray-800">
-                                                                        {valuer.valuerName || "—"}
-                                                                    </div>
-                                                                    <div className="text-sm text-gray-700">
-                                                                        {Number(valuer.percentage ?? valuer.contribution ?? 0)}%
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-gray-400 text-xs">—</span>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                                <td className="px-3 py-2 font-semibold text-right">
-                                                    <span className={isComplete ? "text-emerald-600" : "text-red-600"}>
-                                                        {assetTotal}%
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                        {loadingValuers && (
-                            <div className="flex items-center gap-2 text-xs text-gray-600">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Reading valuers from Excel...
-                            </div>
-                        )}
-                        {!loadingValuers && !marketAssets.length && (
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <Info className="w-4 h-4" />
-                                Select a folder with an Excel file to load valuers.
-                            </div>
-                        )}
-                        {!loadingValuers && marketAssets.length > 0 && !allAssetsTotalsValid && (
-                            <div className="flex items-center gap-2 text-xs text-red-600">
-                                <AlertTriangle className="w-4 h-4" />
-                                Every asset row must total 100% to enable sending to Taqeem.
-                            </div>
-                        )}
-                        {!loadingValuers && marketAssets.length > 0 && allAssetsTotalsValid && (
-                            <div className="flex items-center gap-2 text-xs text-emerald-600">
-                                <CheckCircle2 className="w-4 h-4" />
-                                Contributions are balanced. You can proceed to send.
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="space-y-3">
-                        <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
-                            <div className="h-10 w-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                                <Info className="w-5 h-5 text-emerald-600" />
-                            </div>
+                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900 px-2 py-2 text-white">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="space-y-1">
-                                <p className="text-sm font-semibold text-slate-900">Validated folder flow</p>
-                                <p className="text-xs text-slate-600">
-                                    Add a folder, review valuers, choose tabs, then decide if you want to send to confirmer. PDFs can be sent selectively.
+                                <p className="text-[11px] font-semibold">Validation console</p>
+                                <p className="text-[10px] text-blue-100/90 leading-tight">
+                                    Review report info, valuers, and PDF matching in one place.
                                 </p>
-                                {validationMessage && (
-                                    <div
-                                        className={`mt-2 rounded-lg border px-3 py-2 inline-flex items-start gap-2 ${validationMessage.type === "error"
-                                            ? "bg-red-50 text-red-700 border-red-100"
-                                            : validationMessage.type === "success"
-                                                ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                : "bg-blue-50 text-blue-700 border-blue-100"
+                            </div>
+                            {validationDownloadPath && (
+                                <button
+                                    type="button"
+                                    onClick={() => downloadExcelFile(validationDownloadPath, setDownloadingValidationExcel, setValidationMessage)}
+                                    className="inline-flex items-center gap-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/20 disabled:opacity-60"
+                                    disabled={downloadingValidationExcel}
+                                >
+                                    {downloadingValidationExcel ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Download className="w-4 h-4" />
+                                    )}
+                                    {downloadingValidationExcel ? "Preparing..." : "Download updated Excel"}
+                                </button>
+                            )}
+                        </div>
+                        <div className="mt-2 inline-flex rounded-full bg-white/10 p-0.5 text-[10px] font-semibold">
+                            <button
+                                type="button"
+                                onClick={() => setValidationTableTab("report-info")}
+                                className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
+                                    ? "bg-white text-blue-900 shadow-sm"
+                                    : "text-blue-100 hover:text-white"
+                                    }`}
+                            >
+                                Report Info validation
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setValidationTableTab("pdf-assets")}
+                                className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
+                                    ? "bg-white text-blue-900 shadow-sm"
+                                    : "text-blue-100 hover:text-white"
+                                    }`}
+                            >
+                                Validate PDFs & assets data
+                            </button>
+                        </div>
+                    </div>
+                    <div className="p-2 space-y-1">
+                        {validationMessage && (
+                            <div
+                                className={`rounded-lg border px-2 py-1 inline-flex items-start gap-1 text-[10px] ${validationMessage.type === "error"
+                                    ? "bg-rose-50 text-rose-700 border-rose-100"
+                                    : validationMessage.type === "success"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                        : "bg-blue-50 text-blue-700 border-blue-100"
+                                    }`}
+                            >
+                                {validationMessage.type === "error" ? (
+                                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                                ) : validationMessage.type === "success" ? (
+                                    <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                                ) : (
+                                    <Info className="w-4 h-4 mt-0.5" />
+                                )}
+                                <div className="text-[10px]">{validationMessage.text}</div>
+                            </div>
+                        )}
+
+                        {validationTableTab === "report-info" ? (
+                            <div className="space-y-1">
+                                <div className="flex flex-wrap items-center justify-between gap-1">
+                                    <div className="text-[10px] font-semibold text-blue-900">Report Info status</div>
+                                    <span
+                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${validationReportIssues.length
+                                            ? "bg-rose-50 text-rose-700 border-rose-100"
+                                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
                                             }`}
                                     >
-                                        {validationMessage.type === "error" ? (
-                                            <AlertTriangle className="w-4 h-4 mt-0.5" />
-                                        ) : validationMessage.type === "success" ? (
-                                            <CheckCircle2 className="w-4 h-4 mt-0.5" />
-                                        ) : (
-                                            <Info className="w-4 h-4 mt-0.5" />
-                                        )}
-                                        <div className="text-sm">{validationMessage.text}</div>
+                                        {validationReportIssues.length ? `${validationReportIssues.length} issue(s)` : "All fields OK"}
+                                    </span>
+                                </div>
+                                {hasReportInfoData ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                            <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                                <tr>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {reportInfoFields.map((field) => {
+                                                    const fieldIssues = reportInfoIssuesByField[field.label] || [];
+                                                    const hasIssue = fieldIssues.length > 0;
+                                                    const hasFieldValue = hasValue(field.value);
+                                                    const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
+                                                    const statusTone = hasIssue
+                                                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                        : hasFieldValue
+                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                            : "bg-amber-50 text-amber-700 border-amber-200";
+                                                    const notesText = hasIssue
+                                                        ? fieldIssues.map((issue) => issue.message).join(" / ")
+                                                        : hasFieldValue
+                                                            ? "Looks good"
+                                                            : "Missing in Excel";
+                                                    return (
+                                                        <tr key={field.label}>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                                {field.label}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                                {hasFieldValue ? field.value : "N/A"}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
+                                                                    {statusLabel}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                                {notesText}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {extraReportInfoIssues.map((issue, idx) => (
+                                                    <tr key={`issue-extra-${idx}`}>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                            {issue.field || "Issue"}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                            {issue.location || "Report Info"}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                            <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                                                                Issue
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                            {issue.message}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-blue-900/10 bg-blue-50/70 px-2 py-1 text-[10px] text-blue-900">
+                                        Validation results will appear here after reading the Excel.
                                     </div>
                                 )}
                             </div>
-                        </div>
-
-                        {(validationReportSnapshot || validationReportIssues.length) ? (
-                            <ValidationResultsCard
-                                title="Report Info validation"
-                                issues={validationReportIssues}
-                                snapshot={validationReportSnapshot}
-                            />
                         ) : (
-                            <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-sm text-gray-500 flex items-center justify-center">
-                                Validation results will appear here after reading the Excel.
+                            <div className="space-y-1">
+                                <div className="flex flex-wrap items-center justify-between gap-1">
+                                    <div className="text-[10px] font-semibold text-blue-900">PDFs & assets validation</div>
+                                    <div className="flex flex-wrap gap-1 text-[10px] font-semibold">
+                                        <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-900">
+                                            Assets: {validationReports.length}
+                                        </span>
+                                        <span
+                                            className={`rounded-full border px-2 py-0.5 ${validationReports.length
+                                                ? "border-blue-100 bg-white text-blue-900"
+                                                : "border-blue-100 bg-blue-50 text-blue-700"
+                                                }`}
+                                        >
+                                            PDF matches: {validationReports.length ? `${pdfReportCount}/${validationReports.length}` : "0"}
+                                        </span>
+                                        <span
+                                            className={`rounded-full border px-2 py-0.5 ${hasAnyValuerData
+                                                ? allAssetsTotalsValid
+                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                    : "border-rose-200 bg-rose-50 text-rose-700"
+                                                : "border-blue-100 bg-blue-50 text-blue-700"
+                                                }`}
+                                        >
+                                            Valuer totals: {hasAnyValuerData ? (allAssetsTotalsValid ? "OK" : "Check") : "No valuer data"}
+                                        </span>
+                                    </div>
+                                </div>
+                                {loadingValuers && (
+                                    <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Reading valuers from Excel...
+                                    </div>
+                                )}
+                                {validationReports.length ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                            <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                                <tr>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">#</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Asset name</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">PDF match</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Client name</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Valuers (ID / Name / %)</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Total %</th>
+                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Report ID</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {validationReports.map((report, idx) => {
+                                                    const hasValuerData = report.hasValuerData || (report.valuers || []).length > 0;
+                                                    const totalPct = hasValuerData ? Number(report.totalPercentage ?? 0) : null;
+                                                    const totalValid = !hasValuerData || Math.abs((totalPct || 0) - 100) < 0.001;
+                                                    const totalTone = hasValuerData
+                                                        ? totalValid
+                                                            ? "text-emerald-700"
+                                                            : "text-rose-700"
+                                                        : "text-slate-500";
+                                                    return (
+                                                        <tr key={report.id || `${report.asset_name}-${idx}`}>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg text-blue-900/80">
+                                                                {idx + 1}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 font-semibold text-blue-900">
+                                                                {report.asset_name || `Asset ${idx + 1}`}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                {report.pdf_name ? (
+                                                                    <div className="inline-flex items-center gap-2 text-emerald-700">
+                                                                        <FileIcon className="w-4 h-4" />
+                                                                        <span className="font-semibold text-[10px]">{report.pdf_name}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-500">No matching PDF</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/80">
+                                                                {report.client_name || "Pending"}
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                <div className="flex flex-wrap gap-1 text-[10px]">
+                                                                    {(report.valuers || []).length ? (
+                                                                        (report.valuers || []).map((v, vIdx) => (
+                                                                            <span
+                                                                                key={`${report.id}-valuer-${vIdx}`}
+                                                                                className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-blue-900"
+                                                                            >
+                                                                                <span className="font-semibold">{v.valuerId || "N/A"}</span>
+                                                                                <span>{v.valuerName || "N/A"}</span>
+                                                                                <span>({Number(v.percentage ?? 0)}%)</span>
+                                                                            </span>
+                                                                        ))
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-slate-400">N/A</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                <span className={`font-semibold text-[10px] ${totalTone}`}>
+                                                                    {hasValuerData ? `${totalPct}%` : "N/A"}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg">
+                                                                {report.report_id ? (
+                                                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                                                        <CheckCircle2 className="w-3 h-3" />
+                                                                        {report.report_id}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-400">Pending</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-blue-900/10 bg-blue-50/70 px-2 py-1 text-[10px] text-blue-900">
+                                        Validate the Excel file to preview PDFs, assets, and client names.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-4 py-3 border-b flex items-center gap-2 justify-between">
-                    <div className="flex items-center gap-2">
-                        <Files className="w-5 h-5 text-blue-600" />
-                        <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                                Reports staged from folder
-                            </p>
-                            <p className="text-xs text-gray-500">
-                                After the folder is saved to the database, PDFs will appear here with asset and client info.
-                            </p>
+            <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-3 shadow-sm">
+                <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
+                <div className="relative flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
+                                <Send className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-semibold text-blue-950">Send to Taqeem</p>
+                                <p className="text-[10px] text-blue-900/70 leading-tight">
+                                    If valuer data exists, total contributions must equal 100%. Hook the buttons to the Taqeem integration when ready.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-full border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">
+                            <Table className="w-4 h-4 text-blue-900" />
+                            <span>Tabs auto</span>
+                            <span className="text-blue-900/70">
+                                {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
+                            </span>
+                            <span className="text-blue-900/60">(RAM)</span>
                         </div>
                     </div>
-                    {validationDownloadPath && (
-                        <button
-                            type="button"
-                            onClick={() => downloadExcelFile(validationDownloadPath, setDownloadingValidationExcel, setValidationMessage)}
-                            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
-                            disabled={downloadingValidationExcel}
-                        >
-                            {downloadingValidationExcel ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Download className="w-4 h-4" />
-                            )}
-                            {downloadingValidationExcel ? "Preparing..." : "Download updated Excel"}
-                        </button>
-                    )}
-                </div>
-                {validationReports.length ? (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 text-gray-600">
-                                <tr>
-                                    <th className="px-4 py-2 text-left">#</th>
-                                    <th className="px-4 py-2 text-left">PDF file</th>
-                                    <th className="px-4 py-2 text-left">Asset name</th>
-                                    <th className="px-4 py-2 text-left">Client name</th>
-                                    <th className="px-4 py-2 text-left">Valuers (ID / Name / %)</th>
-                                    <th className="px-4 py-2 text-left">Total %</th>
-                                    <th className="px-4 py-2 text-left">Report ID</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {validationReports.map((report, idx) => (
-                                    <tr key={report.id} className="border-t">
-                                        <td className="px-4 py-2 text-gray-700">
-                                            {idx + 1}
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-900 font-medium">
-                                            {report.pdf_name ? (
-                                                <span className="inline-flex items-center gap-2 text-emerald-700">
-                                                    <FileIcon className="w-4 h-4" />
-                                                    {report.pdf_name}
-                                                </span>
-                                            ) : (
-                                                <span className="text-gray-500">
-                                                    No matching PDF
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-800">
-                                            {report.asset_name}
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-800">
-                                            {report.client_name}
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-800">
-                                            <div className="flex flex-wrap gap-1 text-xs">
-                                                {(report.valuers || []).map((v, vIdx) => (
-                                                    <span
-                                                        key={`${report.id}-valuer-${vIdx}`}
-                                                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 border border-gray-200"
-                                                    >
-                                                        <span className="font-semibold text-gray-700">
-                                                            {v.valuerId || "—"}
-                                                        </span>
-                                                        <span className="text-gray-600">
-                                                            {v.valuerName || "—"}
-                                                        </span>
-                                                        <span className="text-gray-700">
-                                                            ({Number(v.percentage ?? 0)}%)
-                                                        </span>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-900 font-semibold">
-                                            {report.totalPercentage ?? 0}%
-                                        </td>
-                                        <td className="px-4 py-2 text-gray-800">
-                                            {report.report_id ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-800 border border-emerald-100 text-xs">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    {report.report_id}
-                                                </span>
-                                            ) : (
-                                                <span className="text-gray-400 text-xs">Pending</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <div className="px-4 py-3 text-sm text-gray-500 flex items-center gap-2">
-                        <Info className="w-4 h-4" />
-                        Save a folder to preview the PDF files, assets, and client names.
-                    </div>
-                )}
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-4">
-                <div className="flex items-center gap-2">
-                    <Send className="w-5 h-5 text-emerald-600" />
-                    <div>
-                        <p className="text-sm font-semibold text-gray-900">Send to Taqeem</p>
-                        <p className="text-xs text-gray-500">
-                            Total contributions must equal 100%. Hook the buttons to the Taqeem integration when ready.
-                        </p>
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-start gap-4">
-                    <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-700">
-                            Tabs configuration (auto-detected):
-                        </label>
-                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
-                            <Table className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-semibold text-gray-800">
-                                {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
-                            </span>
-                            <span className="text-xs text-gray-600 ml-2">
-                                (based on available RAM)
-                            </span>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                            Each tab will process a portion of the reports automatically.
-                        </p>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                        <label className="inline-flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900">
                             <input
                                 type="checkbox"
-                                className="h-4 w-4 text-amber-600 border-amber-400 focus:ring-amber-500"
+                                className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
                                 checked={sendToConfirmerValidation}
                                 onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
                             />
-                            <span className="text-sm text-gray-800 font-semibold">
-                                Do you want to send the report to the confirmer? / هل تريد ارسال التقرير الي المعتمد ؟
+                            <span>
+                                Do you want to send the report to the confirmer? / هل تريد ارسال التقارير الي المعتمد مباشرة ؟
                             </span>
                         </label>
-                        {validationReportIssues.length ? (
-                            <div className="flex items-center gap-2 text-xs text-red-600">
-                                <AlertTriangle className="w-4 h-4" />
-                                Resolve the report info issues above to enable sending.
-                            </div>
-                        ) : null}
-                        <div className="flex flex-wrap gap-2 items-center">
-                            <button
-                                type="button"
-                                onClick={handleSubmitElrajhi}
-                                disabled={sendingValidation || !canSendReports}
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                            >
-                                {sendingValidation ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Send className="w-4 h-4" />
-                                )}
-                                Send all reports ({recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""})
-                            </button>
-                            {sendingValidation && (
-                                <ControlButtons
-                                    isPaused={isPausedValidation}
-                                    isRunning={sendingValidation}
-                                    onPause={handlePauseValidation}
-                                    onResume={handleResumeValidation}
-                                    onStop={handleStopValidation}
-                                />
-                            )}
-                            <button
-                                type="button"
-                                onClick={handleSubmitPdfOnly}
-                                disabled={pdfOnlySending || !canSendReports}
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                {pdfOnlySending ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Files className="w-4 h-4" />
-                                )}
-                                Send only reports with PDFs ({recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""})
-                            </button>
-                            {pdfOnlySending && (
-                                <ControlButtons
-                                    isPaused={isPausedPdfOnly}
-                                    isRunning={pdfOnlySending}
-                                    onPause={handlePausePdfOnly}
-                                    onResume={handleResumePdfOnly}
-                                    onStop={handleStopPdfOnly}
-                                />
-                            )}
+                        <div className="text-[10px] text-blue-900/60">
+                            Each tab will process a portion of the reports automatically.
                         </div>
+                    </div>
+                    {validationReportIssues.length ? (
+                        <div className="flex items-center gap-2 text-[10px] text-rose-600">
+                            <AlertTriangle className="w-4 h-4" />
+                            Resolve the report info issues above to enable sending.
+                        </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <button
+                            type="button"
+                            onClick={handleSubmitElrajhi}
+                            disabled={sendingValidation || !canSendReports}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                            {sendingValidation ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Send className="w-4 h-4" />
+                            )}
+                            Send all reports 
+                        </button>
+                        {sendingValidation && (
+                            <ControlButtons
+                                isPaused={isPausedValidation}
+                                isRunning={sendingValidation}
+                                onPause={handlePauseValidation}
+                                onResume={handleResumeValidation}
+                                onStop={handleStopValidation}
+                            />
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleSubmitPdfOnly}
+                            disabled={pdfOnlySending || !canSendPdfOnly}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-900 text-white text-[11px] font-semibold hover:bg-blue-800 disabled:opacity-50"
+                        >
+                            {pdfOnlySending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Files className="w-4 h-4" />
+                            )}
+                            Send only reports with PDFs 
+                        </button>
+                        {pdfOnlySending && (
+                            <ControlButtons
+                                isPaused={isPausedPdfOnly}
+                                isRunning={pdfOnlySending}
+                                onPause={handlePausePdfOnly}
+                                onResume={handleResumePdfOnly}
+                                onStop={handleStopPdfOnly}
+                            />
+                        )}
                     </div>
                 </div>
             </div>
@@ -2632,89 +2782,45 @@ const UploadReportElrajhi = () => {
     );
 
     const checkReportsContent = (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-sm font-semibold text-gray-900">Check reports uploaded</p>
-                    <p className="text-xs text-gray-600">
-                        Expand a batch to view its reports, run a status check, delete completed reports, or reupload incomplete ones.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        type="button"
-                        onClick={loadBatchList}
-                        className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-slate-200"
-                        disabled={batchLoading}
-                    >
-                        <RefreshCw className={`w-4 h-4 ${batchLoading ? "animate-spin" : ""}`} />
-                        Refresh
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => runBatchCheck()}
-                        disabled={!batchList.length || checkingAllBatches}
-                        className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                    >
-                        {checkingAllBatches ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Send className="w-4 h-4" />
-                        )}
-                        Check all batches
-                    </button>
-                    {/* Removed pause buttons from check all batches */}
-                </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-3 mb-3">
-                    <FolderOpen className="w-5 h-5 text-blue-600" />
-                </div>
-
-                <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                        <FolderOpen className="w-5 h-5 text-blue-600" />
+        <div className="space-y-2 text-[10px]">
+            <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-blue-900 text-white flex items-center justify-center shadow-sm">
+                            <Table className="w-4 h-4" />
+                        </div>
                         <div>
-                            <p className="text-sm font-semibold text-gray-900">Tabs Configuration</p>
-                            <p className="text-xs text-gray-500">
-                                Number of tabs is automatically determined based on available RAM
+                            <p className="text-[11px] font-semibold text-blue-950">Tabs Configuration</p>
+                            <p className="text-[10px] text-blue-900/60 leading-tight">
+                                Number of tabs is automatically determined based on available RAM.
                             </p>
                         </div>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-4">
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-gray-700">
-                                Number of tabs to open in Taqeem:
-                            </label>
-                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
-                                <Table className="w-4 h-4 text-blue-600" />
-                                <span className="text-sm font-semibold text-gray-800">
-                                    {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
-                                </span>
-                                <span className="text-xs text-gray-600 ml-2">
-                                    (auto-configured)
-                                </span>
-                            </div>
-                            <p className="text-xs text-gray-500">
-                                Each tab will process a portion of the reports during batch checking.
-                            </p>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 rounded-xl border border-blue-900/15 bg-blue-50 px-3 py-1.5 text-blue-900">
+                            <span className="text-[14px] font-bold">
+                                {recommendedTabs}
+                            </span>
+                            <span className="text-[10px] font-semibold">
+                                tab{recommendedTabs !== 1 ? "s" : ""}
+                            </span>
+                            <span className="text-[10px] text-blue-900/60">(auto)</span>
                         </div>
-
-                        <div className="text-xs text-gray-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                            <p className="font-semibold text-gray-700 mb-1">
-                                Current setting: {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
-                            </p>
-                            <p>This setting is automatically determined based on your system's available RAM.</p>
+                        <div className="text-[10px] text-blue-900/70">
+                            Current setting: {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
                         </div>
                     </div>
                 </div>
+                <div className="mt-1 text-[10px] text-blue-900/60">
+                    Each tab will process a portion of the reports during batch checking.
+                </div>
+                <div className="mt-1 text-[10px] text-blue-900/60">
+                    This setting is automatically determined based on your system's available RAM.
+                </div>
             </div>
-
             {batchMessage && (
                 <div
-                    className={`rounded-lg border p-3 flex items-start gap-2 ${batchMessage.type === "error"
+                    className={`rounded-xl border px-2 py-1 flex items-start gap-2 ${batchMessage.type === "error"
                         ? "bg-red-50 border-red-100 text-red-700"
                         : batchMessage.type === "success"
                             ? "bg-emerald-50 border-emerald-100 text-emerald-700"
@@ -2728,27 +2834,27 @@ const UploadReportElrajhi = () => {
                     ) : (
                         <Info className="w-4 h-4 mt-0.5" />
                     )}
-                    <div className="text-sm">{batchMessage.text}</div>
+                    <div className="text-[10px]">{batchMessage.text}</div>
                 </div>
             )}
 
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+            <div className="bg-white border border-blue-900/15 rounded-2xl shadow-sm overflow-hidden">
                 {batchLoading && !batchList.length ? (
-                    <div className="p-6 flex items-center gap-3 text-sm text-gray-600">
-                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                    <div className="p-3 flex items-center gap-2 text-[10px] text-blue-900/70">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-900" />
                         Loading batches...
                     </div>
                 ) : batchList.length ? (
                     <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 text-gray-600">
+                        <table className="min-w-full text-[10px] leading-tight">
+                            <thead className="bg-blue-900/95 text-white/90">
                                 <tr>
-                                    <th className="px-4 py-2 text-left">Local</th>
-                                    <th className="px-4 py-2 text-left">Batch ID</th>
-                                    <th className="px-4 py-2 text-left">Reports</th>
-                                    <th className="px-4 py-2 text-left">With report ID</th>
-                                    <th className="px-4 py-2 text-left">Complete</th>
-                                    <th className="px-4 py-2 text-left"></th>
+                                    <th className="px-2 py-1 text-left">Local</th>
+                                    <th className="px-2 py-1 text-left">Batch ID</th>
+                                    <th className="px-2 py-1 text-left">Reports</th>
+                                    <th className="px-2 py-1 text-left">With report ID</th>
+                                    <th className="px-2 py-1 text-left">Complete</th>
+                                    <th className="px-2 py-1 text-left"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2763,60 +2869,60 @@ const UploadReportElrajhi = () => {
                                     const localNumber = batchList.length - (batchPageStart + idx);
                                     return (
                                         <React.Fragment key={batch.batchId}>
-                                            <tr className="border-b last:border-0">
-                                                <td className="px-4 py-3 text-gray-800">{localNumber}</td>
-                                                <td className="px-4 py-3">
+                                            <tr className="border-b border-blue-900/10 last:border-0">
+                                                <td className="px-2 py-1 text-blue-900/80">{localNumber}</td>
+                                                <td className="px-2 py-1">
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleBatchExpand(batch.batchId)}
-                                                        className="inline-flex items-center gap-2 text-left text-sm font-semibold text-gray-900"
+                                                        className="inline-flex items-center gap-2 text-left text-[10px] font-semibold text-blue-900"
                                                     >
                                                         {isExpanded ? (
-                                                            <ChevronDown className="w-4 h-4 text-gray-600" />
+                                                            <ChevronDown className="w-4 h-4 text-blue-900/60" />
                                                         ) : (
-                                                            <ChevronRight className="w-4 h-4 text-gray-600" />
+                                                            <ChevronRight className="w-4 h-4 text-blue-900/60" />
                                                         )}
                                                         <span>{batch.batchId}</span>
                                                     </button>
                                                     {batch.excelName ? (
-                                                        <p className="text-xs text-gray-500 ml-6">
+                                                        <p className="text-[10px] text-blue-900/60 ml-6">
                                                             {batch.excelName}
                                                         </p>
                                                     ) : null}
                                                 </td>
-                                                <td className="px-4 py-3 text-gray-800">
+                                                <td className="px-2 py-1 text-blue-900/80">
                                                     {total}
                                                 </td>
-                                                <td className="px-4 py-3 text-gray-800">
+                                                <td className="px-2 py-1 text-blue-900/80">
                                                     {batch.withReportId || 0}/{total || 0}
                                                 </td>
-                                                <td className="px-4 py-3 text-gray-800">
+                                                <td className="px-2 py-1 text-blue-900/80">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-gray-800 border border-slate-200">
+                                                        <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-900 border border-blue-100">
                                                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                                             {completed}/{total} done
                                                         </span>
                                                         {sent ? (
-                                                            <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700 border border-blue-100">
+                                                            <span className="inline-flex items-center gap-2 rounded-full bg-white px-2 py-0.5 text-[10px] text-blue-700 border border-blue-100">
                                                                 <Send className="w-3 h-3" />
                                                                 {sent} sent
                                                             </span>
                                                         ) : null}
                                                         {confirmed ? (
-                                                            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700 border border-emerald-100">
+                                                            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700 border border-emerald-100">
                                                                 <CheckCircle2 className="w-3 h-3" />
                                                                 {confirmed} confirmed
                                                             </span>
                                                         ) : null}
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-right">
+                                                <td className="px-2.5 py-1.5 text-right">
                                                     <div className="flex gap-2 justify-end flex-wrap">
                                                         <button
                                                             type="button"
                                                             onClick={() => runBatchCheck(batch.batchId)}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                                            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                                                         >
                                                             {isCheckingThisBatch ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2824,6 +2930,19 @@ const UploadReportElrajhi = () => {
                                                                 <RefreshCw className="w-4 h-4" />
                                                             )}
                                                             Check batch
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleBatchDownloadCertificates(batch.batchId)}
+                                                            disabled={isCheckingThisBatch || isRetryingThisBatch || downloadingCertificatesBatchId === batch.batchId}
+                                                            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                                        >
+                                                            {downloadingCertificatesBatchId === batch.batchId ? (
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <Download className="w-4 h-4" />
+                                                            )}
+                                                            Download Registration Certificates
                                                         </button>
                                                         {/* Removed pause buttons from check batch button */}
                                                         <button
@@ -2865,7 +2984,7 @@ const UploadReportElrajhi = () => {
                                                                 }
                                                             }}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
+                                                            className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                                                         >
                                                             {isRetryingThisBatch ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2887,24 +3006,25 @@ const UploadReportElrajhi = () => {
                                                 </td>
                                             </tr>
                                             {isExpanded && (
-                                                <tr className="border-b last:border-0">
-                                                    <td colSpan={6} className="bg-slate-50">
-                                                        <div className="p-4">
+                                                <tr className="border-b border-blue-900/10 last:border-0">
+                                                    <td colSpan={6} className="bg-blue-50/40">
+                                                        <div className="p-2">
                                                             {batchReports[batch.batchId] ? (
-                                                                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                                                                    <table className="min-w-full text-sm">
-                                                                        <thead className="bg-gray-50 text-gray-600">
+                                                                <div className="overflow-x-auto rounded-xl border border-blue-900/15 bg-white">
+                                                                    <table className="min-w-full text-[10px] leading-tight">
+                                                                        <thead className="bg-blue-900/95 text-white/90">
                                                                             <tr>
-                                                                                <th className="px-3 py-2 text-left">Report ID</th>
-                                                                                <th className="px-3 py-2 text-left">Client</th>
-                                                                                <th className="px-3 py-2 text-left">Asset</th>
-                                                                                <th className="px-3 py-2 text-left">Status</th>
-                                                                                <th className="px-3 py-2 text-left">
-                                                                                    <div className="flex items-center gap-3">
+                                                                                <th className="px-2 py-1 text-left">Report ID</th>
+                                                                                <th className="px-2 py-1 text-left">Client</th>
+                                                                                <th className="px-2 py-1 text-left">Asset</th>
+                                                                                <th className="px-2 py-1 text-left">Status</th>
+                                                                                <th className="px-2 py-1 text-left">Certificate status</th>
+                                                                                <th className="px-2 py-1 text-left">
+                                                                                    <div className="flex items-center gap-2">
                                                                                         <div className="flex items-center gap-2">
                                                                                             <input
                                                                                                 type="checkbox"
-                                                                                                className="h-4 w-4"
+                                                                                                className="h-3.5 w-3.5"
                                                                                                 checked={
                                                                                                     batchReports[batch.batchId]?.length
                                                                                                         ? batchReports[batch.batchId].every((r) =>
@@ -2920,7 +3040,7 @@ const UploadReportElrajhi = () => {
                                                                                                     )
                                                                                                 }
                                                                                             />
-                                                                                            <span className="text-xs text-gray-700">Select all</span>
+                                                                                            <span className="text-[10px] text-white/90">Select all</span>
                                                                                         </div>
                                                                                         <div className="relative">
                                                                                             <button
@@ -2931,7 +3051,7 @@ const UploadReportElrajhi = () => {
                                                                                                     );
                                                                                                     setActionMenuOpen(actionMenuBatch !== batch.batchId ? true : !actionMenuOpen);
                                                                                                 }}
-                                                                                                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-gray-800 border border-slate-200"
+                                                                                                className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold text-white border border-white/20 hover:bg-white/20"
                                                                                             >
                                                                                                 Actions
                                                                                                 {actionMenuOpen && actionMenuBatch === batch.batchId ? (
@@ -2941,10 +3061,10 @@ const UploadReportElrajhi = () => {
                                                                                                 )}
                                                                                             </button>
                                                                                             {actionMenuOpen && actionMenuBatch === batch.batchId && (
-                                                                                                <div className="absolute right-0 mt-1 w-44 rounded-md border border-slate-200 bg-white shadow-lg z-10">
+                                                                                                <div className="absolute right-0 mt-1 w-44 rounded-md border border-blue-900/20 bg-white shadow-lg z-10">
                                                                                                     <button
                                                                                                         type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-red-700 hover:bg-red-50"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-red-700 hover:bg-red-50"
                                                                                                         onClick={() => handleBulkAction("delete", batch.batchId, batchReports[batch.batchId] || [])}
                                                                                                     >
                                                                                                         <Trash2 className="w-4 h-4" />
@@ -2952,7 +3072,7 @@ const UploadReportElrajhi = () => {
                                                                                                     </button>
                                                                                                     <button
                                                                                                         type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-blue-700 hover:bg-blue-50"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-blue-700 hover:bg-blue-50"
                                                                                                         onClick={() => handleBulkAction("retry", batch.batchId, batchReports[batch.batchId] || [])}
                                                                                                     >
                                                                                                         <RotateCw className="w-4 h-4" />
@@ -2960,7 +3080,7 @@ const UploadReportElrajhi = () => {
                                                                                                     </button>
                                                                                                     <button
                                                                                                         type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-emerald-700 hover:bg-emerald-50"
                                                                                                         onClick={() => handleBulkAction("send", batch.batchId, batchReports[batch.batchId] || [])}
                                                                                                     >
                                                                                                         <Send className="w-4 h-4" />
@@ -2968,11 +3088,19 @@ const UploadReportElrajhi = () => {
                                                                                                     </button>
                                                                                                     <button
                                                                                                         type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-purple-700 hover:bg-purple-50"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-purple-700 hover:bg-purple-50"
                                                                                                         onClick={() => handleBulkAction("approve", batch.batchId, batchReports[batch.batchId] || [])}
                                                                                                     >
                                                                                                         <CheckCircle2 className="w-4 h-4" />
                                                                                                         Approve
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-indigo-700 hover:bg-indigo-50"
+                                                                                                        onClick={() => handleBulkAction("certificate", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <Download className="w-4 h-4" />
+                                                                                                        Download Certificate
                                                                                                     </button>
                                                                                                 </div>
                                                                                             )}
@@ -3013,14 +3141,19 @@ const UploadReportElrajhi = () => {
                                                                                     status = normalizedStatus;
                                                                                 }
 
+                                                                                const certificateStatus =
+                                                                                    certificateStatusByReport[reportId] === "downloaded"
+                                                                                        ? "downloaded"
+                                                                                        : "not_downloaded";
+
                                                                                 return (
                                                                                     <tr key={report.id || reportId || report.asset_name} className="border-t last:border-0">
-                                                                                        <td className="px-3 py-2 text-gray-900 font-semibold">
+                                                                                        <td className="px-2.5 py-1.5 text-gray-900 font-semibold">
                                                                                             {reportId || <span className="text-gray-500">Not created</span>}
                                                                                         </td>
-                                                                                        <td className="px-3 py-2 text-gray-800">{report.client_name || "—"}</td>
-                                                                                        <td className="px-3 py-2 text-gray-800">{report.asset_name || "—"}</td>
-                                                                                        <td className="px-3 py-2">
+                                                                                        <td className="px-2.5 py-1.5 text-gray-800">{report.client_name || "—"}</td>
+                                                                                        <td className="px-2.5 py-1.5 text-gray-800">{report.asset_name || "—"}</td>
+                                                                                        <td className="px-2.5 py-1.5">
                                                                                             {/* Status display remains the same */}
                                                                                             {status === "COMPLETE" ? (
                                                                                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
@@ -3055,7 +3188,20 @@ const UploadReportElrajhi = () => {
                                                                                                         </span>
                                                                                                     )}
                                                                                         </td>
-                                                                                        <td className="px-3 py-2">
+                                                                                        <td className="px-2.5 py-1.5">
+                                                                                            {certificateStatus === "downloaded" ? (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                    <Download className="w-3 h-3" />
+                                                                                                    Downloaded
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                    <AlertTriangle className="w-3 h-3" />
+                                                                                                    Not downloaded
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
+                                                                                        <td className="px-2.5 py-1.5">
                                                                                             <div className="flex items-center gap-2">
                                                                                                 <input
                                                                                                     type="checkbox"
@@ -3087,7 +3233,7 @@ const UploadReportElrajhi = () => {
                                                                     </table>
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                                <div className="flex items-center gap-2 text-xs text-gray-600">
                                                                     <Loader2 className="w-4 h-4 animate-spin" />
                                                                     Loading reports...
                                                                 </div>
@@ -3101,7 +3247,7 @@ const UploadReportElrajhi = () => {
                                 })}
                             </tbody>
                         </table>
-                        <div className="flex items-center justify-between px-4 py-3 border-t">
+                        <div className="flex items-center justify-between px-2.5 py-1.5 border-t">
                             <div className="text-xs text-gray-600">
                                 Page {currentPageSafe} of {totalBatchPages}
                             </div>
@@ -3145,7 +3291,7 @@ const UploadReportElrajhi = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="p-6 text-sm text-gray-600 flex items-center gap-2">
+                    <div className="p-4 text-xs text-gray-600 flex items-center gap-2">
                         <Info className="w-4 h-4" />
                         No batches yet. Upload reports first, then come back to check their status.
                     </div>
@@ -3168,43 +3314,25 @@ const UploadReportElrajhi = () => {
     );
 
     return (
-        <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900">
-                        Upload Report Elrajhi
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                        Choose a flow: quick upload, validation with folder parsing, or check previously uploaded batches.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <TabButton
-                        active={activeTab === "no-validation"}
-                        onClick={() => setActiveTab("no-validation")}
-                    >
-                        No validation
-                    </TabButton>
-                    <TabButton
-                        active={activeTab === "validation"}
-                        onClick={() => setActiveTab("validation")}
-                    >
-                        With validation
-                    </TabButton>
-                    <TabButton
-                        active={activeTab === "check-reports"}
-                        onClick={() => setActiveTab("check-reports")}
-                    >
-                        Check reports uploaded
-                    </TabButton>
+        <div className="p-6 space-y-5">
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
+                <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
+                        <Upload className="w-4 h-4" />
+                    </div>
+                    <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
+                            Elrajhi Reports
+                        </div>
+                        <h2 className="text-lg font-bold text-blue-950">
+                            Upload Report Elrajhi
+                        </h2>
+                    </div>
                 </div>
             </div>
 
-            {activeTab === "no-validation"
-                ? noValidationContent
-                : activeTab === "validation"
-                    ? validationContent
-                    : checkReportsContent}
+            {validationContent}
+            {checkReportsContent}
         </div>
     );
 };

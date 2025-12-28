@@ -4,13 +4,45 @@ import usePersistentState from "../hooks/usePersistentState";
 import { useSession } from "../context/SessionContext";
 import { useValueNav } from "../context/ValueNavContext";
 
+const repairMojibake = (value) => {
+    if (!value || typeof value !== "string") return value;
+    if (!/[\u00c3\u00c2\u00d8\u00d9]/.test(value)) return value;
+    try {
+        const bytes = Uint8Array.from(value, (ch) => ch.charCodeAt(0));
+        return new TextDecoder("utf-8").decode(bytes);
+    } catch (err) {
+        return value;
+    }
+};
+
+const normalizeCompany = (company) => {
+    if (!company) return company;
+    const fixedName = repairMojibake(company.name);
+    if (fixedName === company.name) return company;
+    return { ...company, name: fixedName };
+};
+
 export default function GetCompanies({ onViewChange }) {
-    const [companies, setCompanies, resetCompanies] = usePersistentState("get-companies:list", [], { storage: 'session' });
+    const [companies, setCompanies, resetCompanies] = usePersistentState(
+        "get-companies:list",
+        [],
+        {
+            storage: 'session',
+            revive: (value) => Array.isArray(value) ? value.map(normalizeCompany) : [],
+        }
+    );
     const [loading, setLoading] = useState(false);
     const [navigating, setNavigating] = useState(false);
     const [error, setError] = usePersistentState("get-companies:error", "", { storage: 'session' });
     const [successMessage, setSuccessMessage] = usePersistentState("get-companies:success", "", { storage: 'session' });
-    const [selectedCompany, setSelectedCompany, resetSelectedCompany] = usePersistentState("get-companies:selected", null, { storage: 'session' });
+    const [selectedCompany, setSelectedCompany, resetSelectedCompany] = usePersistentState(
+        "get-companies:selected",
+        null,
+        {
+            storage: 'session',
+            revive: (value) => normalizeCompany(value),
+        }
+    );
     const [navigationComplete, setNavigationComplete, _resetNavigationComplete] = usePersistentState("get-companies:navigationComplete", false, { storage: 'session' });
     const { taqeemStatus, setCompanyStatus } = useNavStatus();
     const { isAuthenticated } = useSession();
@@ -19,9 +51,11 @@ export default function GetCompanies({ onViewChange }) {
     useEffect(() => {
         if (navigationComplete && selectedCompany) {
             const officeText = selectedCompany.office_id || selectedCompany.officeId || "unknown";
-            setCompanyStatus('success', `Navigated to ${selectedCompany.name || 'company'} (Office ${officeText})`);
+            const displayName = repairMojibake(selectedCompany.name) || "company";
+            setCompanyStatus('success', `Navigated to ${displayName} (Office ${officeText})`);
         } else if (selectedCompany) {
-            setCompanyStatus('info', `Selected ${selectedCompany.name}`);
+            const displayName = repairMojibake(selectedCompany.name);
+            setCompanyStatus('info', `Selected ${displayName}`);
         } else {
             setCompanyStatus('info', 'No company selected');
         }
@@ -44,7 +78,8 @@ export default function GetCompanies({ onViewChange }) {
 
             if (data.status === "SUCCESS") {
                 const fetched = data.data || [];
-                setCompanies(fetched);
+                const normalized = fetched.map(normalizeCompany);
+                setCompanies(normalized);
                 setSuccessMessage("Companies fetched successfully!");
                 setCompanyStatus('info', 'Select a company to navigate');
 
@@ -89,7 +124,7 @@ export default function GetCompanies({ onViewChange }) {
         setSuccessMessage("");
         try {
             const payload = {
-                name: selectedCompany.name,
+                name: repairMojibake(selectedCompany.name),
                 url: selectedCompany.url,
                 officeId: selectedCompany.officeId,
                 sectorId: selectedCompany.sectorId
@@ -97,12 +132,13 @@ export default function GetCompanies({ onViewChange }) {
             const data = await window.electronAPI.navigateToCompany(payload);
 
             if (data.status === "SUCCESS") {
-                const chosen = data.selectedCompany || payload;
+                const chosen = normalizeCompany(data.selectedCompany || payload);
                 setSelectedCompany({ ...selectedCompany, ...chosen });
                 const officeText = chosen.office_id || chosen.officeId || "unknown";
                 setSuccessMessage(`Navigation completed successfully! Office ID: ${officeText}`);
                 setNavigationComplete(true);
-                setCompanyStatus('success', `Navigated to ${chosen.name || 'company'} (Office ${officeText})`);
+                const displayName = repairMojibake(chosen.name) || "company";
+                setCompanyStatus('success', `Navigated to ${displayName} (Office ${officeText})`);
             } else {
                 setError(data.error || 'Failed to navigate to company');
                 setCompanyStatus('error', data.error || 'Failed to navigate to company');
@@ -244,9 +280,9 @@ export default function GetCompanies({ onViewChange }) {
                                         value={selectedCompany?.url || ""}
                                         onChange={(e) => {
                                             const next = companies.find((company) => company.url === e.target.value);
-                                            setSelectedCompany(next || null);
+                                            setSelectedCompany(normalizeCompany(next) || null);
                                             if (next) {
-                                                setCompanyStatus('info', `Selected ${next.name}`);
+                                                setCompanyStatus('info', `Selected ${repairMojibake(next.name)}`);
                                             } else {
                                                 setCompanyStatus('info', 'No company selected');
                                             }
@@ -256,7 +292,7 @@ export default function GetCompanies({ onViewChange }) {
                                         <option value="">-- Select Company --</option>
                                         {companies.map((company, index) => (
                                             <option key={index} value={company.url}>
-                                                {company.name} {company.officeId ? `(Office ${company.officeId})` : ''}
+                                                {repairMojibake(company.name)} {company.officeId ? `(Office ${company.officeId})` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -315,8 +351,10 @@ export default function GetCompanies({ onViewChange }) {
                                                     <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm3 2a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
                                                 </svg>
                                             </div>
-                                            <h3 className="font-semibold text-gray-900 text-lg">{company.name}</h3>
-                                        </div>
+                                        <h3 className="font-semibold text-gray-900 text-lg">
+                                            {repairMojibake(company.name)}
+                                        </h3>
+                                    </div>
                                         <p className="text-sm text-gray-600 mb-3 break-all">{company.url}</p>
                                         <p className="text-sm text-gray-700 mb-1">
                                             Office ID: {company.officeId || 'Unknown'}{company.sectorId ? ` • Sector: ${company.sectorId}` : ''}
@@ -343,7 +381,7 @@ export default function GetCompanies({ onViewChange }) {
                                         </div>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
-                                        <InfoRow label="Name" value={selectedCompany.name} />
+                                        <InfoRow label="Name" value={repairMojibake(selectedCompany.name)} />
                                         <InfoRow label="Office ID" value={selectedCompany.office_id || selectedCompany.officeId || 'Unknown'} />
                                         <InfoRow label="Sector ID" value={selectedCompany.sector_id || selectedCompany.sectorId || 'N/A'} />
                                         <InfoRow label="URL" value={selectedCompany.url} />

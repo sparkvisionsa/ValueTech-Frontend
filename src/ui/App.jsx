@@ -30,6 +30,7 @@ import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
 import ManualMultiReport from './screens/ManualMultiReport';
+import DownloadCertificate from './screens/DownloadCertificate';
 import { RamProvider } from './context/RAMContext';
 import ValuationSystem from './screens/ValuationSystem';
 import WordCopy from './screens/WordCopy';
@@ -137,6 +138,9 @@ const AppContent = () => {
 
             case 'upload-report-elrajhi':
                 return <ElRajhiUploadReport />;
+
+            case 'download-certificate':
+                return <DownloadCertificate />;
 
             case 'duplicate-report':
                 return <DuplicateReport />;

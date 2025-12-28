@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopElrajiBatch: (batchId) => safeInvoke('stop-elrajhi-batch', batchId),
 
     checkElrajhiBatches: (batchId, tabsNum) => safeInvoke('elrajhi-check-batches', batchId, tabsNum),
+    downloadRegistrationCertificates: (payload) => safeInvoke('download-registration-certificates', payload),
     reuploadElrajhiReport: (reportId) => safeInvoke('elrajhi-reupload-report', reportId),
     duplicateReportNavigate: (recordId, company) => safeInvoke('duplicate-report', recordId, company),
     createReportsByBatch: (batchId, tabsNum) => safeInvoke('create-reports-by-batch', batchId, tabsNum),

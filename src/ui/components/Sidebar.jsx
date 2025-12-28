@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users } from 'lucide-react';
+import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users, ShieldCheck, Building2 } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useSession } from '../context/SessionContext';
@@ -19,6 +19,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         companyError,
         activeGroup,
         setActiveGroup,
+        setActiveTab,
         resetAll,
         chooseCard,
         chooseDomain,
@@ -58,6 +59,11 @@ const Sidebar = ({ currentView, onViewChange }) => {
     const companyLinks = [
         { id: 'company-members', label: 'Company Members', icon: Users },
         { id: 'company-statics', label: 'Company Statics', icon: BarChart3 }
+    ];
+
+    const dashboardLinks = [
+        ...(isCompanyHead ? [{ id: 'company-console', label: 'Company Dashboard', icon: Building2, groupId: 'companyConsole' }] : []),
+        ...(isAdmin ? [{ id: 'admin-console', label: 'Super Admin', icon: ShieldCheck, groupId: 'adminConsole' }] : [])
     ];
 
     const renderDomains = () => {
@@ -328,6 +334,52 @@ const Sidebar = ({ currentView, onViewChange }) => {
         );
     };
 
+    const renderDashboardLinks = () => {
+        if (dashboardLinks.length === 0) return null;
+        return (
+            <div
+                className="px-2 py-1.5 sidebar-animate"
+                style={{ animationDelay: '260ms' }}
+            >
+                <div className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Dashboards</div>
+                <div className="space-y-1">
+                    {dashboardLinks.map((item, index) => {
+                        const Icon = item.icon;
+                        const blocked = isFeatureBlocked(item.groupId);
+                        const isActive = activeGroup === item.groupId;
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => {
+                                    if (blocked) return;
+                                    chooseCard(item.id);
+                                    setActiveGroup(item.groupId);
+                                    if (setActiveTab) setActiveTab(null);
+                                    delayViewChange('apps');
+                                }}
+                                disabled={blocked}
+                                className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
+                                    isActive
+                                        ? 'bg-gradient-to-r from-cyan-600/90 to-blue-600 text-white shadow-[0_8px_20px_rgba(14,116,144,0.35)]'
+                                        : 'bg-slate-900/50 text-slate-100 hover:bg-slate-800/80'
+                                } ${blocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                style={{ animationDelay: `${300 + index * 35}ms` }}
+                            >
+                                <span
+                                    className={`absolute left-1 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full ${
+                                        isActive ? 'bg-cyan-200' : 'bg-transparent group-hover:bg-cyan-300/50'
+                                    }`}
+                                />
+                                <Icon className="w-3.5 h-3.5 opacity-90" />
+                                <span className="font-medium">{item.label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="relative w-[218px] min-w-[218px] h-screen text-white text-[11px] overflow-hidden border-r border-slate-800/80 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/5 to-transparent" />
@@ -381,6 +433,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     {renderAdminLinks()}
                     {renderMainLinks()}
                 </nav>
+
+                {renderDashboardLinks()}
 
                 <div
                     className="px-2 py-1.5 sidebar-animate"

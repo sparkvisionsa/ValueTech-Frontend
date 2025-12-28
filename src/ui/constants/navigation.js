@@ -15,6 +15,7 @@ const valueSystemGroups = {
         title: 'Upload Reports',
         tabs: [
             { id: 'upload-report-elrajhi', label: 'Upload Report Elrajhi', description: 'رفع تقارير الراجحي مباشرة للنظام.' },
+            { id: 'download-certificate', label: 'download certificate with id', description: 'Download a registration certificate by report ID.' },
             { id: 'duplicate-report', label: 'Duplicate report & send new', description: 'استنساخ تقرير وإرساله بنسخة جديدة.' },
             { id: 'multi-excel-upload', label: 'Multi-Excel Upload', description: 'تحميل دفعات متعددة من ملفات الإكسيل.' },
             { id: 'manual-multi-report', label: 'نسخ بيانات الأكسيل للتقارير', description: 'نسخ بيانات التقارير يدويًا من الإكسيل.' }
@@ -108,6 +109,7 @@ const valueSystemCards = [
 const viewTitles = {
     apps: 'Apps',
     'upload-report-elrajhi': 'Upload Report Elrajhi',
+    'download-certificate': 'download certificate with id',
     'duplicate-report': 'Duplicate report & send new',
     'multi-excel-upload': 'Multi-Excel Upload',
     'manual-multi-report': 'التقارير اليدوية المتعددة',

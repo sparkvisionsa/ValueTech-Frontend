@@ -40,6 +40,7 @@ function registerIpcHandlers() {
     ipcMain.handle('stop-elrajhi-batch', reportHandlers.handleStopElRajhiBatch);
 
     ipcMain.handle('elrajhi-check-batches', reportHandlers.handleCheckElRajhiBatches);
+    ipcMain.handle('download-registration-certificates', reportHandlers.handleDownloadRegistrationCertificates);
     ipcMain.handle('elrajhi-reupload-report', reportHandlers.handleReuploadElRajhiReport);
     ipcMain.handle('duplicate-report', reportHandlers.handleDuplicateReport);
     ipcMain.handle('create-reports-by-batch', reportHandlers.handleCreateReportsByBatch);
@@ -147,6 +148,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('stop-elrajhi-batch');
 
     ipcMain.removeAllListeners('elrajhi-check-batches');
+    ipcMain.removeAllListeners('download-registration-certificates');
     ipcMain.removeAllListeners('elrajhi-reupload-report');
     ipcMain.removeAllListeners('duplicate-report');
     ipcMain.removeAllListeners('create-reports-by-batch');

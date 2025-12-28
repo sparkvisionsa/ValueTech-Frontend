@@ -215,6 +215,17 @@ const reportHandlers = {
         }
     },
 
+    async handleDownloadRegistrationCertificates(event, payload = {}) {
+        try {
+            const reports = Array.isArray(payload?.reports) ? payload.reports : [];
+            const downloadPath = payload?.downloadPath;
+            return await pythonAPI.report.downloadRegistrationCertificates(reports, downloadPath);
+        } catch (err) {
+            console.error('[MAIN] Download registration certificates error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handleRetryMacroIds(event, reportId, tabsNum) {
         try {
             return await pythonAPI.report.retryMacroIds(reportId, tabsNum);
