@@ -39,15 +39,15 @@ const TaqeemAuth = ({ onViewChange }) => {
     };
 
     const handleInputChange = (e) => {
-            const { name, value, type, checked } = e.target;
-            setFormData(prev => ({
-                ...prev,
-                [name]: type === 'checkbox' ? (checked ? 'SMS' : 'EMAIL') : value
-            }));
-            if (name === 'otp' && message?.text) {
-                setMessage((prev) => ({ ...prev, text: '' }));
-            }
-        };
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? (checked ? 'SMS' : 'EMAIL') : value
+        }));
+        if (name === 'otp' && message?.text) {
+            setMessage((prev) => ({ ...prev, text: '' }));
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -243,13 +243,13 @@ const TaqeemAuth = ({ onViewChange }) => {
                             <p className="text-sm text-green-800">Move straight to selecting companies or keep this form for re-authentication.</p>
                         </div>
                         <button
-            onClick={() => onViewChange && onViewChange('get-companies')}
-            className="text-sm font-semibold text-green-900 bg-white border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100"
-        >
-            Go to companies
-        </button>
-    </div>
-)}
+                            onClick={() => onViewChange && onViewChange('get-companies')}
+                            className="text-sm font-semibold text-green-900 bg-white border border-green-200 px-3 py-2 rounded-lg hover:bg-green-100"
+                        >
+                            Go to companies
+                        </button>
+                    </div>
+                )}
 
                 <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
                     <div className="flex items-start justify-between gap-3">
