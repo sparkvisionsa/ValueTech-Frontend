@@ -208,11 +208,11 @@ const SystemOperatingStatus = () => {
     if (!isAdmin) {
         return (
             <div className="p-6">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex items-start gap-3">
-                    <AlertTriangle className="w-6 h-6 text-yellow-600 mt-1" />
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
                     <div>
-                        <h2 className="text-lg font-semibold text-yellow-800">Admin access required</h2>
-                        <p className="text-sm text-yellow-700">
+                        <h2 className="text-[15px] font-semibold text-amber-900">Admin access required</h2>
+                        <p className="text-[11px] text-amber-700">
                             Please sign in with an admin account to manage the Electron System operating state.
                         </p>
                     </div>
@@ -222,14 +222,23 @@ const SystemOperatingStatus = () => {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <p className="text-sm uppercase tracking-wide text-gray-500">Electron System</p>
-                    <h1 className="text-3xl font-bold text-gray-900">Operating Status</h1>
-                    <p className="text-gray-600 text-sm">Keep the system available, paused, or partially enabled. Changes apply instantly for non-admin users.</p>
-                </div>
+        <div className="p-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
                 <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
+                        <Activity className="w-4 h-4" />
+                    </div>
+                    <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
+                            Electron System
+                        </div>
+                        <h2 className="text-lg font-bold text-blue-950">Operating Status</h2>
+                        <p className="text-[11px] text-slate-600">
+                            Keep the system available, paused, or partially enabled. Changes apply instantly for non-admin users.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                     {systemState?.mode === 'inactive' && (
                         <button
                             onClick={async () => {
@@ -253,7 +262,7 @@ const SystemOperatingStatus = () => {
                                     setSaving(false);
                                 }
                             }}
-                            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
                             disabled={saving}
                         >
                             <Activity className="w-4 h-4" />
@@ -262,7 +271,7 @@ const SystemOperatingStatus = () => {
                     )}
                     <button
                         onClick={fetchSystemState}
-                        className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-gray-800 border border-gray-300 hover:bg-gray-50"
+                        className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
                     >
                         <RefreshCcw className="w-4 h-4" />
                         Refresh
@@ -271,10 +280,10 @@ const SystemOperatingStatus = () => {
             </div>
 
             {isAdmin && systemState?.mode === 'inactive' && countdown && (
-                <div className="flex flex-wrap items-center gap-3 text-sm text-blue-900 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 px-4 py-3 rounded-xl shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-blue-600" />
-                        <span className="font-semibold text-blue-900">Downtime ends in</span>
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-blue-50 via-white to-blue-50 px-3 py-2 text-[11px] text-blue-900 shadow-sm">
+                    <div className="flex items-center gap-2 font-semibold">
+                        <AlertTriangle className="w-4 h-4 text-blue-700" />
+                        <span>Downtime ends in</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {[
@@ -285,52 +294,52 @@ const SystemOperatingStatus = () => {
                         ].map((item) => (
                             <div
                                 key={item.label}
-                                className="px-3 py-2 rounded-lg bg-white border border-blue-100 text-center shadow-xs"
+                                className="px-3 py-2 rounded-xl bg-white border border-blue-900/10 text-center shadow-sm"
                             >
-                                <div className="text-lg font-bold text-blue-800 leading-tight">{item.value}</div>
-                                <div className="text-[11px] uppercase tracking-wide text-blue-500">{item.label}</div>
+                                <div className="text-[15px] font-semibold text-blue-900 leading-tight">{item.value}</div>
+                                <div className="text-[9px] uppercase tracking-wide text-blue-900/60">{item.label}</div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-md bg-gray-100 flex items-center justify-center text-gray-700 font-semibold">
+                        <div className="h-10 w-10 rounded-xl bg-blue-900/10 flex items-center justify-center text-blue-900 font-semibold">
                             ES
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500">System</p>
-                            <p className="text-xl font-semibold text-gray-900">{draft.systemName}</p>
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-blue-900/50">System</p>
+                            <p className="text-[15px] font-semibold text-blue-950">{draft.systemName}</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                            <p className="text-xs text-gray-500 uppercase">Current mode</p>
-                            <p className="text-base font-semibold text-gray-900 capitalize">{draft.mode}</p>
+                        <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-900/10">
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-blue-900/50">Current mode</p>
+                            <p className="text-[13px] font-semibold text-blue-950 capitalize">{draft.mode}</p>
                         </div>
-                        <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                            <p className="text-xs text-gray-500 uppercase">Downtime (days)</p>
-                            <p className="text-base font-semibold text-gray-900">{draft.downtimeDays || 0}</p>
+                        <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-900/10">
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-blue-900/50">Downtime (days)</p>
+                            <p className="text-[13px] font-semibold text-blue-950">{draft.downtimeDays || 0}</p>
                         </div>
                     </div>
 
-                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
+                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-900/10 text-[11px] text-blue-900/80">
                         Keep the controls simple: pick a mode, add optional notes, and choose allowed modules for partial mode.
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-4">
+                <form onSubmit={handleSubmit} className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Operation mode</label>
+                        <label className="block text-[11px] font-semibold text-blue-950">Operation mode</label>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             {['active', 'inactive', 'partial', 'demo'].map((opt) => (
                                 <label
                                     key={opt}
-                                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${draft.mode === opt ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}
+                                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-semibold ${draft.mode === opt ? 'border-blue-900/30 bg-blue-50 text-blue-950' : 'border-blue-900/15 text-slate-700'}`}
                                 >
                                     <input
                                         type="radio"
@@ -338,6 +347,7 @@ const SystemOperatingStatus = () => {
                                         value={opt}
                                         checked={draft.mode === opt}
                                         onChange={(e) => handleInput('mode', e.target.value)}
+                                        className="h-4 w-4 text-blue-900 border-blue-400 focus:ring-blue-600"
                                     />
                                     <span className="capitalize">{opt}</span>
                                 </label>
@@ -346,9 +356,9 @@ const SystemOperatingStatus = () => {
                     </div>
 
                     {draft.mode !== 'active' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Expected return</label>
+                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Expected return</label>
                                 <input
                                     type="date"
                                     value={draft.expectedReturn || ''}
@@ -362,11 +372,11 @@ const SystemOperatingStatus = () => {
                                             downtimeHours: days === '' ? prev.downtimeHours : Number(days) * 24
                                         }));
                                     }}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Downtime (days)</label>
+                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Downtime (days)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -382,7 +392,7 @@ const SystemOperatingStatus = () => {
                                             expectedReturn: expectedReturn || prev.expectedReturn
                                         }));
                                     }}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                     required
                                 />
                             </div>
@@ -390,9 +400,9 @@ const SystemOperatingStatus = () => {
                     )}
 
                     {draft.mode === 'inactive' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Inactive duration (hours)</label>
+                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Inactive duration (hours)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -408,11 +418,11 @@ const SystemOperatingStatus = () => {
                                             downtimeDays: Number.isNaN(daysFromHours) ? prev.downtimeDays : Number(daysFromHours.toFixed(3))
                                         }));
                                     }}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 />
                             </div>
                             <div className="flex items-end">
-                                <div className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700">
+                                <div className="w-full px-3 py-2 rounded-lg bg-blue-50 border border-blue-900/10 text-[11px] text-blue-900/70">
                                     Hours stay exactly as you enter them; we won't auto-convert them.
                                 </div>
                             </div>
@@ -420,11 +430,11 @@ const SystemOperatingStatus = () => {
                     )}
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <label className="block text-[11px] font-semibold text-blue-950 mb-1">Notes</label>
                         <textarea
                             value={draft.notes}
                             onChange={(e) => handleInput('notes', e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                             rows={3}
                             placeholder="Planned maintenance or context for users"
                         />
@@ -433,28 +443,29 @@ const SystemOperatingStatus = () => {
                     {draft.mode === 'partial' && (
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Partial mode message</label>
+                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Partial mode message</label>
                                 <input
                                     type="text"
                                     value={draft.partialMessage}
                                     onChange={(e) => handleInput('partialMessage', e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                     placeholder="Shown to users when features are limited"
                                 />
                             </div>
                             <div>
-                                <p className="text-sm font-medium text-gray-700 mb-2">Allowed modules</p>
+                                <p className="text-[11px] font-semibold text-blue-950 mb-2">Allowed modules</p>
                                 <div className="space-y-4">
                                     {MODULE_GROUPS.map((group) => {
                                         const groupChecked = allowedLookup.has(group.id)
                                             || group.tabs.some((tab) => allowedLookup.has(tab.id));
                                         return (
                                             <div key={group.id} className="space-y-2">
-                                                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                <label className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-900/60">
                                                     <input
                                                         type="checkbox"
                                                         checked={groupChecked}
                                                         onChange={() => toggleGroup(group)}
+                                                        className="h-4 w-4 text-blue-900 border-blue-400 focus:ring-blue-600"
                                                     />
                                                     <span>{group.title}</span>
                                                 </label>
@@ -462,15 +473,16 @@ const SystemOperatingStatus = () => {
                                                     {group.tabs.map((mod) => (
                                                         <label
                                                             key={mod.id}
-                                                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${allowedLookup.has(mod.id) ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                                                            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] ${allowedLookup.has(mod.id) ? 'border-blue-900/30 bg-blue-50 text-blue-950' : 'border-blue-900/15 text-slate-700'
                                                                 }`}
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={allowedLookup.has(mod.id)}
                                                                 onChange={() => toggleModule(mod.id)}
+                                                                className="h-4 w-4 text-blue-900 border-blue-400 focus:ring-blue-600"
                                                             />
-                                                            <span className="text-sm text-gray-800">{mod.label}</span>
+                                                            <span>{mod.label}</span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -482,18 +494,18 @@ const SystemOperatingStatus = () => {
                         </div>
                     )}
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             type="submit"
                             disabled={saving}
-                            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
+                            className="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
                         >
                             {saving ? 'Saving...' : 'Save state'}
                         </button>
                         <button
                             type="button"
                             onClick={fetchSystemState}
-                            className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-4 py-2 text-gray-800 font-semibold hover:bg-gray-200"
+                            className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
                         >
                             Reset changes
                         </button>

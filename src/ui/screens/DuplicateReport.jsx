@@ -19,17 +19,17 @@ const InputField = ({
   className = "",
   ...props
 }) => (
-  <div className={`mb-3 ${className}`}>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      {label} {required && <span className="text-red-500">*</span>}
+  <div className={`space-y-1 ${className}`}>
+    <label className="block text-[10px] font-semibold text-blue-900/70">
+      {label} {required && <span className="text-rose-500">*</span>}
     </label>
     <input
       {...props}
-      className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all ${
-        error ? "border-red-400 bg-red-50" : "border-gray-300"
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
       }`}
     />
-    {error && <p className="text-red-500 text-sm mt-1.5">{error}</p>}
+    {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
 );
 
@@ -41,14 +41,14 @@ const SelectField = ({
   className = "",
   ...props
 }) => (
-  <div className={`mb-3 ${className}`}>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      {label} {required && <span className="text-red-500">*</span>}
+  <div className={`space-y-1 ${className}`}>
+    <label className="block text-[10px] font-semibold text-blue-900/70">
+      {label} {required && <span className="text-rose-500">*</span>}
     </label>
     <select
       {...props}
-      className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all ${
-        error ? "border-red-400 bg-red-50" : "border-gray-300"
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
       }`}
     >
       {options.map((opt) => (
@@ -57,7 +57,7 @@ const SelectField = ({
         </option>
       ))}
     </select>
-    {error && <p className="text-red-500 text-sm mt-1.5">{error}</p>}
+    {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
 );
 
@@ -68,75 +68,26 @@ const TextAreaField = ({
   className = "",
   ...props
 }) => (
-  <div className={`mb-3 ${className}`}>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      {label} {required && <span className="text-red-500">*</span>}
+  <div className={`space-y-1 ${className}`}>
+    <label className="block text-[10px] font-semibold text-blue-900/70">
+      {label} {required && <span className="text-rose-500">*</span>}
     </label>
     <textarea
       {...props}
-      className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none ${
-        error ? "border-red-400 bg-red-50" : "border-gray-300"
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
       }`}
     />
-    {error && <p className="text-red-500 text-sm mt-1.5">{error}</p>}
+    {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
 );
 
-const RadioGroup = ({ label, options, value, onChange }) => (
-  <div className="mb-3">
-    <label className="block text-xs font-medium text-gray-700 mb-2">
-      {label} <span className="text-red-500">*</span>
-    </label>
-    <div className="grid grid-cols-4 gap-2 w-full">
-      {options.map((option) => (
-        <label
-          key={option.value}
-          className="flex items-center cursor-pointer group w-full"
-        >
-          <input
-            type="radio"
-            value={option.value}
-            checked={value === option.value}
-            onChange={(e) => onChange(e.target.value)}
-            className="sr-only"
-          />
-          <div
-            className={`flex items-center justify-start gap-2 px-3 py-2 rounded border transition-all text-sm w-full ${
-              value === option.value
-                ? "border-blue-500 bg-blue-50"
-                : "border-gray-300 hover:border-gray-400"
-            }`}
-          >
-            <div
-              className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                value === option.value ? "border-blue-500" : "border-gray-400"
-              }`}
-            >
-              {value === option.value && (
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              )}
-            </div>
-            <span
-              className={`${
-                value === option.value
-                  ? "text-blue-700 font-semibold"
-                  : "text-gray-700"
-              }`}
-            >
-              {option.label}
-            </span>
-          </div>
-        </label>
-      ))}
-    </div>
-  </div>
-);
 
 const Section = ({ title, children }) => (
-  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-2">
-    <h3 className="text-lg font-semibold text-gray-800 mb-2 pb-2 border-b border-gray-200">
-      {title}
-    </h3>
+  <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-2.5 mb-2">
+    <div className="flex items-center justify-between mb-1.5">
+      <h3 className="text-[13px] font-semibold text-blue-950">{title}</h3>
+    </div>
     {children}
   </div>
 );
@@ -240,7 +191,6 @@ const DuplicateReport = () => {
       "submitted_at",
       "inspection_date",
       "value",
-      "valuation_currency",
       "client_name",
       "telephone",
       "email",
@@ -440,50 +390,55 @@ const DuplicateReport = () => {
 
   const headerAlert = status ? (
     <div
-      className={`mb-6 rounded-lg border px-4 py-3 flex items-start gap-3 ${
+      className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${
         status.type === "error"
-          ? "border-red-200 bg-red-50 text-red-800"
+          ? "border-rose-200 bg-rose-50 text-rose-700"
           : status.type === "warning"
-          ? "border-yellow-200 bg-yellow-50 text-yellow-800"
-          : "border-green-200 bg-green-50 text-green-800"
+          ? "border-amber-200 bg-amber-50 text-amber-700"
+          : "border-emerald-200 bg-emerald-50 text-emerald-700"
       }`}
     >
       {status.type === "success" ? (
-        <CheckCircle2 className="w-5 h-5 mt-0.5" />
+        <CheckCircle2 className="w-4 h-4 mt-0.5" />
       ) : status.type === "warning" ? (
-        <AlertTriangle className="w-5 h-5 mt-0.5" />
+        <AlertTriangle className="w-4 h-4 mt-0.5" />
       ) : (
-        <AlertTriangle className="w-5 h-5 mt-0.5" />
+        <AlertTriangle className="w-4 h-4 mt-0.5" />
       )}
-      <div>
-        <p className="font-semibold">{status.message}</p>
-      </div>
+      <div className="font-semibold">{status.message}</div>
     </div>
   ) : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-3 px-2">
-      <div className="w-full max-w-full mx-auto px-1">
-        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 mb-1">
-              Duplicate report &amp; send new
-            </h1>
-            <p className="text-gray-600 text-sm">
-              Pull your latest report, update fields, attach new assets, and
-              send.
-            </p>
-            {user?.phone && (
-              <p className="text-[11px] text-gray-500 mt-1">
-                Signed in as {user.phone}
-              </p>
-            )}
-          </div>
+    <div className="p-6 space-y-5">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
+              <Upload className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
+                Reports
+              </div>
+              <h2 className="text-lg font-bold text-blue-950">
+                Duplicate report &amp; send new
+              </h2>
+              <p className="text-[11px] text-slate-600">
+                Pull your latest report, update fields, attach new assets, and send.
+              </p>
+              {user?.phone && (
+                <p className="text-[10px] text-blue-900/60 mt-1">
+                  Signed in as {user.phone}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleFetchLatest}
               disabled={loadingReport}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold shadow hover:bg-blue-700 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
             >
               {loadingReport ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -495,7 +450,7 @@ const DuplicateReport = () => {
             <button
               type="button"
               onClick={clearSavedState}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200"
+              className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
             >
               <RefreshCw className="w-4 h-4" />
               Clear saved form
@@ -506,83 +461,75 @@ const DuplicateReport = () => {
         {headerAlert}
 
         <Section title="Report Information">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
-            <div className="md:col-span-3">
-              <InputField
-                label="Report Title"
-                required
-                type="text"
-                value={formData.title}
-                onChange={(e) => handleFieldChange("title", e.target.value)}
-                error={errors.title}
-                placeholder="Enter a descriptive title for this report"
-              />
-            </div>
-
-            <div className="md:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
-              <SelectField
-                label="Valuation Purpose"
-                required
-                value={formData.purpose_id}
-                onChange={(e) =>
-                  handleFieldChange("purpose_id", e.target.value)
-                }
-                options={[
-                  { value: "to set", label: "Select" },
-                  { value: "1", label: "Selling" },
-                  { value: "2", label: "Buying" },
-                  { value: "5", label: "Rent Value" },
-                  { value: "6", label: "Insurance" },
-                  { value: "8", label: "Accounting Purposes" },
-                  { value: "9", label: "Financing" },
-                  { value: "10", label: "Disputes and Litigation" },
-                  { value: "12", label: "Tax Related Valuations" },
-                  { value: "14", label: "Other" },
-                ]}
-                error={errors.purpose_id}
-              />
-
-              <SelectField
-                label="Value Premise"
-                required
-                value={formData.value_premise_id}
-                onChange={(e) =>
-                  handleFieldChange("value_premise_id", e.target.value)
-                }
-                options={[
-                  { value: "to set", label: "Select" },
-                  { value: "1", label: "Highest and Best Use" },
-                  { value: "2", label: "Current Use" },
-                  { value: "3", label: "Orderly Liquidation" },
-                  { value: "4", label: "Forced Sale" },
-                  { value: "5", label: "Other" },
-                ]}
-                error={errors.value_premise_id}
-              />
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <RadioGroup
-              label="Report Type"
-              value={formData.report_type}
-              onChange={(value) => handleFieldChange("report_type", value)}
-              options={[
-                { value: "تقرير مفصل", label: "Detailed Report" },
-                { value: "ملخص التقرير", label: "Report Summary" },
-                {
-                  value: "مراجعة مع قيمة جديدة",
-                  label: "Review with New Value",
-                },
-                {
-                  value: "مراجعة بدون قيمة جديدة",
-                  label: "Review without New Value",
-                },
-              ]}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
+            <InputField
+              label="Report Title"
+              required
+              type="text"
+              value={formData.title}
+              onChange={(e) => handleFieldChange("title", e.target.value)}
+              error={errors.title}
+              placeholder="Enter a descriptive title for this report"
+              className="bg-white p-1.5"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+            <SelectField
+              label="Report Type"
+              required
+              value={formData.report_type}
+              onChange={(e) => handleFieldChange("report_type", e.target.value)}
+              options={[
+                  { value: "تقرير مفصل", label: "Detailed Report" },
+                  { value: "ملخص التقرير", label: "Report Summary" },
+                  {
+                    value: "مراجعة مع قيمة جديدة",
+                    label: "Review with New Value",
+                  },
+                  {
+                    value: "مراجعة بدون قيمة جديدة",
+                    label: "Review without New Value",
+                  },
+                ]}
+              error={errors.report_type}
+              className="bg-white p-1.5"
+            />
+            <SelectField
+              label="Valuation Purpose"
+              required
+              value={formData.purpose_id}
+              onChange={(e) => handleFieldChange("purpose_id", e.target.value)}
+              options={[
+                { value: "to set", label: "Select" },
+                { value: "1", label: "Selling" },
+                { value: "2", label: "Buying" },
+                { value: "5", label: "Rent Value" },
+                { value: "6", label: "Insurance" },
+                { value: "8", label: "Accounting Purposes" },
+                { value: "9", label: "Financing" },
+                { value: "10", label: "Disputes and Litigation" },
+                { value: "12", label: "Tax Related Valuations" },
+                { value: "14", label: "Other" },
+              ]}
+              error={errors.purpose_id}
+              className="bg-white p-1.5"
+            />
+            <SelectField
+              label="Value Premise"
+              required
+              value={formData.value_premise_id}
+              onChange={(e) =>
+                handleFieldChange("value_premise_id", e.target.value)
+              }
+              options={[
+                { value: "to set", label: "Select" },
+                { value: "1", label: "Highest and Best Use" },
+                { value: "2", label: "Current Use" },
+                { value: "3", label: "Orderly Liquidation" },
+                { value: "4", label: "Forced Sale" },
+                { value: "5", label: "Other" },
+              ]}
+              error={errors.value_premise_id}
+              className="bg-white p-1.5"
+            />
             <InputField
               label="Valued At"
               required
@@ -590,8 +537,8 @@ const DuplicateReport = () => {
               value={formData.valued_at}
               onChange={(e) => handleFieldChange("valued_at", e.target.value)}
               error={errors.valued_at}
+              className="bg-white p-1.5"
             />
-
             <InputField
               label="Submitted At"
               required
@@ -601,28 +548,19 @@ const DuplicateReport = () => {
                 handleFieldChange("submitted_at", e.target.value)
               }
               error={errors.submitted_at}
+              className="bg-white p-1.5"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
             <InputField
-              label="Assumptions"
-              value={formData.assumptions}
-              onChange={(e) => handleFieldChange("assumptions", e.target.value)}
-              placeholder="Enter general assumptions for the valuation"
-            />
-
-            <InputField
-              label="Special Assumptions"
-              value={formData.special_assumptions}
+              label="Inspection Date"
+              required
+              type="date"
+              value={formData.inspection_date}
               onChange={(e) =>
-                handleFieldChange("special_assumptions", e.target.value)
+                handleFieldChange("inspection_date", e.target.value)
               }
-              placeholder="Enter any special assumptions or conditions"
+              error={errors.inspection_date}
+              className="bg-white p-1.5"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <InputField
               label="Value"
               required
@@ -631,31 +569,29 @@ const DuplicateReport = () => {
               onChange={(e) => handleFieldChange("value", e.target.value)}
               error={errors.value}
               placeholder="Enter final value"
+              className="bg-white p-1.5"
             />
-
-            <SelectField
-              label="Valuation Currency"
-              required
-              value={formData.valuation_currency}
+            <InputField
+              label="Assumptions"
+              value={formData.assumptions}
+              onChange={(e) => handleFieldChange("assumptions", e.target.value)}
+              placeholder="Enter general assumptions for the valuation"
+              className="bg-white p-1.5"
+            />
+            <InputField
+              label="Special Assumptions"
+              value={formData.special_assumptions}
               onChange={(e) =>
-                handleFieldChange("valuation_currency", e.target.value)
+                handleFieldChange("special_assumptions", e.target.value)
               }
-              options={[
-                { value: "to set", label: "Select" },
-                { value: "1", label: "Saudi Riyal" },
-                { value: "2", label: "US Dollars" },
-                { value: "3", label: "UA Dirhams" },
-                { value: "4", label: "Euro" },
-                { value: "5", label: "Pound Sterling" },
-                { value: "6", label: "Sudanese Pound" },
-              ]}
-              error={errors.valuation_currency}
+              placeholder="Enter any special assumptions or conditions"
+              className="bg-white p-1.5"
             />
           </div>
         </Section>
 
         <Section title="Client Information">
-          <div className="mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
             <InputField
               label="Client Name"
               required
@@ -668,10 +604,8 @@ const DuplicateReport = () => {
               }}
               error={errors["client_name"]}
               placeholder="Enter client name"
+              className="bg-white p-1.5"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <InputField
               label="Telephone"
               required
@@ -680,8 +614,8 @@ const DuplicateReport = () => {
               onChange={(e) => handleFieldChange("telephone", e.target.value)}
               error={errors["telephone"]}
               placeholder="e.g. +966500000000"
+              className="bg-white p-1.5"
             />
-
             <InputField
               label="Email"
               required
@@ -690,32 +624,30 @@ const DuplicateReport = () => {
               onChange={(e) => handleFieldChange("email", e.target.value)}
               error={errors["email"]}
               placeholder="e.g. example@domain.com"
+              className="bg-white p-1.5"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-            <div className="flex items-center gap-3">
-              <input
-                id="has-other-users"
-                type="checkbox"
-                checked={!!formData.has_other_users}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  handleFieldChange("has_other_users", checked);
-                  if (checked && reportUsers.length === 0) {
-                    addReportUser();
-                  }
-                  if (!checked) {
-                    setReportUsers([]);
-                    setFormData((prev) => ({ ...prev, report_users: [] }));
-                  }
-                }}
-                className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
+            <div className="bg-white p-1.5 flex items-center">
               <label
                 htmlFor="has-other-users"
-                className="text-sm font-medium text-gray-700"
+                className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70"
               >
+                <input
+                  id="has-other-users"
+                  type="checkbox"
+                  checked={!!formData.has_other_users}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    handleFieldChange("has_other_users", checked);
+                    if (checked && reportUsers.length === 0) {
+                      addReportUser();
+                    }
+                    if (!checked) {
+                      setReportUsers([]);
+                      setFormData((prev) => ({ ...prev, report_users: [] }));
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                />
                 Has other users
               </label>
             </div>
@@ -724,7 +656,7 @@ const DuplicateReport = () => {
           {formData.has_other_users && (
             <Section title="المستخدمون الآخرون للتقرير">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold text-gray-800">
+                <h4 className="text-[12px] font-semibold text-blue-950">
                   المستخدمون الآخرون للتقرير
                 </h4>
                 <div className="flex gap-2">
@@ -747,20 +679,20 @@ const DuplicateReport = () => {
               <div className="space-y-2">
                 {reportUsers.map((userName, idx) => (
                   <div key={idx} className="w-full">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                       اسم مستخدم التقرير *
                     </label>
                     <input
                       type="text"
                       value={userName}
                       onChange={(e) => updateReportUser(idx, e.target.value)}
-                      className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                       placeholder="اسم مستخدم التقرير"
                     />
                   </div>
                 ))}
                 {reportUsers.length === 0 && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-[10px] text-blue-900/60">
                     اضغط على "اضافة مستخدم اخر" لإضافة مستخدمين.
                   </div>
                 )}
@@ -771,7 +703,7 @@ const DuplicateReport = () => {
 
         <Section title="Valuers">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-base font-semibold text-gray-800">
+            <h4 className="text-[12px] font-semibold text-blue-950">
               بيانات المقيمين
             </h4>
             <div className="flex gap-2">
@@ -796,14 +728,14 @@ const DuplicateReport = () => {
             {valuers.map((valuer, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-gray-200 rounded-md p-2"
+                className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-blue-900/15 rounded-xl p-2"
               >
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                     اسم المقيم *
                   </label>
                   <select
-                    className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                     value={valuer.valuer_name}
                     onChange={(e) =>
                       handleValuerChange(idx, "valuer_name", e.target.value)
@@ -818,11 +750,11 @@ const DuplicateReport = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                     نسبة المساهمة *
                   </label>
                   <select
-                    className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                     value={valuer.contribution_percentage}
                     onChange={(e) =>
                       handleValuerChange(
@@ -843,29 +775,14 @@ const DuplicateReport = () => {
             ))}
           </div>
         </Section>
-        <Section title=" Assets Data ">
-          <div className="grid grid-cols-1 gap-2">
-            <InputField
-              label="Inspection Date"
-              required
-              type="date"
-              value={formData.inspection_date}
-              onChange={(e) =>
-                handleFieldChange("inspection_date", e.target.value)
-              }
-              error={errors.inspection_date}
-            />
-          </div>
-        </Section>
-
         <Section title="Assets attachments">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <div className="border border-dashed border-gray-300 rounded-md p-2 flex items-center justify-between">
+            <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
               <div>
-                <p className="text-sm font-semibold text-gray-800">
+                <p className="text-[12px] font-semibold text-blue-950">
                   Upload Excel (market &amp; cost)
                 </p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-blue-900/60">
                   Must include sheets: market, cost.
                 </p>
                 {excelFile ? (
@@ -880,7 +797,7 @@ const DuplicateReport = () => {
                   )
                 )}
               </div>
-              <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-xs font-semibold">
+              <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
                 <Upload className="w-4 h-4" />
                 <span>Select file</span>
                 <input
@@ -892,12 +809,12 @@ const DuplicateReport = () => {
               </label>
             </div>
 
-            <div className="border border-dashed border-gray-300 rounded-md p-2 flex items-center justify-between">
+            <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
               <div>
-                <p className="text-sm font-semibold text-gray-800">
+                <p className="text-[12px] font-semibold text-blue-950">
                   Upload PDF (mandatory)
                 </p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-blue-900/60">
                   Attach generated PDF if available.
                 </p>
                 {pdfFile ? (
@@ -910,7 +827,7 @@ const DuplicateReport = () => {
                   )
                 )}
               </div>
-              <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-xs font-semibold">
+              <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
                 <Upload className="w-4 h-4" />
                 <span>Select file</span>
                 <input
@@ -924,10 +841,10 @@ const DuplicateReport = () => {
           </div>
         </Section>
 
-        <div className="flex justify-end gap-3 mt-6">
+        <div className="flex justify-end gap-2 mt-3">
           <button
             onClick={validate}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md text-sm font-semibold shadow"
+            className="rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800"
           >
             Validate Data
           </button>
@@ -945,7 +862,7 @@ const DuplicateReport = () => {
               };
               setDuplicates((prev) => [...prev, newEntry]);
             }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-md text-sm font-semibold shadow"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
           >
             Duplicate
           </button>
@@ -953,20 +870,20 @@ const DuplicateReport = () => {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className={`px-6 py-3 rounded-md text-sm font-semibold shadow transition-all ${
+            className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
               submitting
-                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
+                ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                : "bg-blue-900 hover:bg-blue-800 text-white"
             }`}
           >
             {submitting ? (
               <span className="inline-flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 Sending...
               </span>
             ) : (
               <span className="inline-flex items-center gap-2">
-                <Send className="w-5 h-5" />
+                <Send className="w-4 h-4" />
                 Send to Taqeem
               </span>
             )}
@@ -974,31 +891,58 @@ const DuplicateReport = () => {
         </div>
         {duplicates.map((dup, idx) => (
           <Section key={idx} title={`Duplicated Form #${idx + 1}`}>
-            <div className="text-xs text-gray-600 mb-2">
+            <div className="text-[10px] text-blue-900/60 mb-1">
               Editable copy of the main form.
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
-              <div className="md:col-span-3">
-                <InputField
-                  label="Report Title"
-                  required
-                  type="text"
-                  value={dup.formData.title}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setDuplicates((prev) =>
-                      prev.map((d, i) =>
-                        i === idx
-                          ? { ...d, formData: { ...d.formData, title: value } }
-                          : d
-                      )
-                    );
-                  }}
-                  error={dup.errors?.title}
-                  placeholder="Enter a descriptive title for this report"
-                />
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
+              <InputField
+                label="Report Title"
+                required
+                type="text"
+                value={dup.formData.title}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDuplicates((prev) =>
+                    prev.map((d, i) =>
+                      i === idx
+                        ? { ...d, formData: { ...d.formData, title: value } }
+                        : d
+                    )
+                  );
+                }}
+                error={dup.errors?.title}
+                placeholder="Enter a descriptive title for this report"
+                className="bg-white p-1.5"
+              />
+              <SelectField
+                label="Report Type"
+                required
+                value={dup.formData.report_type}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDuplicates((prev) =>
+                    prev.map((d, i) =>
+                      i === idx
+                        ? { ...d, formData: { ...d.formData, report_type: value } }
+                        : d
+                    )
+                  );
+                }}
+                options={[
+                  { value: "تقرير مفصل", label: "Detailed Report" },
+                  { value: "ملخص التقرير", label: "Report Summary" },
+                  {
+                    value: "مراجعة مع قيمة جديدة",
+                    label: "Review with New Value",
+                  },
+                  {
+                    value: "مراجعة بدون قيمة جديدة",
+                    label: "Review without New Value",
+                  },
+                ]}
+                error={dup.errors?.report_type}
+                className="bg-white p-1.5"
+              />
               <SelectField
                 label="Valuation Purpose"
                 required
@@ -1029,8 +973,8 @@ const DuplicateReport = () => {
                   { value: "14", label: "Other" },
                 ]}
                 error={dup.errors?.purpose_id}
+                className="bg-white p-1.5"
               />
-
               <SelectField
                 label="Value Premise"
                 required
@@ -1060,41 +1004,8 @@ const DuplicateReport = () => {
                   { value: "5", label: "Other" },
                 ]}
                 error={dup.errors?.value_premise_id}
+                className="bg-white p-1.5"
               />
-            </div>
-
-            <div className="mb-2">
-              <RadioGroup
-                label="Report Type"
-                value={dup.formData.report_type}
-                onChange={(value) => {
-                  setDuplicates((prev) =>
-                    prev.map((d, i) =>
-                      i === idx
-                        ? {
-                            ...d,
-                            formData: { ...d.formData, report_type: value },
-                          }
-                        : d
-                    )
-                  );
-                }}
-                options={[
-                  { value: "تقرير مفصل", label: "Detailed Report" },
-                  { value: "ملخص التقرير", label: "Report Summary" },
-                  {
-                    value: "مراجعة مع قيمة جديدة",
-                    label: "Review with New Value",
-                  },
-                  {
-                    value: "مراجعة بدون قيمة جديدة",
-                    label: "Review without New Value",
-                  },
-                ]}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
               <InputField
                 label="Valued At"
                 required
@@ -1114,8 +1025,8 @@ const DuplicateReport = () => {
                   );
                 }}
                 error={dup.errors?.valued_at}
+                className="bg-white p-1.5"
               />
-
               <InputField
                 label="Submitted At"
                 required
@@ -1135,10 +1046,48 @@ const DuplicateReport = () => {
                   );
                 }}
                 error={dup.errors?.submitted_at}
+                className="bg-white p-1.5"
               />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+              <InputField
+                label="Inspection Date"
+                required
+                type="date"
+                value={dup.formData.inspection_date}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDuplicates((prev) =>
+                    prev.map((d, i) =>
+                      i === idx
+                        ? {
+                            ...d,
+                            formData: { ...d.formData, inspection_date: value },
+                          }
+                        : d
+                    )
+                  );
+                }}
+                error={dup.errors?.inspection_date}
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Value"
+                required
+                type="text"
+                value={dup.formData.value}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDuplicates((prev) =>
+                    prev.map((d, i) =>
+                      i === idx
+                        ? { ...d, formData: { ...d.formData, value: value } }
+                        : d
+                    )
+                  );
+                }}
+                error={dup.errors?.value}
+                placeholder="Enter final value"
+                className="bg-white p-1.5"
+              />
               <InputField
                 label="Assumptions"
                 value={dup.formData.assumptions}
@@ -1156,8 +1105,8 @@ const DuplicateReport = () => {
                   );
                 }}
                 placeholder="Enter general assumptions for the valuation"
+                className="bg-white p-1.5"
               />
-
               <InputField
                 label="Special Assumptions"
                 value={dup.formData.special_assumptions}
@@ -1178,64 +1127,12 @@ const DuplicateReport = () => {
                   );
                 }}
                 placeholder="Enter any special assumptions or conditions"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <InputField
-                label="Value"
-                required
-                type="text"
-                value={dup.formData.value}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setDuplicates((prev) =>
-                    prev.map((d, i) =>
-                      i === idx
-                        ? { ...d, formData: { ...d.formData, value: value } }
-                        : d
-                    )
-                  );
-                }}
-                error={dup.errors?.value}
-                placeholder="Enter final value"
-              />
-
-              <SelectField
-                label="Valuation Currency"
-                required
-                value={dup.formData.valuation_currency}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setDuplicates((prev) =>
-                    prev.map((d, i) =>
-                      i === idx
-                        ? {
-                            ...d,
-                            formData: {
-                              ...d.formData,
-                              valuation_currency: value,
-                            },
-                          }
-                        : d
-                    )
-                  );
-                }}
-                options={[
-                  { value: "to set", label: "Select" },
-                  { value: "1", label: "Saudi Riyal" },
-                  { value: "2", label: "US Dollars" },
-                  { value: "3", label: "UA Dirhams" },
-                  { value: "4", label: "Euro" },
-                  { value: "5", label: "Pound Sterling" },
-                  { value: "6", label: "Sudanese Pound" },
-                ]}
-                error={dup.errors?.valuation_currency}
+                className="bg-white p-1.5"
               />
             </div>
 
             <Section title="Client Information">
-              <div className="mb-2">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
                 <InputField
                   label="Client Name"
                   required
@@ -1256,10 +1153,8 @@ const DuplicateReport = () => {
                   }}
                   error={dup.errors?.client_name}
                   placeholder="Enter client name"
+                  className="bg-white p-1.5"
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <InputField
                   label="Telephone"
                   required
@@ -1280,8 +1175,8 @@ const DuplicateReport = () => {
                   }}
                   error={dup.errors?.telephone}
                   placeholder="e.g. +966500000000"
+                  className="bg-white p-1.5"
                 />
-
                 <InputField
                   label="Email"
                   required
@@ -1299,43 +1194,41 @@ const DuplicateReport = () => {
                   }}
                   error={dup.errors?.email}
                   placeholder="e.g. example@domain.com"
+                  className="bg-white p-1.5"
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                <div className="flex items-center gap-3">
-                  <input
-                    id={`has-other-users-${idx}`}
-                    type="checkbox"
-                    checked={!!dup.formData.has_other_users}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setDuplicates((prev) =>
-                        prev.map((d, i) =>
-                          i === idx
-                            ? {
-                                ...d,
-                                formData: {
-                                  ...d.formData,
-                                  has_other_users: checked,
-                                  report_users: checked
-                                    ? d.formData.report_users &&
-                                      d.formData.report_users.length
-                                      ? d.formData.report_users
-                                      : [""]
-                                    : [],
-                                },
-                              }
-                            : d
-                        )
-                      );
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+                <div className="bg-white p-1.5 flex items-center">
                   <label
                     htmlFor={`has-other-users-${idx}`}
-                    className="text-xs font-medium text-gray-700"
+                    className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70"
                   >
+                    <input
+                      id={`has-other-users-${idx}`}
+                      type="checkbox"
+                      checked={!!dup.formData.has_other_users}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setDuplicates((prev) =>
+                          prev.map((d, i) =>
+                            i === idx
+                              ? {
+                                  ...d,
+                                  formData: {
+                                    ...d.formData,
+                                    has_other_users: checked,
+                                    report_users: checked
+                                      ? d.formData.report_users &&
+                                        d.formData.report_users.length
+                                        ? d.formData.report_users
+                                        : [""]
+                                      : [],
+                                  },
+                                }
+                              : d
+                          )
+                        );
+                      }}
+                      className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                    />
                     Has other users
                   </label>
                 </div>
@@ -1344,7 +1237,7 @@ const DuplicateReport = () => {
               {dup.formData.has_other_users && (
                 <Section title="المستخدمون الآخرون للتقرير">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-semibold text-gray-800">
+                    <h4 className="text-[12px] font-semibold text-blue-950">
                       المستخدمون الآخرون للتقرير
                     </h4>
                     <div className="flex gap-2">
@@ -1402,7 +1295,7 @@ const DuplicateReport = () => {
                   <div className="space-y-2">
                     {(dup.formData.report_users || []).map((userName, uIdx) => (
                       <div key={uIdx} className="w-full">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                           اسم مستخدم التقرير *
                         </label>
                         <input
@@ -1428,13 +1321,13 @@ const DuplicateReport = () => {
                               )
                             );
                           }}
-                          className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                           placeholder="اسم مستخدم التقرير"
                         />
                       </div>
                     ))}
                     {(dup.formData.report_users || []).length === 0 && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-[10px] text-blue-900/60">
                         اضغط على "اضافة مستخدم اخر" لإضافة مستخدمين.
                       </div>
                     )}
@@ -1445,7 +1338,7 @@ const DuplicateReport = () => {
 
             <Section title="Valuers">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-base font-semibold text-gray-800">
+                <h4 className="text-[12px] font-semibold text-blue-950">
                   بيانات المقيمين
                 </h4>
                 <div className="flex gap-2">
@@ -1502,14 +1395,14 @@ const DuplicateReport = () => {
                 {dup.valuers.map((valuer, vIdx) => (
                   <div
                     key={vIdx}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-gray-200 rounded-md p-2"
+                    className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-blue-900/15 rounded-xl p-2"
                   >
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                         اسم المقيم *
                       </label>
                       <select
-                        className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                         value={valuer.valuer_name}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -1538,11 +1431,11 @@ const DuplicateReport = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
                         نسبة المساهمة *
                       </label>
                       <select
-                        className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                         value={valuer.contribution_percentage}
                         onChange={(e) => {
                           const value = Number(e.target.value);
@@ -1577,42 +1470,14 @@ const DuplicateReport = () => {
               </div>
             </Section>
 
-            <Section title="Assets Data ">
-              <div className="grid grid-cols-1 gap-2">
-                <InputField
-                  label="Inspection Date"
-                  required
-                  type="date"
-                  value={dup.formData.inspection_date || ""}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setDuplicates((prev) =>
-                      prev.map((d, i) =>
-                        i === idx
-                          ? {
-                              ...d,
-                              formData: {
-                                ...d.formData,
-                                inspection_date: value,
-                              },
-                            }
-                          : d
-                      )
-                    );
-                  }}
-                  error={dup.errors?.inspection_date}
-                />
-              </div>
-            </Section>
-
             <Section title="Assets attachments">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                <div className="border border-dashed border-gray-300 rounded-md p-2 flex items-center justify-between">
+                <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">
+                    <p className="text-[12px] font-semibold text-blue-950">
                       Upload Excel (market &amp; cost)
                     </p>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-blue-900/60">
                       Must include sheets: market, cost.
                     </p>
                     {dup.excelFile && (
@@ -1621,7 +1486,7 @@ const DuplicateReport = () => {
                       </p>
                     )}
                   </div>
-                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-xs font-semibold">
+                  <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
                     <Upload className="w-4 h-4" />
                     <span>Select file</span>
                     <input
@@ -1640,12 +1505,12 @@ const DuplicateReport = () => {
                   </label>
                 </div>
 
-                <div className="border border-dashed border-gray-300 rounded-md p-2 flex items-center justify-between">
+                <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">
+                    <p className="text-[12px] font-semibold text-blue-950">
                       Upload PDF (optional)
                     </p>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[11px] text-blue-900/60">
                       Attach generated PDF if available.
                     </p>
                     {dup.pdfFile && (
@@ -1654,7 +1519,7 @@ const DuplicateReport = () => {
                       </p>
                     )}
                   </div>
-                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer text-xs font-semibold">
+                  <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
                     <Upload className="w-4 h-4" />
                     <span>Select file</span>
                     <input
@@ -1675,7 +1540,7 @@ const DuplicateReport = () => {
               </div>
             </Section>
 
-            <div className="flex justify-end gap-3 mt-4">
+            <div className="flex justify-end gap-2 mt-3">
               <button
                 onClick={() => {
                   const errs = {};
@@ -1688,7 +1553,6 @@ const DuplicateReport = () => {
                     "submitted_at",
                     "inspection_date",
                     "value",
-                    "valuation_currency",
                     "client_name",
                     "telephone",
                     "email",
@@ -1699,7 +1563,7 @@ const DuplicateReport = () => {
                     prev.map((d, i) => (i === idx ? { ...d, errors: errs } : d))
                   );
                 }}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md text-sm font-semibold shadow"
+                className="rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800"
               >
                 Validate Data
               </button>
@@ -1718,7 +1582,7 @@ const DuplicateReport = () => {
                   };
                   setDuplicates((prev) => [...prev, newEntry]);
                 }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-md text-sm font-semibold shadow"
+                className="rounded-md bg-emerald-600 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
               >
                 Duplicate
               </button>
@@ -1734,7 +1598,6 @@ const DuplicateReport = () => {
                     "submitted_at",
                     "inspection_date",
                     "value",
-                    "valuation_currency",
                     "client_name",
                     "telephone",
                     "email",
@@ -1842,20 +1705,20 @@ const DuplicateReport = () => {
                   }
                 }}
                 disabled={dup.submitting}
-                className={`px-6 py-3 rounded-md text-sm font-semibold shadow transition-all ${
+                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
                   dup.submitting
-                    ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                    ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                    : "bg-blue-900 hover:bg-blue-800 text-white"
                 }`}
               >
                 {dup.submitting ? (
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     Sending...
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
-                    <Send className="w-5 h-5" />
+                    <Send className="w-4 h-4" />
                     Send to Taqeem
                   </span>
                 )}
@@ -1864,12 +1727,12 @@ const DuplicateReport = () => {
 
             {dup.status && (
               <div
-                className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                className={`mt-3 rounded-2xl border px-3 py-2 text-[11px] ${
                   dup.status.type === "error"
-                    ? "border-red-200 bg-red-50 text-red-800"
+                    ? "border-rose-200 bg-rose-50 text-rose-700"
                     : dup.status.type === "warning"
-                    ? "border-yellow-200 bg-yellow-50 text-yellow-800"
-                    : "border-green-200 bg-green-50 text-green-800"
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
                 }`}
               >
                 {dup.status.message}

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import navigation from '../constants/navigation';
 import { useSession } from './SessionContext';
+import { useTranslation } from 'react-i18next';
 
 const { valueSystemCards, valueSystemGroups, findTabInfo } = navigation;
 
@@ -14,17 +15,12 @@ export const useValueNav = () => {
     return ctx;
 };
 
-const cardLabel = (cardId) => valueSystemCards.find((c) => c.id === cardId)?.title || cardId;
 const findCardForGroup = (groupId) =>
     valueSystemCards.find((card) => Array.isArray(card.groups) && card.groups.includes(groupId));
 
-const domainLabels = {
-    'real-estate': 'Real state',
-    equipments: 'Equipments'
-};
-
 export const ValueNavProvider = ({ children }) => {
     const { user, token } = useSession();
+    const { t } = useTranslation();
     const [selectedCard, setSelectedCard] = useState(null);
     const [selectedDomain, setSelectedDomain] = useState(null);
     const [selectedCompany, setSelectedCompany] = useState(null);
@@ -35,6 +31,25 @@ export const ValueNavProvider = ({ children }) => {
     const [activeTab, setActiveTab] = useState(null);
 
     const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+    const getCardLabel = useCallback(
+        (cardId) => {
+            const card = valueSystemCards.find((c) => c.id === cardId);
+            return t(`navigation.cards.${cardId}.title`, { defaultValue: card?.title || cardId });
+        },
+        [t]
+    );
+
+    const getDomainLabel = useCallback(
+        (domainId) => {
+            const fallbacks = {
+                'real-estate': 'Real Estate',
+                equipments: 'Equipment'
+            };
+            return t(`sidebar.domains.${domainId}`, { defaultValue: fallbacks[domainId] || domainId });
+        },
+        [t]
+    );
 
     const normalizeCompanyList = useCallback((payload) => {
         if (!payload) return [];
@@ -77,7 +92,7 @@ export const ValueNavProvider = ({ children }) => {
 
     const loadSavedCompanies = useCallback(async (type = 'equipment') => {
         if (!window?.electronAPI?.apiRequest) {
-            setCompanyError('Company fetch is not available in this build.');
+            setCompanyError(t('navigation.companyFetchUnavailable'));
             return [];
         }
         if (!user) {
@@ -94,20 +109,20 @@ export const ValueNavProvider = ({ children }) => {
             setCompanies(list);
             return list;
         } catch (err) {
-            const msg = err?.response?.data?.message || err?.message || 'Failed to load saved companies';
+            const msg = err?.response?.data?.message || err?.message || t('navigation.loadCompaniesFailed');
             setCompanyError(msg);
             return [];
         } finally {
             setLoadingCompanies(false);
         }
-    }, [authHeaders, normalizeCompanyList, user]);
+    }, [authHeaders, normalizeCompanyList, t, user]);
 
     const syncCompanies = useCallback(async (items = [], defaultType = 'equipment') => {
         if (!window?.electronAPI?.apiRequest) {
-            throw new Error('Company sync is not available in this build.');
+            throw new Error(t('navigation.companySyncUnavailable'));
         }
         if (!user) {
-            throw new Error('Login is required to save companies');
+            throw new Error(t('navigation.loginRequiredToSaveCompanies'));
         }
 
         const payload = {
@@ -125,7 +140,7 @@ export const ValueNavProvider = ({ children }) => {
             setCompanies(list);
         }
         return list;
-    }, [authHeaders, loadSavedCompanies, normalizeCompanyList, user]);
+    }, [authHeaders, loadSavedCompanies, normalizeCompanyList, t, user]);
 
     useEffect(() => {
         if (user) {
@@ -161,28 +176,41 @@ export const ValueNavProvider = ({ children }) => {
     }, [selectedDomain]);
 
     const breadcrumbs = useMemo(() => {
-        const items = [{ label: 'Apps', key: 'apps' }];
+        const items = [{ label: t('navigation.apps'), key: 'apps' }];
         if (selectedCard) {
-            items.push({ label: cardLabel(selectedCard), key: selectedCard, kind: 'card' });
+            items.push({ label: getCardLabel(selectedCard), key: selectedCard, kind: 'card' });
         }
         if (selectedDomain) {
-            items.push({ label: domainLabels[selectedDomain] || selectedDomain, key: selectedDomain, kind: 'domain' });
+            items.push({ label: getDomainLabel(selectedDomain), key: selectedDomain, kind: 'domain' });
         }
         if (selectedCompany) {
-            items.push({ label: selectedCompany.name || 'Company', key: selectedCompany.name || 'company', kind: 'company', value: selectedCompany });
+            items.push({
+                label: selectedCompany.name || t('sidebar.company.fallback'),
+                key: selectedCompany.name || 'company',
+                kind: 'company',
+                value: selectedCompany
+            });
         }
         if (activeGroup) {
             const group = valueSystemGroups[activeGroup];
-            items.push({ label: group?.title || activeGroup, key: activeGroup, kind: 'group' });
+            items.push({
+                label: t(`navigation.groups.${activeGroup}.title`, { defaultValue: group?.title || activeGroup }),
+                key: activeGroup,
+                kind: 'group'
+            });
         }
         if (activeTab) {
             const info = findTabInfo(activeTab);
             if (info?.tab) {
-                items.push({ label: info.tab.label, key: activeTab, kind: 'tab' });
+                items.push({
+                    label: t(`navigation.tabs.${activeTab}.label`, { defaultValue: info.tab.label }),
+                    key: activeTab,
+                    kind: 'tab'
+                });
             }
         }
         return items;
-    }, [selectedCard, selectedDomain, selectedCompany, activeGroup, activeTab]);
+    }, [activeGroup, activeTab, getCardLabel, getDomainLabel, selectedCard, selectedCompany, selectedDomain, t]);
 
     return (
         <ValueNavContext.Provider

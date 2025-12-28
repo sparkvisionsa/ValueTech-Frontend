@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import { registerUser } from '../../api/auth';
+import { useTranslation } from 'react-i18next';
 
 const Registration = ({ onViewChange }) => {
     const [step, setStep] = useState('welcome');
@@ -9,6 +10,7 @@ const Registration = ({ onViewChange }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const { login } = useSession();
+    const { t } = useTranslation();
 
     const handleUserTypeSelect = (type) => {
         setUserType(type);
@@ -30,7 +32,7 @@ const Registration = ({ onViewChange }) => {
 
         try {
             if (!userType) {
-                setError('Please choose an account type.');
+                setError(t('registration.errors.chooseAccountType'));
                 setLoading(false);
                 return;
             }
@@ -65,12 +67,12 @@ const Registration = ({ onViewChange }) => {
                 }
             } else {
                 // Prefer structured server error message if present
-                const serverMessage = res?.error || res?.message || (res && JSON.stringify(res)) || 'Registration failed. Please try again.';
+                const serverMessage = res?.error || res?.message || (res && JSON.stringify(res)) || t('registration.errors.failed');
                 setError(serverMessage);
             }
         } catch (err) {
             // Handle axios-style errors and others
-            const serverErrMsg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Registration failed. Please try again.';
+            const serverErrMsg = err?.response?.data?.error || err?.response?.data?.message || err?.message || t('registration.errors.failed');
             setError(serverErrMsg);
             console.error('Registration error:', err);
         } finally {
@@ -82,8 +84,8 @@ const Registration = ({ onViewChange }) => {
         return (
             <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
                 <div className="text-center mb-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Value Tech</h2>
-                    <p className="text-gray-600">Please select your account type to continue</p>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('registration.welcomeTitle')}</h2>
+                    <p className="text-gray-600">{t('registration.welcomeSubtitle')}</p>
                 </div>
 
                 <div className="space-y-4">
@@ -91,16 +93,14 @@ const Registration = ({ onViewChange }) => {
                         onClick={() => handleUserTypeSelect('individual')}
                         className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center space-x-2"
                     >
-                        <span>👤</span>
-                        <span>Individual</span>
+                        <span>{t('registration.accountTypes.individual')}</span>
                     </button>
 
                     <button
                         onClick={() => handleUserTypeSelect('company')}
                         className="w-full bg-green-100 text-green-800 py-3 px-4 rounded-lg hover:bg-green-200 transition-colors duration-200 flex items-center justify-center space-x-2"
                     >
-                        <span>🏢</span>
-                        <span>Company</span>
+                        <span>{t('registration.accountTypes.company')}</span>
                     </button>
                 </div>
 
@@ -117,12 +117,12 @@ const Registration = ({ onViewChange }) => {
         <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
             <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                    {userType === 'company' ? 'Company Registration' : 'Individual Registration'}
+                    {userType === 'company' ? t('registration.titles.company') : t('registration.titles.individual')}
                 </h2>
                 <p className="text-gray-600">
                     {userType === 'company'
-                        ? 'Create a head account and invite members later.'
-                        : 'Please enter your details'}
+                        ? t('registration.subtitles.company')
+                        : t('registration.subtitles.individual')}
                 </p>
             </div>
 
@@ -131,7 +131,7 @@ const Registration = ({ onViewChange }) => {
                     <>
                         <div>
                             <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
-                                Company Name
+                                {t('registration.fields.companyName')}
                             </label>
                             <select
                                 id="companyName"
@@ -148,7 +148,7 @@ const Registration = ({ onViewChange }) => {
 
                         <div>
                             <label htmlFor="companyHead" className="block text-sm font-medium text-gray-700 mb-1">
-                                Company Head
+                                {t('registration.fields.companyHead')}
                             </label>
                             <input
                                 type="text"
@@ -157,7 +157,8 @@ const Registration = ({ onViewChange }) => {
                                 value={formData.companyHead}
                                 onChange={handleInputChange}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Head of the company"
+                                placeholder={t('registration.placeholders.companyHead')}
+                                dir="auto"
                                 required
                             />
                         </div>
@@ -166,7 +167,7 @@ const Registration = ({ onViewChange }) => {
 
                 <div>
                     <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone Number
+                        {t('registration.fields.phone')}
                     </label>
                     <input
                         type="tel"
@@ -175,14 +176,15 @@ const Registration = ({ onViewChange }) => {
                         value={formData.phone}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter your phone number"
+                        placeholder={t('registration.placeholders.phone')}
+                        dir="auto"
                         required
                     />
                 </div>
 
                 <div>
                     <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                        Password
+                        {t('registration.fields.password')}
                     </label>
                     <input
                         type="password"
@@ -191,7 +193,7 @@ const Registration = ({ onViewChange }) => {
                         value={formData.password}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter your password"
+                        placeholder={t('registration.placeholders.password')}
                         required
                     />
                 </div>
@@ -207,7 +209,7 @@ const Registration = ({ onViewChange }) => {
                     disabled={loading}
                     className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
-                    {loading ? 'Registering...' : 'Register'}
+                    {loading ? t('registration.actions.registering') : t('registration.actions.register')}
                 </button>
             </form>
 
@@ -216,7 +218,7 @@ const Registration = ({ onViewChange }) => {
                     onClick={() => setStep('welcome')}
                     className="text-blue-600 hover:text-blue-800 text-sm"
                 >
-                    ← Back to selection
+                    {t('registration.actions.back')}
                 </button>
             </div>
         </div>
@@ -224,3 +226,5 @@ const Registration = ({ onViewChange }) => {
 };
 
 export default Registration;
+
+

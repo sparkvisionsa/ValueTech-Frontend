@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css'; // Add this line
+import './i18n';
 import Layout from './components/Layout';
 import { SessionProvider, useSession } from './context/SessionContext';
 import { SystemControlProvider } from './context/SystemControlContext';

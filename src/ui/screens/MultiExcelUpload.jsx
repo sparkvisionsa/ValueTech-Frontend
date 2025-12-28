@@ -20,10 +20,11 @@ import { multiExcelUpload } from "../../api/report"; // Adjust the import path a
 
 const TabButton = ({ active, onClick, children }) => (
     <button
+        type="button"
         onClick={onClick}
-        className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${active
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+        className={`px-4 py-2 text-xs md:text-sm font-semibold rounded-full transition-all border ${active
+            ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+            : "bg-white/60 text-slate-600 border-transparent hover:border-slate-200 hover:bg-white"
             }`}
     >
         {children}
@@ -51,6 +52,8 @@ const normalizeKey = (value) =>
         .replace(/[\W_]+/g, "");
 
 const stripExtension = (filename = "") => filename.replace(/\.[^.]+$/, "");
+
+const DUMMY_PDF_NAME = "dummy_placeholder.pdf";
 
 const parseExcelDateValue = (value) => {
     if (!value) return null;
@@ -309,6 +312,7 @@ const MultiExcelUpload = () => {
     const [activeTab, setActiveTab] = useState("no-validation");
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
+    const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
     const [batchId, setBatchId] = useState("");
     const [uploadResult, setUploadResult] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -334,6 +338,15 @@ const MultiExcelUpload = () => {
         resetMessages();
     };
 
+    const handlePdfToggle = (checked) => {
+        setWantsPdfUpload(checked);
+        if (!checked) {
+            setPdfFiles([]);
+        }
+        resetMessages();
+        resetValidation();
+    };
+
     const resetMessages = () => {
         setError("");
         setSuccess("");
@@ -347,6 +360,7 @@ const MultiExcelUpload = () => {
     const resetAll = () => {
         setExcelFiles([]);
         setPdfFiles([]);
+        setWantsPdfUpload(false);
         setBatchId("");
         setUploadResult(null);
         resetMessages();
@@ -354,6 +368,9 @@ const MultiExcelUpload = () => {
     };
 
     const pdfMatchInfo = useMemo(() => {
+        if (!wantsPdfUpload) {
+            return { unmatchedPdfs: [], excelsMissingPdf: [], pdfMap: {} };
+        }
         const excelBaseNames = new Set(excelFiles.map((f) => normalizeKey(stripExtension(f.name))));
         const pdfBaseNames = new Set(pdfFiles.map((f) => normalizeKey(stripExtension(f.name))));
 
@@ -371,7 +388,7 @@ const MultiExcelUpload = () => {
         }, {});
 
         return { unmatchedPdfs, excelsMissingPdf, pdfMap };
-    }, [excelFiles, pdfFiles]);
+    }, [excelFiles, pdfFiles, wantsPdfUpload]);
 
     const runValidation = async (excelList, pdfMap) => {
         if (!excelList.length) {
@@ -386,6 +403,7 @@ const MultiExcelUpload = () => {
         });
 
         try {
+            const shouldValidatePdf = wantsPdfUpload;
             const results = [];
             for (const file of excelList) {
                 const buffer = await file.arrayBuffer();
@@ -465,16 +483,16 @@ const MultiExcelUpload = () => {
                 }
 
                 const baseName = normalizeKey(stripExtension(file.name));
-                const matchedPdf = pdfMap[baseName];
-                if (!matchedPdf) {
+                const matchedPdf = shouldValidatePdf ? pdfMap[baseName] : { name: DUMMY_PDF_NAME };
+                if (shouldValidatePdf && !matchedPdf) {
                     addIssue("PDF Match", "Files", `No matching PDF found for Excel "${file.name}" (match by filename).`);
                 }
 
                 results.push({
                     fileName: file.name,
                     baseName,
-                    pdfMatched: Boolean(matchedPdf),
-                    pdfName: matchedPdf?.name || "",
+                    pdfMatched: shouldValidatePdf ? Boolean(matchedPdf) : true,
+                    pdfName: shouldValidatePdf ? matchedPdf?.name || "" : DUMMY_PDF_NAME,
                     issues,
                     snapshot: reportValidation.snapshot,
                     totals: reportTotalValue === null
@@ -495,10 +513,15 @@ const MultiExcelUpload = () => {
             setValidationItems(results);
 
             const totalIssues = results.reduce((acc, r) => acc + (r.issues?.length || 0), 0);
-            if (totalIssues === 0 && !pdfMatchInfo.excelsMissingPdf.length && !pdfMatchInfo.unmatchedPdfs.length) {
+            const hasPdfMismatch = shouldValidatePdf
+                ? (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)
+                : false;
+            if (totalIssues === 0 && !hasPdfMismatch) {
                 setValidationMessage({
                     type: "success",
-                    text: "All Excel files look valid and PDFs are matched. You can upload & create reports.",
+                    text: shouldValidatePdf
+                        ? "All Excel files look valid and PDFs are matched. You can upload & create reports."
+                        : `All Excel files look valid. PDFs will use ${DUMMY_PDF_NAME}. You can upload & create reports.`,
                 });
             } else {
                 setValidationMessage({
@@ -520,19 +543,22 @@ const MultiExcelUpload = () => {
     useEffect(() => {
         if (activeTab !== "validation") return;
         runValidation(excelFiles, pdfMatchInfo.pdfMap);
-    }, [activeTab, excelFiles, pdfFiles]);
+    }, [activeTab, excelFiles, pdfFiles, wantsPdfUpload]);
 
     const isReadyToUpload = useMemo(() => {
-        if (excelFiles.length === 0 || pdfFiles.length === 0) return false;
+        if (excelFiles.length === 0) return false;
+        if (wantsPdfUpload && pdfFiles.length === 0) return false;
+        if (wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)) {
+            return false;
+        }
         if (activeTab === "validation") {
             if (validating) return false;
-            if (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) return false;
             if (!validationItems.length) return false;
             const anyIssues = validationItems.some((item) => (item.issues || []).length > 0);
             if (anyIssues) return false;
         }
         return true;
-    }, [excelFiles.length, pdfFiles.length, activeTab, validating, validationItems, pdfMatchInfo]);
+    }, [excelFiles.length, pdfFiles.length, wantsPdfUpload, activeTab, validating, validationItems, pdfMatchInfo]);
 
     const handleUploadAndCreate = async () => {
         try {
@@ -543,13 +569,20 @@ const MultiExcelUpload = () => {
             if (excelFiles.length === 0) {
                 throw new Error("Please select at least one Excel file");
             }
-            if (pdfFiles.length === 0) {
-                throw new Error("Please select at least one PDF file");
+            if (wantsPdfUpload && pdfFiles.length === 0) {
+                throw new Error("Please select at least one PDF file or disable PDF upload.");
+            }
+            if (wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)) {
+                throw new Error("PDF filenames must match the Excel filenames.");
             }
 
             // Step 1: Upload files to backend
-            setSuccess("Uploading files to server...");
-            const data = await multiExcelUpload(excelFiles, pdfFiles);
+            setSuccess(
+                wantsPdfUpload
+                    ? "Uploading files to server..."
+                    : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
+            );
+            const data = await multiExcelUpload(excelFiles, wantsPdfUpload ? pdfFiles : []);
 
             if (data.status !== "success") {
                 throw new Error(data.error || "Upload failed");
@@ -603,6 +636,8 @@ const MultiExcelUpload = () => {
     };
 
     const ValidationResultsCard = ({ title, issues = [], snapshot, totals, counts, pdfName }) => {
+        const pdfLabel = wantsPdfUpload ? "Matched PDF" : "PDF (placeholder)";
+        const pdfDisplay = pdfName || (wantsPdfUpload ? "Not matched" : DUMMY_PDF_NAME);
         const fields = [
             { label: "Purpose of Valuation", value: snapshot?.purpose },
             { label: "Value Attributes", value: snapshot?.valueAttributes },
@@ -612,7 +647,7 @@ const MultiExcelUpload = () => {
             { label: "Client Email", value: snapshot?.email },
             { label: "Date of Valuation", value: snapshot?.valuedAt ? formatDateForDisplay(snapshot.valuedAt) : "" },
             { label: "Report Issuing Date", value: snapshot?.submittedAt ? formatDateForDisplay(snapshot.submittedAt) : "" },
-            { label: "Matched PDF", value: pdfName || "—" },
+            { label: pdfLabel, value: pdfDisplay },
             { label: "Market assets", value: counts ? String(counts.marketAssets) : "—" },
             { label: "Cost assets", value: counts ? String(counts.costAssets) : "—" },
             { label: "Market total", value: totals ? String(totals.marketTotal) : "—" },
@@ -622,15 +657,16 @@ const MultiExcelUpload = () => {
         ];
 
         return (
-            <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
-                <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-500 to-emerald-400" />
+                <div className="px-4 py-3 border-b border-slate-200/70 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Table className="w-4 h-4 text-blue-600" />
-                        <p className="text-sm font-semibold text-gray-900">{title}</p>
+                        <Table className="w-4 h-4 text-sky-600" />
+                        <p className="text-sm font-semibold text-slate-900">{title}</p>
                     </div>
                     <span
-                        className={`text-xs font-semibold px-2 py-1 rounded-full border ${issues.length
-                            ? "bg-red-50 text-red-700 border-red-100"
+                        className={`text-xs font-semibold px-3 py-1 rounded-full border ${issues.length
+                            ? "bg-rose-50 text-rose-700 border-rose-100"
                             : "bg-emerald-50 text-emerald-700 border-emerald-100"
                             }`}
                     >
@@ -643,10 +679,10 @@ const MultiExcelUpload = () => {
                             {fields.map((field) => (
                                 <div
                                     key={field.label}
-                                    className="p-2 rounded-md bg-slate-50 border border-slate-100"
+                                    className="p-2 rounded-md bg-slate-50/80 border border-slate-100/80"
                                 >
-                                    <p className="font-semibold text-gray-800">{field.label}</p>
-                                    <p className="text-gray-700 break-words">{field.value || "—"}</p>
+                                    <p className="font-semibold text-slate-800">{field.label}</p>
+                                    <p className="text-slate-700 break-words">{field.value || "—"}</p>
                                 </div>
                             ))}
                         </div>
@@ -655,7 +691,7 @@ const MultiExcelUpload = () => {
                     {issues.length ? (
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-xs">
-                                <thead className="bg-red-50 text-red-700">
+                                <thead className="bg-rose-50/90 text-rose-700">
                                     <tr>
                                         <th className="px-3 py-2 text-left">Field</th>
                                         <th className="px-3 py-2 text-left">Location</th>
@@ -664,10 +700,10 @@ const MultiExcelUpload = () => {
                                 </thead>
                                 <tbody>
                                     {issues.map((issue, idx) => (
-                                        <tr key={`${issue.field}-${idx}`} className="border-t bg-red-50">
-                                            <td className="px-3 py-2 font-semibold text-red-800">{issue.field}</td>
-                                            <td className="px-3 py-2 text-red-700">{issue.location || "—"}</td>
-                                            <td className="px-3 py-2 text-red-700">{issue.message}</td>
+                                        <tr key={`${issue.field}-${idx}`} className="border-t border-rose-100 bg-rose-50/70">
+                                            <td className="px-3 py-2 font-semibold text-rose-800">{issue.field}</td>
+                                            <td className="px-3 py-2 text-rose-700">{issue.location || "—"}</td>
+                                            <td className="px-3 py-2 text-rose-700">{issue.message}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -685,135 +721,196 @@ const MultiExcelUpload = () => {
     };
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900">
-                        Multi-Excel Upload
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                        Choose a flow: quick upload (no validation) or validate Excel sheets before uploading.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <TabButton
-                        active={activeTab === "no-validation"}
-                        onClick={() => setActiveTab("no-validation")}
-                    >
-                        No validation
-                    </TabButton>
-                    <TabButton
-                        active={activeTab === "validation"}
-                        onClick={() => setActiveTab("validation")}
-                    >
-                        With validation
-                    </TabButton>
+        <div className="relative p-4 space-y-4 page-animate">
+            <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/75 shadow-xl backdrop-blur">
+                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-sky-200/40 blur-3xl" />
+                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl" />
+                <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-5 py-4">
+                    <div className="space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                            Batch Automation
+                        </p>
+                        <h2 className="text-2xl md:text-3xl font-display text-compact text-slate-900">
+                            Multi-Excel Upload
+                        </h2>
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 shadow-sm">
+                                <Table className="h-3.5 w-3.5 text-emerald-600" />
+                                {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""} auto
+                            </span>
+                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 shadow-sm">
+                                <Files className="h-3.5 w-3.5 text-sky-600" />
+                                {wantsPdfUpload ? "PDF upload on" : "PDF upload optional"}
+                            </span>
+                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 shadow-sm">
+                                <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
+                                Two upload flows
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full bg-slate-900/5 p-1">
+                        <TabButton
+                            active={activeTab === "no-validation"}
+                            onClick={() => setActiveTab("no-validation")}
+                        >
+                            No validation
+                        </TabButton>
+                        <TabButton
+                            active={activeTab === "validation"}
+                            onClick={() => setActiveTab("validation")}
+                        >
+                            With validation
+                        </TabButton>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">Upload Excel Files</h3>
-                    </div>
-                    <p className="text-xs text-gray-500 mb-3">
-                        Select multiple Excel files (.xlsx, .xls). Each file will be processed.
-                    </p>
-                    <label className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <FolderOpen className="w-4 h-4" />
-                            <span>
-                                {excelFiles.length ? `${excelFiles.length} Excel file(s) selected` : "Choose Excel files"}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-[1.15fr_1.15fr_0.7fr]">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-400" />
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center">
+                                    <FileSpreadsheet className="w-5 h-5 text-sky-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">Excel sources</h3>
+                                    <span className="text-xs text-slate-500">.xlsx / .xls</span>
+                                </div>
+                            </div>
+                            <span className="text-xs font-semibold text-slate-500">
+                                {excelFiles.length} selected
                             </span>
                         </div>
-                        <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
-                        <span className="text-xs text-blue-600">Browse</span>
-                    </label>
+                        <label className="group flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 transition">
+                            <div className="flex items-center gap-2 text-sm text-slate-700">
+                                <FolderOpen className="w-4 h-4 text-slate-500 group-hover:text-slate-700" />
+                                <span className="font-medium">
+                                    {excelFiles.length ? `${excelFiles.length} Excel file(s) selected` : "Choose Excel files"}
+                                </span>
+                            </div>
+                            <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
+                            <span className="text-xs font-semibold text-slate-600">Browse</span>
+                        </label>
 
-                    {excelFiles.length > 0 && (
-                        <div className="mt-3 max-h-40 overflow-y-auto">
-                            <ul className="text-xs text-gray-600 space-y-1">
-                                {excelFiles.map((file, index) => (
-                                    <li key={index} className="flex items-center gap-2 p-1 bg-gray-50 rounded">
-                                        <FileIcon className="w-3 h-3 flex-shrink-0" />
-                                        <span className="truncate">{file.name}</span>
-                                        <span className="text-gray-400 text-xs">
-                                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
+                        {excelFiles.length > 0 && (
+                            <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-2">
+                                <ul className="text-xs text-slate-600 space-y-1">
+                                    {excelFiles.map((file, index) => (
+                                        <li key={index} className="flex items-center gap-2 p-1 rounded-lg bg-white/80">
+                                            <FileIcon className="w-3 h-3 flex-shrink-0 text-slate-400" />
+                                            <span className="truncate">{file.name}</span>
+                                            <span className="text-slate-400 text-xs">
+                                                ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Files className="w-5 h-5 text-purple-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">Upload PDF Files</h3>
-                    </div>
-                    <p className="text-xs text-gray-500 mb-3">
-                        Select multiple PDF files. Files must match Excel names (same basename).
-                    </p>
-                    <label className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded cursor-pointer hover:bg-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <FolderOpen className="w-4 h-4" />
-                            <span>{pdfFiles.length ? `${pdfFiles.length} PDF file(s) selected` : "Choose PDF files"}</span>
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-400" />
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                                    <Files className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">PDF attachments</h3>
+                                    <span className="text-xs text-slate-500">
+                                        {wantsPdfUpload ? "Match Excel filename" : `Auto-use ${DUMMY_PDF_NAME}`}
+                                    </span>
+                                </div>
+                            </div>
+                            <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 text-slate-900 border-slate-400 focus:ring-slate-700"
+                                    checked={wantsPdfUpload}
+                                    onChange={(e) => handlePdfToggle(e.target.checked)}
+                                />
+                                Upload PDFs
+                            </label>
                         </div>
-                        <input type="file" multiple accept=".pdf" className="hidden" onChange={handlePdfChange} />
-                        <span className="text-xs text-blue-600">Browse</span>
-                    </label>
 
-                    {pdfFiles.length > 0 && (
-                        <div className="mt-3 max-h-40 overflow-y-auto">
-                            <ul className="text-xs text-gray-600 space-y-1">
-                                {pdfFiles.slice(0, 5).map((file, index) => (
-                                    <li key={index} className="flex items-center gap-2 p-1 bg-gray-50 rounded">
-                                        <FileIcon className="w-3 h-3 flex-shrink-0" />
-                                        <span className="truncate">{file.name}</span>
-                                        <span className="text-gray-400 text-xs">
-                                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                        {wantsPdfUpload ? (
+                            <>
+                                <label className="group flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 transition">
+                                    <div className="flex items-center gap-2 text-sm text-slate-700">
+                                        <FolderOpen className="w-4 h-4 text-slate-500 group-hover:text-slate-700" />
+                                        <span className="font-medium">
+                                            {pdfFiles.length ? `${pdfFiles.length} PDF file(s) selected` : "Choose PDF files"}
                                         </span>
-                                    </li>
-                                ))}
-                                {pdfFiles.length > 5 && (
-                                    <li className="text-xs text-gray-500 text-center">+ {pdfFiles.length - 5} more files</li>
+                                    </div>
+                                    <input type="file" multiple accept=".pdf" className="hidden" onChange={handlePdfChange} />
+                                    <span className="text-xs font-semibold text-slate-600">Browse</span>
+                                </label>
+
+                                {pdfFiles.length > 0 && (
+                                    <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-2">
+                                        <ul className="text-xs text-slate-600 space-y-1">
+                                            {pdfFiles.slice(0, 5).map((file, index) => (
+                                                <li key={index} className="flex items-center gap-2 p-1 rounded-lg bg-white/80">
+                                                    <FileIcon className="w-3 h-3 flex-shrink-0 text-slate-400" />
+                                                    <span className="truncate">{file.name}</span>
+                                                    <span className="text-slate-400 text-xs">
+                                                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                                    </span>
+                                                </li>
+                                            ))}
+                                            {pdfFiles.length > 5 && (
+                                                <li className="text-xs text-slate-500 text-center">
+                                                    + {pdfFiles.length - 5} more files
+                                                </li>
+                                            )}
+                                        </ul>
+                                    </div>
                                 )}
-                            </ul>
-                        </div>
-                    )}
+                            </>
+                        ) : (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-600">
+                                Placeholder PDF will be applied per Excel during upload.
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="p-4 border border-dashed border-gray-300 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Table className="w-5 h-5 text-emerald-600" />
-                        <h3 className="text-sm font-semibold text-gray-800">Tabs Configuration</h3>
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-sky-500" />
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                                <Table className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-900">Tabs runtime</h3>
+                                <span className="text-xs text-slate-500">Auto based on RAM</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-900 px-3 py-2.5 text-white">
+                            <div className="flex items-center gap-2">
+                                <Hash className="w-4 h-4 text-emerald-300" />
+                                <span className="text-sm font-semibold">
+                                    {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
+                                </span>
+                            </div>
+                            <span className="text-xs text-slate-300">Auto</span>
+                        </div>
                     </div>
-                    <p className="text-xs text-gray-500 mb-3">
-                        Number of tabs is automatically determined based on available RAM
-                    </p>
-                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-md border border-slate-200">
-                        <Hash className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-semibold text-gray-800">
-                            {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-xs text-gray-600 ml-2">
-                            (auto-configured)
-                        </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                        Each tab will process a portion of the reports for parallel processing.
-                    </p>
                 </div>
             </div>
 
             {/* Status Messages */}
             {(error || success) && (
                 <div
-                    className={`rounded-lg p-3 flex items-start gap-2 ${error
-                        ? "bg-red-50 text-red-700 border border-red-100"
-                        : "bg-green-50 text-green-700 border border-green-100"
+                    className={`rounded-2xl border px-3 py-2.5 flex items-start gap-3 shadow-sm card-animate ${error
+                        ? "bg-rose-50/90 text-rose-700 border-rose-100"
+                        : "bg-emerald-50/90 text-emerald-700 border-emerald-100"
                         }`}
                 >
                     {error ? (
@@ -827,22 +924,23 @@ const MultiExcelUpload = () => {
 
             {activeTab === "validation" && (
                 <div className="space-y-4">
-                    <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
-                        <div className="h-10 w-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center">
-                            <ShieldCheck className="w-5 h-5 text-blue-600" />
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm p-4 flex flex-col gap-3 md:flex-row md:items-center card-animate">
+                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-500 to-emerald-400" />
+                        <div className="h-11 w-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
+                            <ShieldCheck className="w-5 h-5" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-sm font-semibold text-slate-900">Validated flow</p>
+                            <p className="text-sm font-semibold text-slate-900">Validation console</p>
                             <p className="text-xs text-slate-600">
-                                Excel will be checked for required sheets, key Report Info fields, asset usage IDs, integer values in cost sheet, and totals matching.
+                                Checks sheets, required report info, asset IDs, integer values, and totals.
                             </p>
                             {validationMessage && (
                                 <div
-                                    className={`mt-2 rounded-lg border px-3 py-2 inline-flex items-start gap-2 ${validationMessage.type === "error"
-                                        ? "bg-red-50 text-red-700 border-red-100"
+                                    className={`mt-3 rounded-xl border px-3 py-2 inline-flex items-start gap-2 ${validationMessage.type === "error"
+                                        ? "bg-rose-50 text-rose-700 border-rose-100"
                                         : validationMessage.type === "success"
                                             ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                            : "bg-blue-50 text-blue-700 border-blue-100"
+                                            : "bg-sky-50 text-sky-700 border-sky-100"
                                         }`}
                                 >
                                     {validationMessage.type === "error" ? (
@@ -856,18 +954,18 @@ const MultiExcelUpload = () => {
                                 </div>
                             )}
                             {validating && (
-                                <div className="flex items-center gap-2 text-xs text-gray-600 mt-2">
+                                <div className="flex items-center gap-2 text-xs text-slate-600 mt-2">
                                     <Loader2 className="w-4 h-4 animate-spin" />
                                     Reading and validating...
                                 </div>
                             )}
                         </div>
-                        <div className="ml-auto">
+                        <div className="md:ml-auto">
                             <button
                                 type="button"
                                 onClick={() => runValidation(excelFiles, pdfMatchInfo.pdfMap)}
                                 disabled={validating || !excelFiles.length}
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 disabled:opacity-60"
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60"
                             >
                                 <RefreshCw className="w-4 h-4" />
                                 Re-validate
@@ -875,17 +973,17 @@ const MultiExcelUpload = () => {
                         </div>
                     </div>
 
-                    {(pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
-                        <div className="bg-white border border-red-100 rounded-lg shadow-sm p-4">
-                            <div className="flex items-center gap-2 mb-2 text-red-700">
+                    {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
+                        <div className="bg-white/90 border border-rose-100 rounded-2xl shadow-sm p-4">
+                            <div className="flex items-center gap-2 mb-2 text-rose-700">
                                 <AlertTriangle className="w-4 h-4" />
                                 <p className="text-sm font-semibold">File matching issues</p>
                             </div>
-                            <div className="text-xs text-gray-700 space-y-2">
+                            <div className="text-xs text-slate-700 space-y-2">
                                 {pdfMatchInfo.excelsMissingPdf.length > 0 && (
                                     <div>
-                                        <p className="font-semibold text-gray-800">Excel files missing PDF</p>
-                                        <ul className="list-disc list-inside text-gray-700">
+                                        <p className="font-semibold text-slate-800">Excel files missing PDF</p>
+                                        <ul className="list-disc list-inside text-slate-700">
                                             {pdfMatchInfo.excelsMissingPdf.map((name) => (
                                                 <li key={name}>{name}</li>
                                             ))}
@@ -894,15 +992,15 @@ const MultiExcelUpload = () => {
                                 )}
                                 {pdfMatchInfo.unmatchedPdfs.length > 0 && (
                                     <div>
-                                        <p className="font-semibold text-gray-800">Unmatched PDFs</p>
-                                        <ul className="list-disc list-inside text-gray-700">
+                                        <p className="font-semibold text-slate-800">Unmatched PDFs</p>
+                                        <ul className="list-disc list-inside text-slate-700">
                                             {pdfMatchInfo.unmatchedPdfs.map((name) => (
                                                 <li key={name}>{name}</li>
                                             ))}
                                         </ul>
                                     </div>
                                 )}
-                                <p className="text-[11px] text-gray-500">
+                                <p className="text-[11px] text-slate-500">
                                     Matching rule: PDF filename (without extension) must equal Excel filename (without extension).
                                 </p>
                             </div>
@@ -924,7 +1022,7 @@ const MultiExcelUpload = () => {
                             ))}
                         </div>
                     ) : (
-                        <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-sm text-gray-500 flex items-center justify-center">
+                        <div className="p-3 border border-dashed border-slate-200 rounded-2xl bg-white/70 text-sm text-slate-500 flex items-center justify-center">
                             Validation results will appear here after reading the Excel.
                         </div>
                     )}
@@ -932,27 +1030,25 @@ const MultiExcelUpload = () => {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-3">
-                {(activeTab === "no-validation" || isReadyToUpload) && (
-                    <button
-                        type="button"
-                        onClick={handleUploadAndCreate}
-                        disabled={loading || creatingReports || !isReadyToUpload}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                        {(loading || creatingReports) ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Send className="w-4 h-4" />
-                        )}
-                        {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Create Reports"}
-                    </button>
-                )}
+            <div className="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    onClick={handleUploadAndCreate}
+                    disabled={loading || creatingReports || !isReadyToUpload}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white text-sm font-semibold shadow-lg hover:opacity-90 disabled:opacity-50"
+                >
+                    {(loading || creatingReports) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Send className="w-4 h-4" />
+                    )}
+                    {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Create Reports"}
+                </button>
 
                 <button
                     type="button"
                     onClick={resetAll}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gray-100 text-gray-700 text-sm hover:bg-gray-200"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
                 >
                     <RefreshCw className="w-4 h-4" />
                     Reset All
@@ -961,38 +1057,41 @@ const MultiExcelUpload = () => {
 
             {/* Batch Info Section */}
             {batchId && (
-                <div className="bg-white border rounded-lg shadow-sm">
-                    <div className="px-4 py-3 border-b flex items-center gap-2">
-                        <Info className="w-4 h-4 text-blue-600" />
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 shadow-sm card-animate">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 via-emerald-500 to-cyan-500" />
+                    <div className="px-4 py-3 border-b border-slate-200/70 flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center">
+                            <Info className="w-4 h-4 text-sky-600" />
+                        </div>
                         <div>
-                            <p className="text-sm font-semibold text-gray-800">
+                            <p className="text-sm font-semibold text-slate-900">
                                 Batch Information
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-slate-500">
                                 Batch ID: <span className="font-mono">{batchId}</span>
                             </p>
                         </div>
                     </div>
                     <div className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                            <div className="p-3 bg-gray-50 rounded">
-                                <p className="text-gray-600">Excel Files</p>
-                                <p className="text-lg font-semibold text-gray-900">
+                            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                                <p className="text-slate-600">Excel Files</p>
+                                <p className="text-lg font-semibold text-slate-900">
                                     {excelFiles.length}
                                 </p>
                             </div>
-                            <div className="p-3 bg-gray-50 rounded">
-                                <p className="text-gray-600">PDF Files</p>
-                                <p className="text-lg font-semibold text-gray-900">
-                                    {pdfFiles.length}
+                            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                                <p className="text-slate-600">PDF Files</p>
+                                <p className="text-lg font-semibold text-slate-900">
+                                    {wantsPdfUpload ? pdfFiles.length : "Placeholder"}
                                 </p>
                             </div>
-                            <div className="p-3 bg-gray-50 rounded">
-                                <p className="text-gray-600">Tabs to Open</p>
-                                <p className="text-lg font-semibold text-gray-900">
+                            <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                                <p className="text-slate-600">Tabs to Open</p>
+                                <p className="text-lg font-semibold text-slate-900">
                                     {recommendedTabs}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-slate-500 mt-1">
                                     Auto-configured
                                 </p>
                             </div>
@@ -1000,13 +1099,13 @@ const MultiExcelUpload = () => {
 
                         {(uploadResult?.reports || []).length > 0 && (
                             <div className="mt-4">
-                                <h4 className="text-sm font-semibold text-gray-800 mb-2">
+                                <h4 className="text-sm font-semibold text-slate-900 mb-2">
                                     Created Reports ({(uploadResult.reports || []).length})
                                 </h4>
                                 <div className="overflow-x-auto">
                                     <table className="min-w-full text-sm">
-                                        <thead className="bg-gray-50">
-                                            <tr className="text-left text-gray-600">
+                                        <thead className="bg-slate-50/80">
+                                            <tr className="text-left text-slate-600">
                                                 <th className="px-4 py-2">#</th>
                                                 <th className="px-4 py-2">Excel</th>
                                                 <th className="px-4 py-2">Client Name</th>
@@ -1017,31 +1116,31 @@ const MultiExcelUpload = () => {
                                         <tbody>
                                             {(uploadResult.reports || []).slice(0, 10).map((item, idx) => (
                                                 <tr key={idx} className="border-t">
-                                                    <td className="px-4 py-2 text-gray-700">{idx + 1}</td>
-                                                    <td className="px-4 py-2 text-gray-900 font-medium">
+                                                    <td className="px-4 py-2 text-slate-700">{idx + 1}</td>
+                                                    <td className="px-4 py-2 text-slate-900 font-medium">
                                                         {item.excel_name || item.excel_basename || "—"}
                                                     </td>
-                                                    <td className="px-4 py-2 text-gray-800">
+                                                    <td className="px-4 py-2 text-slate-800">
                                                         {item.client_name}
                                                     </td>
                                                     <td className="px-4 py-2">
                                                         {item.pdf_path ? (
-                                                            <span className="inline-flex items-center gap-1 text-green-700">
+                                                            <span className="inline-flex items-center gap-1 text-emerald-700">
                                                                 <FileIcon className="w-4 h-4" />
                                                                 Yes
                                                             </span>
                                                         ) : (
-                                                            <span className="text-gray-400">No</span>
+                                                            <span className="text-slate-400">No</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-2 text-gray-800">
+                                                    <td className="px-4 py-2 text-slate-800">
                                                         {Array.isArray(item.asset_data) ? item.asset_data.length : "—"}
                                                     </td>
                                                 </tr>
                                             ))}
                                             {(uploadResult.reports || []).length > 10 && (
                                                 <tr className="border-t">
-                                                    <td colSpan="5" className="px-4 py-2 text-center text-gray-500 text-sm">
+                                                    <td colSpan="5" className="px-4 py-2 text-center text-slate-500 text-sm">
                                                         ... and {(uploadResult.reports || []).length - 10} more reports
                                                     </td>
                                                 </tr>
@@ -1055,31 +1154,6 @@ const MultiExcelUpload = () => {
                 </div>
             )}
 
-            {/* Instructions */}
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                        <h4 className="text-sm font-semibold text-blue-800 mb-1">
-                            How this works:
-                        </h4>
-                        <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-                            <li>Select multiple Excel files containing report data</li>
-                            <li>Select matching PDF files (same filename as Excel)</li>
-                            <li>Number of browser tabs is automatically determined based on available RAM</li>
-                            <li>In "With validation" tab, fix issues until the upload button becomes available</li>
-                            <li>Click "Upload & Create Reports" to:
-                                <ul className="ml-4 mt-1 list-disc list-inside">
-                                    <li>Upload files to backend for processing</li>
-                                    <li>Create a batch with all assets</li>
-                                    <li>Open specified number of Taqeem browser tabs</li>
-                                    <li>Automatically create reports in each tab</li>
-                                </ul>
-                            </li>
-                        </ol>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };

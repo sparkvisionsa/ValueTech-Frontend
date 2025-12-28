@@ -6,40 +6,68 @@ const valueSystemGroups = {
         id: 'evaluationSources',
         title: 'Evaluation Sources',
         tabs: [
-            { id: 'word-copy', label: 'نسخ بيانات الأكسيل للتقرير', description: 'تحضير ونسخ بيانات التقرير من ملف إكسل بسهولة.' },
-            { id: 'valuation-system', label: 'نظام التقييم', description: 'تشغيل مسار نظام التقييم وإعداد ملفات البيانات والمخرجات.' }
+            {
+                id: 'word-copy',
+                label: 'Word Copy',
+                description: 'Duplicate Word report templates, optionally append images, and generate batch outputs.'
+            },
+            {
+                id: 'valuation-system',
+                label: 'Valuation System',
+                description: 'Create valuation folders, calculations, and report files from the valuation system.'
+            }
         ]
     },
     uploadReports: {
         id: 'uploadReports',
         title: 'Upload Reports',
         tabs: [
-            { id: 'upload-report-elrajhi', label: 'Upload Report Elrajhi', description: 'رفع تقارير الراجحي مباشرة للنظام.' },
-            { id: 'download-certificate', label: 'download certificate with id', description: 'Download a registration certificate by report ID.' },
-            { id: 'duplicate-report', label: 'Duplicate report & send new', description: 'استنساخ تقرير وإرساله بنسخة جديدة.' },
-            { id: 'multi-excel-upload', label: 'Multi-Excel Upload', description: 'تحميل دفعات متعددة من ملفات الإكسيل.' },
-            { id: 'manual-multi-report', label: 'نسخ بيانات الأكسيل للتقارير', description: 'نسخ بيانات التقارير يدويًا من الإكسيل.' }
+            {
+                id: 'upload-report-elrajhi',
+                label: 'Upload Report (El Rajhi)',
+                description: 'Upload El Rajhi reports, validate data, and process batches.'
+            },
+            {
+                id: 'download-certificate',
+                label: 'Download certificate with ID',
+                description: 'Download a registration certificate by report ID.'
+            },
+            {
+                id: 'duplicate-report',
+                label: 'Duplicate report & send new',
+                description: 'Duplicate existing reports, update data, and send a fresh submission.'
+            },
+            {
+                id: 'multi-excel-upload',
+                label: 'Multi-Excel Upload',
+                description: 'Upload multiple Excel files and create reports in bulk.'
+            },
+            {
+                id: 'manual-multi-report',
+                label: 'Manual Multi-Report Upload',
+                description: 'Upload multiple reports manually for bulk processing.'
+            }
         ]
     },
     uploadSingleReport: {
         id: 'uploadSingleReport',
         title: 'Upload Single Report',
         tabs: [
-            { id: 'macro-edit', label: 'Edit Macro', description: 'تحرير الماكروز قبل الرفع.' },
-            { id: 'grab-macro-ids', label: 'Grab Macro IDs', description: 'التقاط معرفات الماكرو من التقارير.' },
-            { id: 'common-fields', label: 'Add Common Fields', description: 'تهيئة الحقول الشائعة للتقارير.' },
-            { id: 'upload-excel', label: 'Upload Excel', description: 'رفع ملف إكسيل واحد.' },
-            { id: 'asset-create', label: 'Create Asset', description: 'إنشاء أصل جديد داخل التقرير.' },
-            { id: 'validate-report', label: 'Validate Report', description: 'التحقق من صحة التقرير قبل الإرسال.' }
+            { id: 'macro-edit', label: 'Edit Macro', description: 'Edit macro values and update report fields.' },
+            { id: 'grab-macro-ids', label: 'Grab Macro IDs', description: 'Fetch macro IDs from reports for processing.' },
+            { id: 'common-fields', label: 'Add Common Fields', description: 'Add shared fields to a report in one step.' },
+            { id: 'upload-excel', label: 'Upload Excel', description: 'Upload a single Excel report file.' },
+            { id: 'asset-create', label: 'Create Asset', description: 'Create report assets from uploaded data.' },
+            { id: 'validate-report', label: 'Validate Report', description: 'Validate report data before submission.' }
         ]
     },
     taqeemInfo: {
         id: 'taqeemInfo',
         title: 'Taqeem Info',
         tabs: [
-            { id: 'taqeem-login', label: 'Taqeem Login', description: 'تسجيل الدخول لنظام تقييم.' },
-            { id: 'get-companies', label: 'Get Companies', description: 'جلب الشركات المرتبطة بالحساب.' },
-            { id: 'check-status', label: 'Check Browser', description: 'فحص المتصفح قبل إجراءات تقييم.' }
+            { id: 'taqeem-login', label: 'Taqeem Login', description: 'Authenticate and connect to the Taqeem system.' },
+            { id: 'get-companies', label: 'Get Companies', description: 'Fetch and sync your companies from Taqeem.' },
+            { id: 'check-status', label: 'Check Browser', description: 'Check the browser status for Taqeem automation.' }
         ]
     },
     companyConsole: {
@@ -54,15 +82,15 @@ const valueSystemGroups = {
         id: 'settings',
         title: 'Settings',
         tabs: [
-            { id: 'profile', label: 'Profile', description: 'إدارة الملف الشخصي للمستخدم.' },
-            { id: 'packages', label: 'Packages', description: 'عرض وإدارة الباقات.' }
+            { id: 'profile', label: 'Profile', description: 'Manage your profile, password, and account details.' },
+            { id: 'packages', label: 'Packages', description: 'Review and manage packages and subscriptions.' }
         ]
     },
     deleteReport: {
         id: 'deleteReport',
         title: 'Delete Report',
         tabs: [
-            { id: 'delete-report', label: 'Delete Report', description: 'حذف تقرير محدد مع التحقق.' }
+            { id: 'delete-report', label: 'Delete Report', description: 'Delete reports and related assets safely.' }
         ]
     },
     adminConsole: {
@@ -80,14 +108,14 @@ const valueSystemGroups = {
 const valueSystemCards = [
     {
         id: 'uploading-reports',
-        title: 'Uploading reports',
-        description: 'كل مسارات الرفع مجمعة مع الروابط الداعمة والمعلومات.',
+        title: 'Uploading Reports',
+        description: 'Upload, validate, and manage valuation reports across domains.',
         groups: ['uploadReports', 'uploadSingleReport', 'taqeemInfo', 'settings', 'deleteReport']
     },
     {
         id: 'evaluation-sources',
-        title: 'Evaluation sources',
-        description: 'مصادر إنشاء ملفات التقييم (وورد، نظام التقييم).',
+        title: 'Evaluation Sources',
+        description: 'Manage valuation sources, reports, and supporting tools.',
         groups: ['evaluationSources']
     },
     {
@@ -108,11 +136,11 @@ const valueSystemCards = [
 
 const viewTitles = {
     apps: 'Apps',
-    'upload-report-elrajhi': 'Upload Report Elrajhi',
-    'download-certificate': 'download certificate with id',
+    'upload-report-elrajhi': 'Upload Report (El Rajhi)',
+    'download-certificate': 'Download certificate with ID',
     'duplicate-report': 'Duplicate report & send new',
     'multi-excel-upload': 'Multi-Excel Upload',
-    'manual-multi-report': 'التقارير اليدوية المتعددة',
+    'manual-multi-report': 'Manual Multi-Report Upload',
     'macro-edit': 'Edit Macro',
     'grab-macro-ids': 'Grab Macro IDs',
     'common-fields': 'Add Common Fields',
@@ -127,8 +155,8 @@ const viewTitles = {
     profile: 'Profile',
     packages: 'Packages',
     'admin-packages': 'Packages',
-    'valuation-system': 'نظام التقييم',
-    'word-copy': 'نسخ بيانات الأكسيل للتقرير',
+    'valuation-system': 'Valuation System',
+    'word-copy': 'Word Copy',
     'delete-report': 'Delete Report',
     'system-status': 'System Operating Status',
     'system-updates': 'System Updates',

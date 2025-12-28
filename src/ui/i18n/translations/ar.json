@@ -1,0 +1,507 @@
+{
+    "common": {
+        "language": "اللغة",
+        "english": "English",
+        "arabic": "العربية",
+        "loading": "جارٍ التحميل...",
+        "close": "إغلاق",
+        "cancel": "إلغاء",
+        "save": "حفظ",
+        "update": "تحديث",
+        "confirm": "تأكيد",
+        "back": "رجوع",
+        "next": "التالي",
+        "yes": "نعم",
+        "no": "لا",
+        "open": "فتح"
+    },
+    "layout": {
+        "alerts": {
+            "loginToManageUpdates": "يرجى تسجيل الدخول لإدارة التحديثات.",
+            "updateDownloadPrepared": "تم تجهيز تنزيل التحديث لحسابك.",
+            "downloadUpdateFailed": "تعذر تنزيل التحديث",
+            "updateApplied": "تم تطبيق التحديث على مساحة عملك.",
+            "applyUpdateFailed": "تعذر تطبيق التحديث"
+        },
+        "updateNotice": {
+            "title": "يتوفر تحديث جديد",
+            "descriptionFallback": "نزّل الآن للبقاء على آخر إصدار.",
+            "downloaded": "تم التنزيل",
+            "download": "تنزيل",
+            "later": "لاحقاً",
+            "applied": "تم التطبيق",
+            "apply": "تطبيق التحديث"
+        },
+        "modes": {
+            "active": "نشط",
+            "partial": "جزئي",
+            "inactive": "غير نشط"
+        },
+        "status": {
+            "refreshTitle": "تحديث الحالة",
+            "refresh": "تحديث",
+            "taqeem": "تقييم",
+            "company": "الشركة"
+        },
+        "auth": {
+            "userFallback": "مستخدم",
+            "logout": "تسجيل الخروج",
+            "register": "تسجيل",
+            "login": "تسجيل الدخول"
+        },
+        "header": {
+            "workspace": "مساحة العمل",
+            "defaultTitle": "Value Tech"
+        },
+        "ram": {
+            "unavailable": "قارئ الذاكرة غير متاح",
+            "refreshTitle": "تحديث معلومات الذاكرة",
+            "reading": "جارٍ القراءة...",
+            "read": "قراءة الذاكرة",
+            "usedOf": "تم استخدام {{used}} جيجابايت من أصل {{total}} جيجابايت",
+            "free": "المتاح {{free}} جيجابايت",
+            "usage": "{{usage}}%"
+        },
+        "messages": {
+            "inactive": "النظام غير نشط حالياً. تم تعطيل الوصول إلى الميزات.",
+            "partialFallback": "تتوفر وحدات محددة فقط في الوقت الحالي.",
+            "downtimeEnds": "ينتهي التوقف خلال",
+            "updateBlocked": "يجب تطبيق تحديث إلزامي قبل المتابعة.",
+            "featureUnavailable": "هذه الميزة غير متاحة حالياً.",
+            "refreshOrUpdate": "يرجى تحديث الحالة أو تطبيق آخر تحديث للمتابعة."
+        },
+        "time": {
+            "days": "أيام",
+            "hours": "ساعات",
+            "minutes": "دقائق",
+            "seconds": "ثوانٍ"
+        }
+    },
+    "sidebar": {
+        "domains": {
+            "real-estate": "العقارات",
+            "equipments": "المعدات"
+        },
+        "company": {
+            "loading": "جارٍ تحميل الشركات...",
+            "empty": "لا توجد شركات.",
+            "fallback": "شركة",
+            "office": "المكتب {{officeId}}",
+            "title": "الشركة",
+            "links": {
+                "company-members": "أعضاء الشركة",
+                "company-statics": "إحصائيات الشركة"
+            }
+        },
+        "admin": {
+            "title": "المدير العام",
+            "links": {
+                "system-status": "حالة تشغيل النظام",
+                "system-updates": "تحديثات النظام",
+                "admin-packages": "الباقات",
+                "statics": "الإحصائيات"
+            }
+        },
+        "dashboards": {
+            "title": "لوحات التحكم",
+            "links": {
+                "companyConsole": "لوحة الشركة",
+                "adminConsole": "المدير العام"
+            }
+        },
+        "brand": {
+            "name": "Value Tech",
+            "subtitle": "لوحة التحكم",
+            "status": "مباشر"
+        },
+        "apps": {
+            "title": "التطبيقات",
+            "subtitle": "فتح البطاقات"
+        },
+        "settings": "الإعدادات",
+        "systemOnline": "النظام متصل"
+    },
+    "navigation": {
+        "apps": "التطبيقات",
+        "groups": {
+            "evaluationSources": { "title": "مصادر التقييم" },
+            "uploadReports": { "title": "رفع التقارير" },
+            "uploadSingleReport": { "title": "رفع تقرير واحد" },
+            "taqeemInfo": { "title": "معلومات تقييم" },
+            "companyConsole": { "title": "لوحة الشركة" },
+            "settings": { "title": "الإعدادات" },
+            "deleteReport": { "title": "حذف تقرير" },
+            "adminConsole": { "title": "لوحة المدير العام" }
+        },
+        "tabs": {
+            "word-copy": {
+                "label": "نسخ وورد",
+                "description": "نسخ قوالب تقارير وورد وإضافة الصور اختيارياً وإخراج دفعات."
+            },
+            "valuation-system": {
+                "label": "نظام التقييم",
+                "description": "إنشاء مجلدات التقييم والحسابات وملفات التقارير."
+            },
+            "upload-report-elrajhi": {
+                "label": "رفع تقرير (الراجحي)",
+                "description": "رفع تقارير الراجحي والتحقق من البيانات ومعالجة الدُفعات."
+            },
+            "download-certificate": {
+                "label": "تنزيل شهادة برقم التقرير",
+                "description": "تنزيل شهادة تسجيل باستخدام رقم التقرير."
+            },
+            "duplicate-report": {
+                "label": "تكرار التقرير وإرسال جديد",
+                "description": "نسخ التقارير وتحديث البيانات وإرسال نسخة جديدة."
+            },
+            "multi-excel-upload": {
+                "label": "رفع ملفات إكسل متعددة",
+                "description": "رفع عدة ملفات إكسل وإنشاء تقارير دفعة واحدة."
+            },
+            "manual-multi-report": {
+                "label": "رفع تقارير متعددة يدوياً",
+                "description": "رفع تقارير متعددة يدوياً للمعالجة الجماعية."
+            },
+            "macro-edit": {
+                "label": "تعديل الماكرو",
+                "description": "تعديل قيم الماكرو وتحديث حقول التقرير."
+            },
+            "grab-macro-ids": {
+                "label": "جلب معرّفات الماكرو",
+                "description": "جلب معرّفات الماكرو من التقارير للمعالجة."
+            },
+            "common-fields": {
+                "label": "إضافة الحقول المشتركة",
+                "description": "إضافة حقول مشتركة للتقرير دفعة واحدة."
+            },
+            "upload-excel": {
+                "label": "رفع ملف إكسل",
+                "description": "رفع تقرير إكسل واحد."
+            },
+            "asset-create": {
+                "label": "إنشاء أصل",
+                "description": "إنشاء أصول التقرير من البيانات المرفوعة."
+            },
+            "validate-report": {
+                "label": "التحقق من التقرير",
+                "description": "التحقق من بيانات التقرير قبل الإرسال."
+            },
+            "taqeem-login": {
+                "label": "تسجيل دخول تقييم",
+                "description": "تسجيل الدخول والاتصال بنظام تقييم."
+            },
+            "get-companies": {
+                "label": "جلب الشركات",
+                "description": "جلب ومزامنة شركاتك من تقييم."
+            },
+            "check-status": {
+                "label": "فحص المتصفح",
+                "description": "فحص حالة المتصفح لأتمتة تقييم."
+            },
+            "company-members": {
+                "label": "أعضاء الشركة",
+                "description": "إدارة حسابات الفريق والصلاحيات."
+            },
+            "company-statics": {
+                "label": "إحصائيات الشركة",
+                "description": "متابعة نشاط المستخدمين والتقارير للشركة."
+            },
+            "profile": {
+                "label": "الملف الشخصي",
+                "description": "إدارة الملف الشخصي وكلمة المرور."
+            },
+            "packages": {
+                "label": "الباقات",
+                "description": "مراجعة وإدارة الباقات والاشتراكات."
+            },
+            "delete-report": {
+                "label": "حذف تقرير",
+                "description": "حذف التقارير والملفات المرتبطة بأمان."
+            },
+            "system-status": {
+                "label": "حالة تشغيل النظام",
+                "description": "مراقبة والتحكم في توفر النظام."
+            },
+            "system-updates": {
+                "label": "تحديثات النظام",
+                "description": "نشر وإدارة تحديثات النظام."
+            },
+            "admin-packages": {
+                "label": "الباقات",
+                "description": "إدارة الباقات والاشتراكات."
+            },
+            "statics": {
+                "label": "الإحصائيات",
+                "description": "مراجعة إحصائيات ونشاط النظام."
+            }
+        },
+        "cards": {
+            "uploading-reports": {
+                "title": "رفع التقارير",
+                "description": "رفع التقارير والتحقق منها وإدارتها عبر المجالات."
+            },
+            "evaluation-sources": {
+                "title": "مصادر التقييم",
+                "description": "إدارة مصادر التقييم والتقارير والأدوات المساندة."
+            },
+            "company-console": {
+                "title": "لوحة الشركة",
+                "description": "أعضاء الفريق والوصول والإحصائيات في مركز واحد."
+            },
+            "admin-console": {
+                "title": "المدير العام",
+                "description": "التحكم بالنظام والتحديثات والباقات والإحصائيات في مركز واحد."
+            }
+        },
+        "viewTitles": {
+            "apps": "التطبيقات",
+            "upload-report-elrajhi": "رفع تقرير (الراجحي)",
+            "download-certificate": "تنزيل شهادة برقم التقرير",
+            "duplicate-report": "تكرار التقرير وإرسال جديد",
+            "multi-excel-upload": "رفع ملفات إكسل متعددة",
+            "manual-multi-report": "رفع تقارير متعددة يدوياً",
+            "macro-edit": "تعديل الماكرو",
+            "grab-macro-ids": "جلب معرّفات الماكرو",
+            "common-fields": "إضافة الحقول المشتركة",
+            "upload-excel": "رفع ملف إكسل",
+            "asset-create": "إنشاء أصل",
+            "validate-report": "التحقق من التقرير",
+            "taqeem-login": "تسجيل دخول تقييم",
+            "get-companies": "جلب الشركات",
+            "check-status": "فحص المتصفح",
+            "company-members": "أعضاء الشركة",
+            "company-statics": "إحصائيات الشركة",
+            "profile": "الملف الشخصي",
+            "packages": "الباقات",
+            "admin-packages": "الباقات",
+            "valuation-system": "نظام التقييم",
+            "word-copy": "نسخ وورد",
+            "delete-report": "حذف تقرير",
+            "system-status": "حالة تشغيل النظام",
+            "system-updates": "تحديثات النظام",
+            "statics": "الإحصائيات",
+            "coming-soon": "قريباً"
+        },
+        "companyFetchUnavailable": "جلب الشركات غير متاح في هذا الإصدار.",
+        "loadCompaniesFailed": "تعذر تحميل الشركات المحفوظة",
+        "companySyncUnavailable": "مزامنة الشركات غير متاحة في هذا الإصدار.",
+        "loginRequiredToSaveCompanies": "يجب تسجيل الدخول لحفظ الشركات"
+    },
+    "apps": {
+        "stage": {
+            "pickCard": "اختر بطاقة للبدء.",
+            "chooseDomain": "اختر العقارات أو المعدات من الشريط الجانبي.",
+            "realEstateSoon": "أدوات العقارات ستكون متاحة قريباً.",
+            "pickCompany": "اختر شركة محفوظة ضمن المعدات بعد مزامنتها من تقييم.",
+            "selectTab": "اختر تبويباً لفتح الأداة المرتبطة."
+        },
+        "mainLinks": "الروابط الرئيسية",
+        "cardBadge": "الرئيسية"
+    },
+    "registration": {
+        "errors": {
+            "chooseAccountType": "يرجى اختيار نوع الحساب.",
+            "failed": "فشل التسجيل. يرجى المحاولة مرة أخرى."
+        },
+        "welcomeTitle": "مرحباً بك في Value Tech",
+        "welcomeSubtitle": "يرجى اختيار نوع الحساب للمتابعة",
+        "accountTypes": {
+            "individual": "فردي",
+            "company": "شركة"
+        },
+        "titles": {
+            "company": "تسجيل شركة",
+            "individual": "تسجيل فردي"
+        },
+        "subtitles": {
+            "company": "أنشئ حساب المدير وادعُ الأعضاء لاحقاً.",
+            "individual": "يرجى إدخال بياناتك"
+        },
+        "fields": {
+            "companyName": "اسم الشركة",
+            "companyHead": "مدير الشركة",
+            "phone": "رقم الهاتف",
+            "password": "كلمة المرور"
+        },
+        "placeholders": {
+            "companyHead": "اسم مدير الشركة",
+            "phone": "أدخل رقم هاتفك",
+            "password": "أدخل كلمة المرور"
+        },
+        "actions": {
+            "registering": "جارٍ التسجيل...",
+            "register": "تسجيل",
+            "back": "العودة للاختيار"
+        }
+    },
+    "login": {
+        "titles": {
+            "phone": "تسجيل الدخول بالهاتف"
+        },
+        "fields": {
+            "phone": "رقم الهاتف",
+            "password": "كلمة المرور"
+        },
+        "placeholders": {
+            "phone": "أدخل رقم هاتفك",
+            "password": "أدخل كلمة المرور"
+        },
+        "actions": {
+            "loggingIn": "جارٍ تسجيل الدخول...",
+            "login": "تسجيل الدخول",
+            "legacy": "الواجهة القديمة"
+        },
+        "registerPrompt": "ليس لديك حساب؟",
+        "errors": {
+            "enterPhonePassword": "يرجى إدخال رقم الهاتف وكلمة المرور.",
+            "electronApiUnavailable": "واجهة Electron غير متاحة. تأكد من تشغيل التطبيق ضمن Electron.",
+            "loginFailed": "فشل تسجيل الدخول.",
+            "unknown": "حدث خطأ غير معروف.",
+            "loginHandlerMissing": "معالج تسجيل الدخول غير موجود.",
+            "otpHandlerMissing": "معالج رمز التحقق غير موجود.",
+            "otpFailed": "فشل التحقق من رمز التحقق."
+        },
+        "messages": {
+            "success": "تم تسجيل الدخول بنجاح.",
+            "authComplete": "اكتملت المصادقة.",
+            "error": "خطأ: {{error}}",
+            "otpRequired": "المصادقة الثنائية مطلوبة. يرجى إدخال رمز {{method}}."
+        },
+        "methods": {
+            "sms": "الرسائل القصيرة",
+            "email": "البريد الإلكتروني"
+        }
+    },
+    "comingSoon": {
+        "title": "العقارات قريباً",
+        "description": "نحن نجهّز أدوات العقارات. عد لاحقاً أو انتقل إلى نطاق المعدات للمتابعة."
+    },
+    "wordCopy": {
+        "title": "نسخ وورد",
+        "description": "انسخ قوالب تقارير وورد، وأضف الصور، وأنشئ مخرجات دفعات.",
+        "source": {
+            "title": "ملف وورد المصدر",
+            "subtitle": "اختر قالب وورد المراد نسخه.",
+            "select": "اختر ملف وورد",
+            "selected": "الملف المحدد: {{path}}"
+        },
+        "destination": {
+            "title": "مجلد الوجهة",
+            "subtitle": "اختر المكان لحفظ النسخ.",
+            "select": "اختر مجلد الوجهة"
+        },
+        "actions": {
+            "browse": "استعراض",
+            "generate": "إنشاء النسخ"
+        },
+        "copies": {
+            "title": "عدد النسخ",
+            "placeholder": "أدخل عدد النسخ"
+        },
+        "baseName": {
+            "title": "اسم الملف الأساسي",
+            "placeholder": "اسم أساسي للملفات الناتجة (اختياري)",
+            "example": "مثال للإخراج: {{example}}"
+        },
+        "images": {
+            "title": "إلحاق الصور",
+            "subtitle": "يمكنك إضافة الصور لإلحاقها بعد التقرير.",
+            "select": "اختر الصور",
+            "selected": "تم اختيار الصور",
+            "clear": "مسح الصور",
+            "count": "تم اختيار {{count}} صورة للإلحاق.",
+            "more": "+{{count}} أخرى",
+            "optional": "اختياري: يمكنك إلحاق الصور لاحقاً.",
+            "pageBreak": "إدراج فاصل صفحة قبل الصور المضافة"
+        },
+        "errors": {
+            "wordPickerUnavailable": "عارض ملفات وورد غير متاح.",
+            "wordPickFailed": "تعذر اختيار ملف وورد.",
+            "folderPickerUnavailable": "عارض المجلدات غير متاح.",
+            "folderPickFailed": "تعذر اختيار المجلد.",
+            "noFolderSelected": "لم يتم تحديد مجلد.",
+            "imagesPickerUnavailable": "عارض الصور غير متاح.",
+            "imagesPickFailed": "تعذر اختيار الصور.",
+            "missingSourceOrTarget": "يرجى تحديد ملف المصدر ومجلد الوجهة.",
+            "invalidCopies": "يرجى إدخال عدد نسخ صالح.",
+            "copyNotAvailable": "خدمة نسخ ملفات وورد غير متاحة.",
+            "copyFailed": "تعذر إنشاء النسخ."
+        },
+        "result": {
+            "created": "تم إنشاء {{count}} ملفاً.",
+            "outputDir": "مجلد الإخراج",
+            "appendedImages": "تم إلحاق {{images}} صورة إلى {{files}} ملف.",
+            "sampleFiles": "نماذج من الملفات: {{files}}{{more}}",
+            "more": " ... (+{{count}})"
+        }
+    },
+    "valuationSystem": {
+        "title": "نظام التقييم",
+        "description": "أنشئ مجلدات التقييم وحسابات القيم وملفات التقارير في مسار واحد.",
+        "base": {
+            "title": "مجلد التقييم الأساسي",
+            "pathLabel": "مسار المجلد الأساسي",
+            "pathPlaceholder": "مثال: C:\\\\Documents\\\\Valuation",
+            "folderLabel": "اسم مجلد التقرير",
+            "folderPlaceholder": "أدخل اسم مجلد التقرير"
+        },
+        "data": {
+            "title": "ملف Data.xlsx",
+            "subtitle": "اختر ملف Data.xlsx الذي يحتوي على بيانات التقييم.",
+            "select": "اختر ملف Data.xlsx",
+            "selectedPath": "المسار: {{path}}",
+            "missing": "يرجى اختيار ملف Data.xlsx.",
+            "note": "تأكد من وجود ملف calc.xlsx داخل المجلد الأساسي."
+        },
+        "actions": {
+            "browse": "استعراض",
+            "select": "اختيار",
+            "createFolders": "إنشاء المجلدات",
+            "updateCalc": "تحديث calc.xlsx",
+            "createDocx": "إنشاء DOCX",
+            "generateValueCalcs": "إنشاء حسابات القيم",
+            "appendPreviewImages": "إلحاق صور المعاينة",
+            "appendRegistrationCerts": "إلحاق شهادات التسجيل",
+            "reset": "إعادة تعيين"
+        },
+        "errors": {
+            "folderPickerUnavailable": "عارض المجلدات غير متاح.",
+            "selectFolderFailed": "تعذر اختيار المجلد.",
+            "filePickerUnavailable": "عارض الملفات غير متاح.",
+            "selectFileFailed": "تعذر اختيار الملف.",
+            "missingInputs": "يرجى إدخال المسار واسم المجلد واختيار ملف Data.xlsx.",
+            "serviceUnavailable": "الخدمة غير متاحة في هذا الإصدار.",
+            "createFoldersFailed": "تعذر إنشاء المجلدات.",
+            "updateCalcFailed": "تعذر تحديث calc.xlsx.",
+            "missingBase": "يرجى إدخال المسار واسم المجلد.",
+            "createDocxFailed": "تعذر إنشاء ملفات DOCX.",
+            "valueCalcsFailed": "تعذر إنشاء حسابات القيم.",
+            "previewImagesFailed": "تعذر إلحاق صور المعاينة.",
+            "registrationCertsFailed": "تعذر إلحاق شهادات التسجيل."
+        },
+        "result": {
+            "calcUpdated": "تم تحديث calc.xlsx بنجاح.",
+            "foldersCreated": "تم إنشاء المجلدات بنجاح.",
+            "rootPath": "مسار المجلد",
+            "createdFolders": "عدد المجلدات الرئيسية: {{count}}",
+            "locations": "عدد المواقع: {{count}}",
+            "plates": "عدد اللوحات: {{count}}",
+            "calcPath": "مسار calc.xlsx",
+            "docsCreated": "عدد ملفات DOCX: {{count}}",
+            "valueCalcs": "تمت معالجة {{processed}} قيمة (تم تخطي {{skipped}}).",
+            "previewImages": "تمت معالجة {{processed}} صورة معاينة (تم تخطي {{skipped}}).",
+            "registrationCerts": "تمت معالجة {{processed}} شهادة تسجيل (تم تخطي {{skipped}}).",
+            "imagesDir": "مجلد الصور"
+        }
+    },
+    "systemControl": {
+        "errors": {
+            "loadState": "تعذر تحميل حالة النظام",
+            "loginToChangeState": "يجب تسجيل الدخول لتغيير حالة النظام",
+            "loginToDownloadUpdates": "يجب تسجيل الدخول لتنزيل التحديثات",
+            "loginToApplyUpdates": "يجب تسجيل الدخول لتطبيق التحديثات",
+            "noSystemState": "لا توجد حالة نظام متاحة",
+            "activateFailed": "تعذر تفعيل النظام"
+        }
+    }
+}

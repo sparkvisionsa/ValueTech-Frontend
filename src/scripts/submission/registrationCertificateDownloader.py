@@ -6,7 +6,7 @@ import re
 import html as html_lib
 from urllib.parse import unquote, urljoin
 
-from scripts.core.browser import check_browser_status, get_browser, get_main_tab
+from scripts.core.browser import check_browser_status, get_browser, get_main_tab, spawn_new_browser
 
 
 AR_STATUS_LABEL = "\u062d\u0627\u0644\u0629 \u0627\u0644\u062a\u0642\u0631\u064a\u0631:"
@@ -18,6 +18,7 @@ AR_REPORT_NAME_LABEL = "\u0627\u0633\u0645 \u0627\u0644\u062a\u0642\u0631\u064a\
 AR_ASSET_NAME_LABEL = "\u0627\u0633\u0645 \u0627\u0644\u0623\u0635\u0644"
 AR_ASSET_TITLE_LABEL = "\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0623\u0635\u0644"
 AR_ASSET_NAME_LABEL_ALT = "\u0627\u0633\u0645 \u0627\u0644\u0627\u0635\u0644"
+AR_ASSET_TABLE_HEADER = "\u0627\u0633\u0645/\u0648\u0635\u0641 \u0627\u0644\u0623\u0635\u0644"
 
 EN_REPORT_TITLE_LABEL = "Report Title"
 EN_REPORT_NAME_LABEL = "Report Name"
@@ -77,6 +78,18 @@ def ensure_unique_path(path: str) -> str:
         idx += 1
 
 
+def chunk_items(items, n):
+    n = max(1, n)
+    k, m = divmod(len(items), n)
+    chunks = []
+    start = 0
+    for i in range(n):
+        size = k + (1 if i < m else 0)
+        chunks.append(items[start:start + size])
+        start += size
+    return chunks
+
+
 def extract_title_from_html(html_text: str) -> str:
     if not html_text:
         return ""
@@ -85,6 +98,67 @@ def extract_title_from_html(html_text: str) -> str:
         return ""
     title = html_lib.unescape(match.group(1))
     return title.replace("\u00a0", " ").strip()
+
+
+async def get_asset_name_from_report_table(page, timeout: int = 8) -> str:
+    end = time.time() + max(1, timeout)
+    last_value = ""
+    header_labels = [
+        AR_ASSET_TABLE_HEADER,
+        EN_ASSET_NAME_LABEL,
+        "Asset Name/Description",
+        "Asset Name / Description",
+        "Asset Description",
+    ]
+    header_json = json.dumps(header_labels)
+    while time.time() < end:
+        try:
+            value = await page.evaluate(
+                f"""
+                () => {{
+                    const normalize = (value) => (value || '')
+                        .replace(/[\\u00a0]/g, ' ')
+                        .replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g, '')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+
+                    const targets = {header_json}.map((t) => normalize(t));
+                    const table = document.querySelector('#m-table');
+                    if (!table) return '';
+
+                    const headers = Array.from(table.querySelectorAll('thead th'));
+                    if (!headers.length) return '';
+
+                    let targetIndex = -1;
+                    for (let i = 0; i < headers.length; i += 1) {{
+                        const text = normalize(headers[i]?.textContent || '');
+                        if (!text) continue;
+                        if (targets.some((t) => text === t || text.includes(t))) {{
+                            targetIndex = i;
+                            break;
+                        }}
+                    }}
+
+                    if (targetIndex === -1) return '';
+                    const rows = Array.from(table.querySelectorAll('tbody tr'));
+                    for (const row of rows) {{
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        const cell = cells[targetIndex];
+                        const text = normalize(cell?.textContent || '');
+                        if (text) return text;
+                    }}
+                    return '';
+                }}
+                """
+            )
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, str):
+                last_value = value.strip()
+        except Exception:
+            pass
+        await page.sleep(0.4)
+    return last_value
 
 
 async def get_report_title(page, timeout: int = 12, report_id: str = "") -> str:
@@ -489,6 +563,58 @@ def download_pdf_with_cookies(url, dest_dir, preferred_name, cookie_header, head
         return target_path
 
 
+async def download_single_certificate(page, browser, report_id, asset_name, download_path):
+    try:
+        await page.get(f"https://qima.taqeem.sa/report/{report_id}")
+        await page.sleep(1)
+
+        asset_name_page = repair_mojibake((await get_asset_name_from_report_table(page)).strip())
+        page_title = ""
+        if not asset_name_page:
+            page_title = repair_mojibake((await get_report_title(page, report_id=report_id)).strip())
+
+        target = await find_registration_certificate_target(page)
+        if not target:
+            return {"reportId": report_id, "status": "NOT_CONFIRMED"}
+
+        registration_url = await resolve_registration_url(page, target)
+        if not registration_url:
+            return {"reportId": report_id, "status": "NOT_CONFIRMED"}
+
+        try:
+            user_agent = await page.evaluate("navigator.userAgent")
+        except Exception:
+            user_agent = ""
+
+        headers = {
+            "Accept": "application/pdf",
+            "Referer": f"https://qima.taqeem.sa/report/{report_id}",
+        }
+        if user_agent:
+            headers["User-Agent"] = user_agent
+
+        cookies = await browser.cookies.get_all()
+        cookie_header = build_cookie_header(cookies)
+
+        fallback_name = asset_name_page or asset_name or page_title or f"report_{report_id}"
+        target_path = download_pdf_with_cookies(
+            registration_url,
+            download_path,
+            fallback_name,
+            cookie_header,
+            headers=headers,
+            timeout=60,
+        )
+        return {
+            "reportId": report_id,
+            "status": "DOWNLOADED",
+            "filePath": target_path,
+            "fileName": os.path.basename(target_path),
+        }
+    except Exception as e:
+        return {"reportId": report_id, "status": "FAILED", "error": str(e)}
+
+
 async def download_registration_certificates(cmd):
     download_path = cmd.get("downloadPath") or cmd.get("download_path") or cmd.get("path")
     reports = cmd.get("reports") or []
@@ -509,13 +635,39 @@ async def download_registration_certificates(cmd):
     if not download_path:
         return {"status": "FAILED", "error": "Missing downloadPath"}
 
-    browser = await get_browser()
-    page = await get_main_tab()
+    base_browser = await get_browser()
+
+    tabs_raw = cmd.get("tabsNum") or cmd.get("tabs_num") or cmd.get("tabs") or 1
+    try:
+        tabs = int(tabs_raw)
+    except Exception:
+        tabs = 1
+    tabs = max(1, min(tabs, 5))
+
+    working_browser = None
+    spawned_browser = None
+    try:
+        spawned_browser = await spawn_new_browser(base_browser)
+        working_browser = spawned_browser
+    except Exception:
+        working_browser = base_browser
+
+    pages = []
+    if working_browser:
+        try:
+            if tabs > 1:
+                pages = [await working_browser.get("about:blank", new_tab=True) for _ in range(tabs)]
+            else:
+                main_tab = working_browser.main_tab
+                pages = [main_tab] if main_tab else [await working_browser.get("about:blank")]
+        except Exception:
+            pages = []
+
+    if not pages:
+        pages = [await get_main_tab()]
 
     results = []
-    downloaded = 0
-    skipped = 0
-    failed = 0
+    normalized_reports = []
 
     for rep in reports:
         report_id = None
@@ -529,66 +681,40 @@ async def download_registration_certificates(cmd):
         report_id = str(report_id).strip() if report_id else ""
         asset_name = repair_mojibake(str(asset_name)) if asset_name else None
         if not report_id:
-            skipped += 1
             results.append({"reportId": None, "status": "SKIPPED", "reason": "missing_report_id"})
             continue
+        normalized_reports.append({"reportId": report_id, "assetName": asset_name})
 
-        target_path = None
-
-        try:
-            await page.get(f"https://qima.taqeem.sa/report/{report_id}")
-            await page.sleep(1)
-
-            page_title = repair_mojibake((await get_report_title(page, report_id=report_id)).strip())
-
-            target = await find_registration_certificate_target(page)
-            if not target:
-                skipped += 1
-                results.append({"reportId": report_id, "status": "NOT_CONFIRMED"})
-                continue
-
-            registration_url = await resolve_registration_url(page, target)
-            if not registration_url:
-                skipped += 1
-                results.append({"reportId": report_id, "status": "NOT_CONFIRMED"})
-                continue
-
-            try:
-                user_agent = await page.evaluate("navigator.userAgent")
-            except Exception:
-                user_agent = ""
-
-            headers = {
-                "Accept": "application/pdf",
-                "Referer": f"https://qima.taqeem.sa/report/{report_id}",
-            }
-            if user_agent:
-                headers["User-Agent"] = user_agent
-
-            cookies = await browser.cookies.get_all()
-            cookie_header = build_cookie_header(cookies)
-
-            fallback_name = page_title or asset_name or f"report_{report_id}"
-            target_path = download_pdf_with_cookies(
-                registration_url,
+    async def process_chunk(page, chunk):
+        out = []
+        for rep in chunk:
+            res = await download_single_certificate(
+                page,
+                working_browser,
+                rep.get("reportId"),
+                rep.get("assetName"),
                 download_path,
-                fallback_name,
-                cookie_header,
-                headers=headers,
-                timeout=60,
             )
-            downloaded += 1
-            results.append(
-                {
-                    "reportId": report_id,
-                    "status": "DOWNLOADED",
-                    "filePath": target_path,
-                    "fileName": os.path.basename(target_path),
-                }
-            )
-        except Exception as e:
-            failed += 1
-            results.append({"reportId": report_id, "status": "FAILED", "error": str(e)})
+            out.append(res)
+        return out
+
+    if normalized_reports:
+        chunks = chunk_items(normalized_reports, len(pages))
+        chunk_results = await asyncio.gather(
+            *(process_chunk(p, c) for p, c in zip(pages, chunks))
+        )
+        for chunk in chunk_results:
+            results.extend(chunk)
+
+    if spawned_browser:
+        try:
+            await spawned_browser.stop()
+        except Exception:
+            pass
+
+    downloaded = sum(1 for r in results if r.get("status") == "DOWNLOADED")
+    failed = sum(1 for r in results if r.get("status") == "FAILED")
+    skipped = sum(1 for r in results if r.get("status") in ("SKIPPED", "NOT_CONFIRMED"))
 
     return {
         "status": "SUCCESS",

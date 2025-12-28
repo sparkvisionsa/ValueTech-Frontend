@@ -3,6 +3,7 @@ import { AppWindow, UploadCloud, Compass, ChevronRight, Info, ShieldCheck, Build
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import navigation from '../constants/navigation';
+import { useTranslation } from 'react-i18next';
 
 const { valueSystemCards, valueSystemGroups } = navigation;
 
@@ -53,6 +54,7 @@ const cardThemes = {
 
 const Apps = ({ onViewChange }) => {
     const { isFeatureBlocked, blockReason } = useSystemControl();
+    const { t } = useTranslation();
     const {
         selectedCard,
         selectedDomain,
@@ -65,17 +67,17 @@ const Apps = ({ onViewChange }) => {
 
     const breadcrumbText = useMemo(() => breadcrumbs.map((b) => b.label).join(' > '), [breadcrumbs]);
     const stageHint = useMemo(() => {
-        if (!selectedCard) return 'Pick a card to begin.';
-        if (selectedCard === 'uploading-reports' && !selectedDomain) return 'Choose Real state or Equipments from the sidebar.';
+        if (!selectedCard) return t('apps.stage.pickCard');
+        if (selectedCard === 'uploading-reports' && !selectedDomain) return t('apps.stage.chooseDomain');
         if (selectedCard === 'uploading-reports' && selectedDomain === 'real-estate') {
-            return 'Real estate tools are coming soon.';
+            return t('apps.stage.realEstateSoon');
         }
         if (selectedCard === 'uploading-reports' && selectedDomain === 'equipments' && !selectedCompany) {
-            return 'Pick a saved company under Equipments after you sync them from Taqeem.';
+            return t('apps.stage.pickCompany');
         }
-        if (activeGroup) return 'Select a tab to open the related tool.';
+        if (activeGroup) return t('apps.stage.selectTab');
         return '';
-    }, [selectedCard, selectedDomain, selectedCompany, activeGroup]);
+    }, [selectedCard, selectedDomain, selectedCompany, activeGroup, t]);
 
     const handleCardClick = (card) => {
         chooseCard(card.id);
@@ -95,8 +97,10 @@ const Apps = ({ onViewChange }) => {
                         <AppWindow className="w-4 h-4" />
                     </span>
                     <div className="text-compact text-center">
-                        <p className="text-[10px] font-semibold text-slate-500">Main Links</p>
-                        <h3 className="font-display text-[15px] font-semibold text-slate-900 leading-tight text-compact">{group.title}</h3>
+                        <p className="text-[10px] font-semibold text-slate-500">{t('apps.mainLinks')}</p>
+                        <h3 className="font-display text-[15px] font-semibold text-slate-900 leading-tight text-compact">
+                            {t(`navigation.groups.${group.id}.title`, { defaultValue: group.title })}
+                        </h3>
                     </div>
                 </div>
                 <div className="grid w-full gap-4 px-2 sm:px-4 justify-items-center grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -118,16 +122,20 @@ const Apps = ({ onViewChange }) => {
                                 <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.22),rgba(15,23,42,0))] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                                 <div className="relative flex h-full flex-col gap-2">
                                     <div className="flex items-start justify-between gap-2">
-                                        <p className="font-semibold text-[12px] text-slate-100 leading-tight text-compact">{tab.label}</p>
+                                        <p className="font-semibold text-[12px] text-slate-100 leading-tight text-compact">
+                                            {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
+                                        </p>
                                         <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${blocked
                                             ? 'border-amber-200/60 bg-amber-100/20 text-amber-100'
                                             : 'border-slate-700 bg-slate-900 text-slate-300 group-hover:text-white'
                                             }`}
                                         >
-                                            <ChevronRight className={`w-3.5 h-3.5 ${blocked ? '' : 'group-hover:translate-x-0.5 transition'}`} />
+                                            <ChevronRight className={`w-3.5 h-3.5 rtl-flip ${blocked ? '' : 'group-hover:translate-x-0.5 transition'}`} />
                                         </span>
                                     </div>
-                                    <p className="text-[10px] text-slate-300 leading-snug line-clamp-3">{tab.description}</p>
+                                    <p className="text-[10px] text-slate-300 leading-snug line-clamp-3">
+                                        {t(`navigation.tabs.${tab.id}.description`, { defaultValue: tab.description })}
+                                    </p>
                                     {blocked && reason && (
                                         <p className="mt-auto text-[9px] text-amber-200">{reason}</p>
                                     )}
@@ -172,19 +180,19 @@ const Apps = ({ onViewChange }) => {
                                             <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${theme.badge} text-white shadow-[0_12px_26px_rgba(15,23,42,0.2)]`}>
                                                 <Icon className="w-5 h-5" />
                                             </span>
-                                            <span className="text-[10px] font-semibold text-slate-300 text-compact">Main</span>
+                                            <span className="text-[10px] font-semibold text-slate-300 text-compact">{t('apps.cardBadge')}</span>
                                         </div>
                                         <div className="flex-1">
                                             <h2 className="font-display text-[15px] font-semibold text-slate-100 leading-tight text-compact line-clamp-2">
-                                                {card.title}
+                                                {t(`navigation.cards.${card.id}.title`, { defaultValue: card.title })}
                                             </h2>
                                             <p className="mt-2 text-[10px] text-slate-300 leading-snug line-clamp-3">
-                                                {card.description}
+                                                {t(`navigation.cards.${card.id}.description`, { defaultValue: card.description })}
                                             </p>
                                         </div>
                                         <div className={`flex items-center gap-1 text-[11px] font-semibold ${theme.accent}`}>
-                                            <span>Open</span>
-                                            <ChevronRight className="w-4 h-4 transition group-hover:translate-x-0.5" />
+                                            <span>{t('common.open')}</span>
+                                            <ChevronRight className="w-4 h-4 transition group-hover:translate-x-0.5 rtl-flip" />
                                         </div>
                                     </div>
                                 </button>

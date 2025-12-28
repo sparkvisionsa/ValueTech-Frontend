@@ -1,0 +1,507 @@
+{
+    "common": {
+        "language": "Language",
+        "english": "English",
+        "arabic": "Arabic",
+        "loading": "Loading...",
+        "close": "Close",
+        "cancel": "Cancel",
+        "save": "Save",
+        "update": "Update",
+        "confirm": "Confirm",
+        "back": "Back",
+        "next": "Next",
+        "yes": "Yes",
+        "no": "No",
+        "open": "Open"
+    },
+    "layout": {
+        "alerts": {
+            "loginToManageUpdates": "Please log in to manage updates.",
+            "updateDownloadPrepared": "Update download prepared for your account.",
+            "downloadUpdateFailed": "Failed to download update",
+            "updateApplied": "Update applied to your workspace.",
+            "applyUpdateFailed": "Failed to apply update"
+        },
+        "updateNotice": {
+            "title": "New update available",
+            "descriptionFallback": "Download now to stay up to date.",
+            "downloaded": "Downloaded",
+            "download": "Download",
+            "later": "Later",
+            "applied": "Applied",
+            "apply": "Apply update"
+        },
+        "modes": {
+            "active": "active",
+            "partial": "partial",
+            "inactive": "inactive"
+        },
+        "status": {
+            "refreshTitle": "Refresh status",
+            "refresh": "Refresh",
+            "taqeem": "Taqeem",
+            "company": "Company"
+        },
+        "auth": {
+            "userFallback": "User",
+            "logout": "Logout",
+            "register": "Register",
+            "login": "Login"
+        },
+        "header": {
+            "workspace": "Workspace",
+            "defaultTitle": "Value Tech"
+        },
+        "ram": {
+            "unavailable": "RAM reader not available",
+            "refreshTitle": "Refresh RAM info",
+            "reading": "Reading...",
+            "read": "Read RAM",
+            "usedOf": "Used {{used}} GB of {{total}} GB",
+            "free": "Free {{free}} GB",
+            "usage": "{{usage}}%"
+        },
+        "messages": {
+            "inactive": "The system is currently inactive. Access to features is disabled.",
+            "partialFallback": "Only selected modules are available right now.",
+            "downtimeEnds": "Downtime ends in",
+            "updateBlocked": "A mandatory update must be applied before continuing.",
+            "featureUnavailable": "This feature is unavailable right now.",
+            "refreshOrUpdate": "Please refresh status or apply the latest update to continue."
+        },
+        "time": {
+            "days": "Days",
+            "hours": "Hours",
+            "minutes": "Minutes",
+            "seconds": "Seconds"
+        }
+    },
+    "sidebar": {
+        "domains": {
+            "real-estate": "Real Estate",
+            "equipments": "Equipment"
+        },
+        "company": {
+            "loading": "Loading companies...",
+            "empty": "No companies found.",
+            "fallback": "Company",
+            "office": "Office {{officeId}}",
+            "title": "Company",
+            "links": {
+                "company-members": "Company Members",
+                "company-statics": "Company Statics"
+            }
+        },
+        "admin": {
+            "title": "Super Admin",
+            "links": {
+                "system-status": "System Operating Status",
+                "system-updates": "System Updates",
+                "admin-packages": "Packages",
+                "statics": "Statics"
+            }
+        },
+        "dashboards": {
+            "title": "Dashboards",
+            "links": {
+                "companyConsole": "Company Dashboard",
+                "adminConsole": "Super Admin"
+            }
+        },
+        "brand": {
+            "name": "Value Tech",
+            "subtitle": "Control panel",
+            "status": "Live"
+        },
+        "apps": {
+            "title": "Apps",
+            "subtitle": "Open cards"
+        },
+        "settings": "Settings",
+        "systemOnline": "System Online"
+    },
+    "navigation": {
+        "apps": "Apps",
+        "groups": {
+            "evaluationSources": { "title": "Evaluation Sources" },
+            "uploadReports": { "title": "Upload Reports" },
+            "uploadSingleReport": { "title": "Upload Single Report" },
+            "taqeemInfo": { "title": "Taqeem Info" },
+            "companyConsole": { "title": "Company Dashboard" },
+            "settings": { "title": "Settings" },
+            "deleteReport": { "title": "Delete Report" },
+            "adminConsole": { "title": "Super Admin Console" }
+        },
+        "tabs": {
+            "word-copy": {
+                "label": "Word Copy",
+                "description": "Duplicate Word report templates, optionally append images, and generate batch outputs."
+            },
+            "valuation-system": {
+                "label": "Valuation System",
+                "description": "Create valuation folders, calculations, and report files from the valuation system."
+            },
+            "upload-report-elrajhi": {
+                "label": "Upload Report (El Rajhi)",
+                "description": "Upload El Rajhi reports, validate data, and process batches."
+            },
+            "download-certificate": {
+                "label": "Download certificate with ID",
+                "description": "Download a registration certificate by report ID."
+            },
+            "duplicate-report": {
+                "label": "Duplicate report & send new",
+                "description": "Duplicate existing reports, update data, and send a fresh submission."
+            },
+            "multi-excel-upload": {
+                "label": "Multi-Excel Upload",
+                "description": "Upload multiple Excel files and create reports in bulk."
+            },
+            "manual-multi-report": {
+                "label": "Manual Multi-Report Upload",
+                "description": "Upload multiple reports manually for bulk processing."
+            },
+            "macro-edit": {
+                "label": "Edit Macro",
+                "description": "Edit macro values and update report fields."
+            },
+            "grab-macro-ids": {
+                "label": "Grab Macro IDs",
+                "description": "Fetch macro IDs from reports for processing."
+            },
+            "common-fields": {
+                "label": "Add Common Fields",
+                "description": "Add shared fields to a report in one step."
+            },
+            "upload-excel": {
+                "label": "Upload Excel",
+                "description": "Upload a single Excel report file."
+            },
+            "asset-create": {
+                "label": "Create Asset",
+                "description": "Create report assets from uploaded data."
+            },
+            "validate-report": {
+                "label": "Validate Report",
+                "description": "Validate report data before submission."
+            },
+            "taqeem-login": {
+                "label": "Taqeem Login",
+                "description": "Authenticate and connect to the Taqeem system."
+            },
+            "get-companies": {
+                "label": "Get Companies",
+                "description": "Fetch and sync your companies from Taqeem."
+            },
+            "check-status": {
+                "label": "Check Browser",
+                "description": "Check the browser status for Taqeem automation."
+            },
+            "company-members": {
+                "label": "Company Members",
+                "description": "Manage team accounts and permissions."
+            },
+            "company-statics": {
+                "label": "Company Statics",
+                "description": "Track user and report activity for your company."
+            },
+            "profile": {
+                "label": "Profile",
+                "description": "Manage your profile, password, and account details."
+            },
+            "packages": {
+                "label": "Packages",
+                "description": "Review and manage packages and subscriptions."
+            },
+            "delete-report": {
+                "label": "Delete Report",
+                "description": "Delete reports and related assets safely."
+            },
+            "system-status": {
+                "label": "System Operating Status",
+                "description": "Monitor and control system availability."
+            },
+            "system-updates": {
+                "label": "System Updates",
+                "description": "Publish and manage system update releases."
+            },
+            "admin-packages": {
+                "label": "Packages",
+                "description": "Manage packages and subscriptions."
+            },
+            "statics": {
+                "label": "Statics",
+                "description": "Review system-wide statistics and activity."
+            }
+        },
+        "cards": {
+            "uploading-reports": {
+                "title": "Uploading Reports",
+                "description": "Upload, validate, and manage valuation reports across domains."
+            },
+            "evaluation-sources": {
+                "title": "Evaluation Sources",
+                "description": "Manage valuation sources, reports, and supporting tools."
+            },
+            "company-console": {
+                "title": "Company Dashboard",
+                "description": "Team members, access, and company statics in one hub."
+            },
+            "admin-console": {
+                "title": "Super Admin",
+                "description": "System controls, updates, packages, and live statics in one command center."
+            }
+        },
+        "viewTitles": {
+            "apps": "Apps",
+            "upload-report-elrajhi": "Upload Report (El Rajhi)",
+            "download-certificate": "Download certificate with ID",
+            "duplicate-report": "Duplicate report & send new",
+            "multi-excel-upload": "Multi-Excel Upload",
+            "manual-multi-report": "Manual Multi-Report Upload",
+            "macro-edit": "Edit Macro",
+            "grab-macro-ids": "Grab Macro IDs",
+            "common-fields": "Add Common Fields",
+            "upload-excel": "Upload Excel",
+            "asset-create": "Create Asset",
+            "validate-report": "Validate Report",
+            "taqeem-login": "Taqeem Login",
+            "get-companies": "Get Companies",
+            "check-status": "Check Browser",
+            "company-members": "Company Members",
+            "company-statics": "Company Statics",
+            "profile": "Profile",
+            "packages": "Packages",
+            "admin-packages": "Packages",
+            "valuation-system": "Valuation System",
+            "word-copy": "Word Copy",
+            "delete-report": "Delete Report",
+            "system-status": "System Operating Status",
+            "system-updates": "System Updates",
+            "statics": "Statics",
+            "coming-soon": "Coming Soon"
+        },
+        "companyFetchUnavailable": "Company fetch is not available in this build.",
+        "loadCompaniesFailed": "Failed to load saved companies",
+        "companySyncUnavailable": "Company sync is not available in this build.",
+        "loginRequiredToSaveCompanies": "Login is required to save companies"
+    },
+    "apps": {
+        "stage": {
+            "pickCard": "Pick a card to begin.",
+            "chooseDomain": "Choose Real Estate or Equipment from the sidebar.",
+            "realEstateSoon": "Real estate tools are coming soon.",
+            "pickCompany": "Pick a saved company under Equipment after you sync them from Taqeem.",
+            "selectTab": "Select a tab to open the related tool."
+        },
+        "mainLinks": "Main Links",
+        "cardBadge": "Main"
+    },
+    "registration": {
+        "errors": {
+            "chooseAccountType": "Please choose an account type.",
+            "failed": "Registration failed. Please try again."
+        },
+        "welcomeTitle": "Welcome to Value Tech",
+        "welcomeSubtitle": "Please select your account type to continue",
+        "accountTypes": {
+            "individual": "Individual",
+            "company": "Company"
+        },
+        "titles": {
+            "company": "Company Registration",
+            "individual": "Individual Registration"
+        },
+        "subtitles": {
+            "company": "Create a head account and invite members later.",
+            "individual": "Please enter your details"
+        },
+        "fields": {
+            "companyName": "Company Name",
+            "companyHead": "Company Head",
+            "phone": "Phone Number",
+            "password": "Password"
+        },
+        "placeholders": {
+            "companyHead": "Head of the company",
+            "phone": "Enter your phone number",
+            "password": "Enter your password"
+        },
+        "actions": {
+            "registering": "Registering...",
+            "register": "Register",
+            "back": "Back to selection"
+        }
+    },
+    "login": {
+        "titles": {
+            "phone": "Login with Phone"
+        },
+        "fields": {
+            "phone": "Phone Number",
+            "password": "Password"
+        },
+        "placeholders": {
+            "phone": "Enter your phone number",
+            "password": "Enter your password"
+        },
+        "actions": {
+            "loggingIn": "Logging in...",
+            "login": "Login",
+            "legacy": "Legacy"
+        },
+        "registerPrompt": "Don't have an account?",
+        "errors": {
+            "enterPhonePassword": "Please enter phone number and password",
+            "electronApiUnavailable": "Electron API not available. Make sure you are running this in Electron.",
+            "loginFailed": "Login failed",
+            "unknown": "Unknown error occurred",
+            "loginHandlerMissing": "Login handler not found",
+            "otpHandlerMissing": "OTP handler not found",
+            "otpFailed": "OTP verification failed"
+        },
+        "messages": {
+            "success": "Login successful!",
+            "authComplete": "Authentication complete!",
+            "error": "Error: {{error}}",
+            "otpRequired": "Two-factor authentication required. Please enter your {{method}} code."
+        },
+        "methods": {
+            "sms": "SMS",
+            "email": "email"
+        }
+    },
+    "comingSoon": {
+        "title": "Real Estate Coming Soon",
+        "description": "We are preparing the real estate tools. Check back later or switch to the Equipment domain to continue."
+    },
+    "wordCopy": {
+        "title": "Word Copy",
+        "description": "Duplicate Word report templates, append images, and create batch outputs.",
+        "source": {
+            "title": "Source Word file",
+            "subtitle": "Choose the Word template to duplicate.",
+            "select": "Select Word file",
+            "selected": "Selected file: {{path}}"
+        },
+        "destination": {
+            "title": "Destination folder",
+            "subtitle": "Choose where to save the copies.",
+            "select": "Select destination folder"
+        },
+        "actions": {
+            "browse": "Browse",
+            "generate": "Generate copies"
+        },
+        "copies": {
+            "title": "Number of copies",
+            "placeholder": "Enter number of copies"
+        },
+        "baseName": {
+            "title": "Base filename",
+            "placeholder": "Base name for generated files (optional)",
+            "example": "Example output: {{example}}"
+        },
+        "images": {
+            "title": "Append images",
+            "subtitle": "Optionally add images to append after the report.",
+            "select": "Select images",
+            "selected": "Images selected",
+            "clear": "Clear images",
+            "count": "Selected {{count}} images to append.",
+            "more": "+{{count}} more",
+            "optional": "Optional: you can append images later.",
+            "pageBreak": "Insert a page break before appended images"
+        },
+        "errors": {
+            "wordPickerUnavailable": "Word file picker is not available.",
+            "wordPickFailed": "Failed to select Word file.",
+            "folderPickerUnavailable": "Folder picker is not available.",
+            "folderPickFailed": "Failed to select folder.",
+            "noFolderSelected": "No folder selected.",
+            "imagesPickerUnavailable": "Image picker is not available.",
+            "imagesPickFailed": "Failed to select images.",
+            "missingSourceOrTarget": "Please select a source file and destination folder.",
+            "invalidCopies": "Please enter a valid number of copies.",
+            "copyNotAvailable": "Word copy service is not available.",
+            "copyFailed": "Failed to generate copies."
+        },
+        "result": {
+            "created": "Created {{count}} files.",
+            "outputDir": "Output folder",
+            "appendedImages": "Appended {{images}} images to {{files}} files.",
+            "sampleFiles": "Sample files: {{files}}{{more}}",
+            "more": " ... (+{{count}})"
+        }
+    },
+    "valuationSystem": {
+        "title": "Valuation System",
+        "description": "Create valuation folders, calculations, and report files in one workflow.",
+        "base": {
+            "title": "Valuation base folder",
+            "pathLabel": "Base folder path",
+            "pathPlaceholder": "Example: C:\\\\Documents\\\\Valuation",
+            "folderLabel": "Report folder name",
+            "folderPlaceholder": "Enter report folder name"
+        },
+        "data": {
+            "title": "Data.xlsx file",
+            "subtitle": "Select the Data.xlsx file that contains valuation inputs.",
+            "select": "Select Data.xlsx file",
+            "selectedPath": "Path: {{path}}",
+            "missing": "Please select a Data.xlsx file.",
+            "note": "Make sure calc.xlsx is present in the base folder."
+        },
+        "actions": {
+            "browse": "Browse",
+            "select": "Select",
+            "createFolders": "Create folders",
+            "updateCalc": "Update calc.xlsx",
+            "createDocx": "Create DOCX",
+            "generateValueCalcs": "Generate value calcs",
+            "appendPreviewImages": "Append preview images",
+            "appendRegistrationCerts": "Append registration certificates",
+            "reset": "Reset"
+        },
+        "errors": {
+            "folderPickerUnavailable": "Folder picker is not available.",
+            "selectFolderFailed": "Failed to select folder.",
+            "filePickerUnavailable": "File picker is not available.",
+            "selectFileFailed": "Failed to select file.",
+            "missingInputs": "Please provide a base path, folder name, and Data.xlsx file.",
+            "serviceUnavailable": "Service is not available in this build.",
+            "createFoldersFailed": "Failed to create folders.",
+            "updateCalcFailed": "Failed to update calc.xlsx.",
+            "missingBase": "Please provide base path and folder name.",
+            "createDocxFailed": "Failed to create DOCX files.",
+            "valueCalcsFailed": "Failed to generate value calculations.",
+            "previewImagesFailed": "Failed to append preview images.",
+            "registrationCertsFailed": "Failed to append registration certificates."
+        },
+        "result": {
+            "calcUpdated": "calc.xlsx updated successfully.",
+            "foldersCreated": "Folders created successfully.",
+            "rootPath": "Root path",
+            "createdFolders": "Main folders created: {{count}}",
+            "locations": "Locations created: {{count}}",
+            "plates": "Plates created: {{count}}",
+            "calcPath": "calc.xlsx path",
+            "docsCreated": "DOCX files created: {{count}}",
+            "valueCalcs": "Processed {{processed}} values (skipped {{skipped}}).",
+            "previewImages": "Processed {{processed}} preview images (skipped {{skipped}}).",
+            "registrationCerts": "Processed {{processed}} registration certificates (skipped {{skipped}}).",
+            "imagesDir": "Images folder"
+        }
+    },
+    "systemControl": {
+        "errors": {
+            "loadState": "Failed to load system state",
+            "loginToChangeState": "You must be logged in to change system state",
+            "loginToDownloadUpdates": "Login required to download updates",
+            "loginToApplyUpdates": "Login required to apply updates",
+            "noSystemState": "No system state available",
+            "activateFailed": "Failed to activate"
+        }
+    }
+}

@@ -1024,6 +1024,7 @@ const UploadReportElrajhi = () => {
             return;
         }
 
+        const tabsNumValue = Number(recommendedTabs || 1);
         setDownloadingCertificatesBatchId(batchId);
         setBatchMessage({
             type: "info",
@@ -1034,6 +1035,7 @@ const UploadReportElrajhi = () => {
             const result = await window.electronAPI.downloadRegistrationCertificates({
                 downloadPath: folderResult.folderPath,
                 reports: targets,
+                tabsNum: tabsNumValue,
             });
             if (result?.status !== "SUCCESS") {
                 throw new Error(result?.error || "Certificate download failed");
@@ -2037,9 +2039,6 @@ const UploadReportElrajhi = () => {
                                 onChange={(e) => handlePdfToggle(e.target.checked)}
                             />
                             <span>Upload PDFs</span>
-                            <span className="text-[10px] font-medium text-blue-900/70">
-                                Need to upload PDF files for reports, or skip to use temp PDFs?
-                            </span>
                         </label>
                         {wantsPdfUpload && (
                             <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[200px] flex-1">
@@ -2094,9 +2093,6 @@ const UploadReportElrajhi = () => {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="space-y-1">
                                 <p className="text-[11px] font-semibold">Validation console</p>
-                                <p className="text-[10px] text-blue-100/90 leading-tight">
-                                    Review report info, valuers, and PDF matching in one place.
-                                </p>
                             </div>
                             {validationDownloadPath && (
                                 <button
@@ -2238,11 +2234,7 @@ const UploadReportElrajhi = () => {
                                             </tbody>
                                         </table>
                                     </div>
-                                ) : (
-                                    <div className="rounded-lg border border-blue-900/10 bg-blue-50/70 px-2 py-1 text-[10px] text-blue-900">
-                                        Validation results will appear here after reading the Excel.
-                                    </div>
-                                )}
+                                ) : null}
                             </div>
                         ) : (
                             <div className="space-y-1">
@@ -2362,11 +2354,7 @@ const UploadReportElrajhi = () => {
                                             </tbody>
                                         </table>
                                     </div>
-                                ) : (
-                                    <div className="rounded-lg border border-blue-900/10 bg-blue-50/70 px-2 py-1 text-[10px] text-blue-900">
-                                        Validate the Excel file to preview PDFs, assets, and client names.
-                                    </div>
-                                )}
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -2382,9 +2370,6 @@ const UploadReportElrajhi = () => {
                             </div>
                             <div>
                                 <p className="text-[11px] font-semibold text-blue-950">Send to Taqeem</p>
-                                <p className="text-[10px] text-blue-900/70 leading-tight">
-                                    If valuer data exists, total contributions must equal 100%. Hook the buttons to the Taqeem integration when ready.
-                                </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">
@@ -2408,9 +2393,6 @@ const UploadReportElrajhi = () => {
                                 Do you want to send the report to the confirmer? / هل تريد ارسال التقارير الي المعتمد مباشرة ؟
                             </span>
                         </label>
-                        <div className="text-[10px] text-blue-900/60">
-                            Each tab will process a portion of the reports automatically.
-                        </div>
                     </div>
                     {validationReportIssues.length ? (
                         <div className="flex items-center gap-2 text-[10px] text-rose-600">
@@ -2471,19 +2453,6 @@ const UploadReportElrajhi = () => {
 
     const noValidationContent = (
         <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200 bg-white/90 shadow-sm p-4 flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center">
-                    <Info className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="space-y-1">
-                    <p className="text-sm font-semibold text-slate-900">Quick upload without validation</p>
-                    <p className="text-xs text-slate-600">
-                        Step 1: Add Excel and PDFs. Step 2: Choose tabs and optionally send to confirmer. We create reports and
-                        fill assets; final send depends on your checkbox.
-                    </p>
-                </div>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
@@ -2493,9 +2462,6 @@ const UploadReportElrajhi = () => {
                             Upload Excel (Report Info + market)
                         </h3>
                     </div>
-                    <p className="text-xs text-gray-600">
-                        Only sheets &quot;Report Info&quot; and &quot;market&quot; are read. One report is created per market row.
-                    </p>
                     <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
                         <div className="flex items-center gap-2 text-sm text-gray-800">
                             <FolderOpen className="w-4 h-4" />
@@ -2515,8 +2481,7 @@ const UploadReportElrajhi = () => {
                         />
                         <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
-                    <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>Excel uploads when you click &quot;Send to Taqeem&quot;.</span>
+                    <div className="flex items-center justify-end text-xs">
                         <button
                             onClick={clearAll}
                             className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-100 text-gray-700 text-xs font-semibold hover:bg-slate-200"
@@ -2534,10 +2499,6 @@ const UploadReportElrajhi = () => {
                         <h3 className="text-sm font-semibold text-gray-900">
                             Upload PDFs (match by asset_name)
                         </h3>
-                    </div>
-                    <div className="text-xs text-gray-600 space-y-1">
-                        <p>Filenames should equal asset_name + &quot;.pdf&quot;</p>
-                        <p>Current Batch ID: <span className="font-mono text-gray-800">{batchId || "—"}</span></p>
                     </div>
                     <label className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 transition">
                         <div className="flex items-center gap-2 text-sm text-gray-800">
@@ -2572,9 +2533,6 @@ const UploadReportElrajhi = () => {
                                 (auto-configured)
                             </span>
                         </div>
-                        <p className="text-[11px] text-gray-500 col-span-2">
-                            Each tab will process a portion of the reports automatically based on available RAM.
-                        </p>
                     </div>
 
                     <div className="flex gap-2">
@@ -2658,11 +2616,6 @@ const UploadReportElrajhi = () => {
                         />
                     )}
                 </div>
-                {!batchId && (
-                    <p className="text-xs text-gray-500">
-                        Upload Excel and PDFs, then click &quot;Send to Taqeem&quot;. Toggle the checkbox if you want to finalize.
-                    </p>
-                )}
             </div>
 
             {excelResult?.reports?.length ? (
@@ -2775,7 +2728,7 @@ const UploadReportElrajhi = () => {
             ) : (
                 <div className="text-sm text-gray-500 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
-                    No results yet. Upload an Excel file to create reports.
+                    No results yet.
                 </div>
             )}
         </div>
@@ -2791,9 +2744,6 @@ const UploadReportElrajhi = () => {
                         </div>
                         <div>
                             <p className="text-[11px] font-semibold text-blue-950">Tabs Configuration</p>
-                            <p className="text-[10px] text-blue-900/60 leading-tight">
-                                Number of tabs is automatically determined based on available RAM.
-                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2806,16 +2756,7 @@ const UploadReportElrajhi = () => {
                             </span>
                             <span className="text-[10px] text-blue-900/60">(auto)</span>
                         </div>
-                        <div className="text-[10px] text-blue-900/70">
-                            Current setting: {recommendedTabs} tab{recommendedTabs !== 1 ? 's' : ''}
-                        </div>
                     </div>
-                </div>
-                <div className="mt-1 text-[10px] text-blue-900/60">
-                    Each tab will process a portion of the reports during batch checking.
-                </div>
-                <div className="mt-1 text-[10px] text-blue-900/60">
-                    This setting is automatically determined based on your system's available RAM.
                 </div>
             </div>
             {batchMessage && (
@@ -3293,7 +3234,7 @@ const UploadReportElrajhi = () => {
                 ) : (
                     <div className="p-4 text-xs text-gray-600 flex items-center gap-2">
                         <Info className="w-4 h-4" />
-                        No batches yet. Upload reports first, then come back to check their status.
+                        No batches yet.
                     </div>
                 )}
             </div>

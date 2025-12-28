@@ -88,11 +88,12 @@ class ReportCommands {
         });
     }
 
-    async downloadRegistrationCertificates(reports, downloadPath) {
+    async downloadRegistrationCertificates(reports, downloadPath, tabsNum) {
         return this._sendCommand({
             action: 'download-registration-certificates',
             reports,
-            downloadPath
+            downloadPath,
+            tabsNum
         });
     }
 

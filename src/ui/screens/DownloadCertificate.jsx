@@ -44,6 +44,7 @@ const DownloadCertificate = () => {
             const result = await window.electronAPI.downloadRegistrationCertificates({
                 downloadPath: folderResult.folderPath,
                 reports: [{ reportId: trimmedId, assetName: trimmedId }],
+                tabsNum: 1,
             });
 
             if (result?.status !== "SUCCESS") {

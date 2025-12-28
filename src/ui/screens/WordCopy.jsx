@@ -1,7 +1,9 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Copy, FileText, FolderOpen, Hash, Image, Loader2, Play } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const WordCopy = () => {
+    const { t } = useTranslation();
     const [wordPath, setWordPath] = useState('');
     const [targetDir, setTargetDir] = useState('');
     const [copies, setCopies] = useState(1);
@@ -23,7 +25,7 @@ const WordCopy = () => {
         setError('');
         setResult(null);
         if (!window?.electronAPI?.showOpenDialogWord) {
-            setError('أداة اختيار ملف وورد غير متاحة حالياً.');
+            setError(t('wordCopy.errors.wordPickerUnavailable'));
             return;
         }
         try {
@@ -35,10 +37,10 @@ const WordCopy = () => {
                     setBaseName(extractBaseName(picked));
                 }
             } else if (res?.error) {
-                setError(res.error || 'تعذر اختيار ملف وورد.');
+                setError(res.error || t('wordCopy.errors.wordPickFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر اختيار ملف وورد.');
+            setError(err?.message || t('wordCopy.errors.wordPickFailed'));
         }
     };
 
@@ -46,7 +48,7 @@ const WordCopy = () => {
         setError('');
         setResult(null);
         if (!window?.electronAPI?.selectFolder) {
-            setError('أداة اختيار المجلد غير متاحة حالياً.');
+            setError(t('wordCopy.errors.folderPickerUnavailable'));
             return;
         }
         try {
@@ -55,10 +57,10 @@ const WordCopy = () => {
             if (folderPath) {
                 setTargetDir(folderPath);
             } else {
-                setError('لم يتم اختيار مجلد حفظ.');
+                setError(t('wordCopy.errors.noFolderSelected'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر اختيار مجلد الحفظ.');
+            setError(err?.message || t('wordCopy.errors.folderPickFailed'));
         }
     };
 
@@ -66,7 +68,7 @@ const WordCopy = () => {
         setError('');
         setResult(null);
         if (!window?.electronAPI?.showOpenDialogImages) {
-            setError('Image picker is not available right now.');
+            setError(t('wordCopy.errors.imagesPickerUnavailable'));
             return;
         }
         try {
@@ -74,10 +76,10 @@ const WordCopy = () => {
             if (res?.status === 'SUCCESS' && Array.isArray(res?.filePaths)) {
                 setImages(res.filePaths || []);
             } else if (res?.error) {
-                setError(res.error || 'تعذر اختيار الصور.');
+                setError(res.error || t('wordCopy.errors.imagesPickFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر اختيار الصور.');
+            setError(err?.message || t('wordCopy.errors.imagesPickFailed'));
         }
     };
 
@@ -90,15 +92,15 @@ const WordCopy = () => {
         setResult(null);
         const count = Number(copies);
         if (!wordPath || !targetDir) {
-            setError('يرجى اختيار ملف وورد ومجلد الحفظ أولاً.');
+            setError(t('wordCopy.errors.missingSourceOrTarget'));
             return;
         }
         if (!Number.isInteger(count) || count <= 0) {
-            setError('عدد النسخ يجب أن يكون رقماً صحيحاً أكبر من صفر.');
+            setError(t('wordCopy.errors.invalidCopies'));
             return;
         }
         if (!window?.electronAPI?.copyWordFile) {
-            setError('أداة نسخ ملفات الوورد غير متاحة في هذا الإصدار.');
+            setError(t('wordCopy.errors.copyNotAvailable'));
             return;
         }
 
@@ -116,10 +118,10 @@ const WordCopy = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'فشل إنشاء نسخ الوورد.');
+                setError(res?.error || t('wordCopy.errors.copyFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'فشل إنشاء نسخ الوورد.');
+            setError(err?.message || t('wordCopy.errors.copyFailed'));
         } finally {
             setLoading(false);
         }
@@ -132,10 +134,8 @@ const WordCopy = () => {
                     <Copy className="w-5 h-5 text-blue-600" />
                 </div>
                 <div className="space-y-1">
-                    <p className="text-lg font-bold text-gray-900">نسخ ملف وورد</p>
-                    <p className="text-sm text-gray-600">
-                        اختر ملف وورد، ثم حدد مجلد الحفظ وعدد النسخ المطلوبة. سيتم إنشاء ملفات وورد جديدة بنفس العدد داخل المجلد الذي تختاره.
-                    </p>
+                    <p className="text-lg font-bold text-gray-900">{t('wordCopy.title')}</p>
+                    <p className="text-sm text-gray-600">{t('wordCopy.description')}</p>
                 </div>
             </div>
 
@@ -143,9 +143,9 @@ const WordCopy = () => {
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <FileText className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">اختيار ملف وورد</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('wordCopy.source.title')}</h3>
                     </div>
-                    <p className="text-xs text-gray-600">ملف المصدر الذي سيتم نسخه.</p>
+                    <p className="text-xs text-gray-600">{t('wordCopy.source.subtitle')}</p>
                     <button
                         type="button"
                         onClick={handlePickWordFile}
@@ -153,19 +153,19 @@ const WordCopy = () => {
                     >
                         <span className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-blue-600" />
-                            {wordPath ? extractBaseName(wordPath) : 'اختر ملف وورد'}
+                            {wordPath ? extractBaseName(wordPath) : t('wordCopy.source.select')}
                         </span>
-                        <span className="text-xs text-blue-600 font-semibold">تغيير</span>
+                        <span className="text-xs text-blue-600 font-semibold">{t('wordCopy.actions.browse')}</span>
                     </button>
-                    {wordPath && <p className="text-xs text-gray-500 break-all">المسار: {wordPath}</p>}
+                    {wordPath && <p className="text-xs text-gray-500 break-all">{t('wordCopy.source.selected', { path: wordPath })}</p>}
                 </div>
 
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <FolderOpen className="w-5 h-5 text-emerald-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">مجلد الحفظ</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('wordCopy.destination.title')}</h3>
                     </div>
-                    <p className="text-xs text-gray-600">المكان الذي ستُحفظ فيه النسخ.</p>
+                    <p className="text-xs text-gray-600">{t('wordCopy.destination.subtitle')}</p>
                     <button
                         type="button"
                         onClick={handlePickTargetDir}
@@ -173,9 +173,9 @@ const WordCopy = () => {
                     >
                         <span className="flex items-center gap-2">
                             <FolderOpen className="w-4 h-4 text-emerald-600" />
-                            {targetDir ? targetDir : 'اختر مجلد الحفظ'}
+                            {targetDir ? targetDir : t('wordCopy.destination.select')}
                         </span>
-                        <span className="text-xs text-blue-600 font-semibold">تغيير</span>
+                        <span className="text-xs text-blue-600 font-semibold">{t('wordCopy.actions.browse')}</span>
                     </button>
                 </div>
             </div>
@@ -184,7 +184,7 @@ const WordCopy = () => {
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <Hash className="w-5 h-5 text-indigo-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">عدد النسخ</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('wordCopy.copies.title')}</h3>
                     </div>
                     <input
                         type="number"
@@ -192,31 +192,35 @@ const WordCopy = () => {
                         value={copies}
                         onChange={(e) => setCopies(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="أدخل عدد النسخ المطلوبة"
+                        placeholder={t('wordCopy.copies.placeholder')}
+                        dir="auto"
                     />
                 </div>
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <FileText className="w-5 h-5 text-amber-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">اسم الملف</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('wordCopy.baseName.title')}</h3>
                     </div>
                     <input
                         type="text"
                         value={baseName}
                         onChange={(e) => setBaseName(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="الاسم الأساسي للنسخ (اختياري)"
+                        placeholder={t('wordCopy.baseName.placeholder')}
+                        dir="auto"
                     />
-                    <p className="text-xs text-gray-500">سيتم ترقيم النسخ مثل: {`${baseName || 'Document'}-1.docx`}</p>
+                    <p className="text-xs text-gray-500">
+                        {t('wordCopy.baseName.example', { example: `${baseName || 'Document'}-1.docx` })}
+                    </p>
                 </div>
             </div>
 
             <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                 <div className="flex items-center gap-2">
                     <Image className="w-5 h-5 text-purple-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">إضافة صور للنسخ</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">{t('wordCopy.images.title')}</h3>
                 </div>
-                <p className="text-xs text-gray-600">اختر صور ليتم إلحاقها في نهاية كل ملف يتم إنشاؤه.</p>
+                <p className="text-xs text-gray-600">{t('wordCopy.images.subtitle')}</p>
                 <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
@@ -224,7 +228,7 @@ const WordCopy = () => {
                         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-sm text-gray-800"
                     >
                         <Image className="w-4 h-4 text-purple-600" />
-                        {images.length ? 'تحديث قائمة الصور' : 'اختيار صور'}
+                        {images.length ? t('wordCopy.images.selected') : t('wordCopy.images.select')}
                     </button>
                     {images.length > 0 && (
                         <button
@@ -232,24 +236,26 @@ const WordCopy = () => {
                             onClick={handleClearImages}
                             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 text-sm"
                         >
-                            مسح الصور المختارة
+                            {t('wordCopy.images.clear')}
                         </button>
                     )}
                 </div>
                 {images.length > 0 ? (
                     <div className="text-xs text-gray-700 space-y-1">
-                        <p>سيتم إلحاق {images.length} صورة في الصفحة الأخيرة لكل نسخة.</p>
+                        <p>{t('wordCopy.images.count', { count: images.length })}</p>
                         <div className="flex flex-wrap gap-1">
                             {images.slice(0, 4).map((img) => (
                                 <span key={img} className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-md">
                                     {img.split(/[/\\]/).pop()}
                                 </span>
                             ))}
-                            {images.length > 4 && <span className="text-gray-500">+{images.length - 4} أخرى</span>}
+                            {images.length > 4 && (
+                                <span className="text-gray-500">{t('wordCopy.images.more', { count: images.length - 4 })}</span>
+                            )}
                         </div>
                     </div>
                 ) : (
-                    <p className="text-xs text-gray-500">اختياري: أضف صوراً ليتم وضعها في نهاية الملف المنسوخ.</p>
+                    <p className="text-xs text-gray-500">{t('wordCopy.images.optional')}</p>
                 )}
                 <label className="flex items-center gap-2 text-xs text-gray-700">
                     <input
@@ -258,7 +264,7 @@ const WordCopy = () => {
                         onChange={(e) => setPageBreakBeforeImages(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span>إضافة فاصل صفحة قبل الصور للتأكد من ظهورها في الصفحة الأخيرة</span>
+                    <span>{t('wordCopy.images.pageBreak')}</span>
                 </label>
             </div>
 
@@ -270,7 +276,7 @@ const WordCopy = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
                 >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                    إنشاء ملفات الوورد
+                    {t('wordCopy.actions.generate')}
                 </button>
             </div>
 
@@ -285,19 +291,30 @@ const WordCopy = () => {
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 px-4 py-3 space-y-2">
                     <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
-                        <span className="font-semibold">تم إنشاء {result.createdCount} ملف وورد</span>
+                        <span className="font-semibold">
+                            {t('wordCopy.result.created', { count: result.createdCount })}
+                        </span>
                     </div>
                     <div className="text-sm text-emerald-900 space-y-1">
-                        <p>مجلد الحفظ: <span className="font-mono break-all">{result.targetDir}</span></p>
+                        <p>
+                            {t('wordCopy.result.outputDir')}: <span className="font-mono break-all">{result.targetDir}</span>
+                        </p>
                         {typeof result.appendedImages === 'number' && result.appendedImages > 0 && (
                             <p className="text-xs text-emerald-800">
-                                تم إلحاق {result.appendedImages} صورة عبر {result.appendedFiles || result.createdCount} ملف.
+                                {t('wordCopy.result.appendedImages', {
+                                    images: result.appendedImages,
+                                    files: result.appendedFiles || result.createdCount
+                                })}
                             </p>
                         )}
                         {result.files?.length > 0 && (
                             <p className="text-xs text-emerald-800">
-                                أمثلة على الملفات: {result.files.slice(0, 3).map((f) => f.split(/[/\\]/).pop()).join(', ')}
-                                {result.files.length > 3 ? ` ... (+${result.files.length - 3})` : ''}
+                                {(() => {
+                                    const files = result.files.slice(0, 3).map((f) => f.split(/[/\\]/).pop()).join(', ');
+                                    const moreCount = result.files.length > 3 ? result.files.length - 3 : 0;
+                                    const moreLabel = moreCount > 0 ? t('wordCopy.result.more', { count: moreCount }) : '';
+                                    return t('wordCopy.result.sampleFiles', { files, more: moreLabel });
+                                })()}
                             </p>
                         )}
                     </div>
@@ -308,5 +325,3 @@ const WordCopy = () => {
 };
 
 export default WordCopy;
-
-

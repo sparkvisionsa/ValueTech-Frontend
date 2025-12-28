@@ -1,7 +1,24 @@
 import React, { useState } from 'react';
-import { FolderPlus, FileSpreadsheet, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Info, Save, FolderOpen, ListTree, FileText, Calculator, Images, BadgeCheck } from 'lucide-react';
+import {
+    FolderPlus,
+    FileSpreadsheet,
+    RefreshCw,
+    CheckCircle2,
+    AlertTriangle,
+    Loader2,
+    Info,
+    Save,
+    FolderOpen,
+    ListTree,
+    FileText,
+    Calculator,
+    Images,
+    BadgeCheck
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const ValuationSystem = () => {
+    const { t } = useTranslation();
     const [basePath, setBasePath] = useState('');
     const [folderName, setFolderName] = useState('');
     const [dataFileName, setDataFileName] = useState('');
@@ -17,7 +34,7 @@ const ValuationSystem = () => {
 
     const chooseBaseFolder = async () => {
         if (!window?.electronAPI?.selectFolder) {
-            setError('Folder picker is not available in this build.');
+            setError(t('valuationSystem.errors.folderPickerUnavailable'));
             return;
         }
         try {
@@ -27,13 +44,13 @@ const ValuationSystem = () => {
                 setBasePath(path);
             }
         } catch (err) {
-            setError(err?.message || 'Failed to select folder.');
+            setError(err?.message || t('valuationSystem.errors.selectFolderFailed'));
         }
     };
 
     const chooseDataFile = async () => {
         if (!window?.electronAPI?.showOpenDialog) {
-            setError('File picker is not available.');
+            setError(t('valuationSystem.errors.filePickerUnavailable'));
             return;
         }
         try {
@@ -47,7 +64,7 @@ const ValuationSystem = () => {
                 setError('');
             }
         } catch (err) {
-            setError(err?.message || 'تعذر اختيار الملف.');
+            setError(err?.message || t('valuationSystem.errors.selectFileFailed'));
         }
     };
 
@@ -64,11 +81,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName || !dataFilePath) {
-            setError('حدد مسار المجلد، اسم المجلد، وملف Data.xlsx أولاً.');
+            setError(t('valuationSystem.errors.missingInputs'));
             return;
         }
         if (!window?.electronAPI?.createValuationFolders) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingFolders(true);
@@ -78,10 +95,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر إنشاء المجلدات.');
+                setError(res?.error || t('valuationSystem.errors.createFoldersFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر إنشاء المجلدات.');
+            setError(err?.message || t('valuationSystem.errors.createFoldersFailed'));
         } finally {
             setLoadingFolders(false);
         }
@@ -91,11 +108,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName || !dataFilePath) {
-            setError('حدد مسار المجلد، اسم المجلد، وملف Data.xlsx أولاً.');
+            setError(t('valuationSystem.errors.missingInputs'));
             return;
         }
         if (!window?.electronAPI?.updateValuationCalc) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingCalc(true);
@@ -105,10 +122,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر تحديث calc.xlsx.');
+                setError(res?.error || t('valuationSystem.errors.updateCalcFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر تحديث calc.xlsx.');
+            setError(err?.message || t('valuationSystem.errors.updateCalcFailed'));
         } finally {
             setLoadingCalc(false);
         }
@@ -118,11 +135,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName) {
-            setError('حدد مسار المجلد واسم المجلد أولاً.');
+            setError(t('valuationSystem.errors.missingBase'));
             return;
         }
         if (!window?.electronAPI?.createValuationDocx) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingDocx(true);
@@ -132,10 +149,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر إنشاء ملفات DOCX.');
+                setError(res?.error || t('valuationSystem.errors.createDocxFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر إنشاء ملفات DOCX.');
+            setError(err?.message || t('valuationSystem.errors.createDocxFailed'));
         } finally {
             setLoadingDocx(false);
         }
@@ -145,11 +162,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName) {
-            setError('حدد مسار المجلد واسم المجلد أولاً.');
+            setError(t('valuationSystem.errors.missingBase'));
             return;
         }
         if (!window?.electronAPI?.generateValuationValueCalcs) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingValueCalcs(true);
@@ -159,10 +176,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر إنشاء صور الحساب داخل الملفات.');
+                setError(res?.error || t('valuationSystem.errors.valueCalcsFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر إنشاء صور الحساب داخل الملفات.');
+            setError(err?.message || t('valuationSystem.errors.valueCalcsFailed'));
         } finally {
             setLoadingValueCalcs(false);
         }
@@ -172,11 +189,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName) {
-            setError('حدد مسار المجلد واسم المجلد أولاً.');
+            setError(t('valuationSystem.errors.missingBase'));
             return;
         }
         if (!window?.electronAPI?.appendValuationPreviewImages) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingPreviewImages(true);
@@ -186,10 +203,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر إرفاق الصور داخل الملفات.');
+                setError(res?.error || t('valuationSystem.errors.previewImagesFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر إرفاق الصور داخل الملفات.');
+            setError(err?.message || t('valuationSystem.errors.previewImagesFailed'));
         } finally {
             setLoadingPreviewImages(false);
         }
@@ -199,11 +216,11 @@ const ValuationSystem = () => {
         setError('');
         setResult(null);
         if (!basePath || !folderName) {
-            setError('حدد مسار المجلد واسم المجلد أولاً.');
+            setError(t('valuationSystem.errors.missingBase'));
             return;
         }
         if (!window?.electronAPI?.appendValuationRegistrationCertificates) {
-            setError('الميزة غير متوفرة في هذا الإصدار.');
+            setError(t('valuationSystem.errors.serviceUnavailable'));
             return;
         }
         setLoadingRegCerts(true);
@@ -213,10 +230,10 @@ const ValuationSystem = () => {
             if (res?.ok) {
                 setResult(res);
             } else {
-                setError(res?.error || 'تعذر إرفاق شهادات التسجيل داخل الملفات.');
+                setError(res?.error || t('valuationSystem.errors.registrationCertsFailed'));
             }
         } catch (err) {
-            setError(err?.message || 'تعذر إرفاق شهادات التسجيل داخل الملفات.');
+            setError(err?.message || t('valuationSystem.errors.registrationCertsFailed'));
         } finally {
             setLoadingRegCerts(false);
         }
@@ -229,10 +246,8 @@ const ValuationSystem = () => {
                     <ListTree className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div className="space-y-1">
-                    <p className="text-lg font-bold text-gray-900">نظام التقييم</p>
-                    <p className="text-sm text-gray-600">
-                        إنشاء هيكل المجلدات، قراءة ملف Data.xlsx، إنشاء مجلدات المواقع واللوحات، وتثبيت calc.xlsx تلقائياً.
-                    </p>
+                    <p className="text-lg font-bold text-gray-900">{t('valuationSystem.title')}</p>
+                    <p className="text-sm text-gray-600">{t('valuationSystem.description')}</p>
                 </div>
             </div>
 
@@ -240,17 +255,18 @@ const ValuationSystem = () => {
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <FolderPlus className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">تحديد مسار المجلد الأساسي</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('valuationSystem.base.title')}</h3>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-700">مسار المجلد</label>
+                        <label className="text-xs font-semibold text-gray-700">{t('valuationSystem.base.pathLabel')}</label>
                         <div className="flex gap-2">
                             <input
                                 type="text"
                                 value={basePath}
                                 onChange={(e) => setBasePath(e.target.value)}
                                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                                placeholder="مثال: /home/user/Documents"
+                                placeholder={t('valuationSystem.base.pathPlaceholder')}
+                                dir="auto"
                             />
                             <button
                                 type="button"
@@ -258,18 +274,19 @@ const ValuationSystem = () => {
                                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
                             >
                                 <FolderOpen className="w-4 h-4" />
-                                اختر
+                                {t('valuationSystem.actions.browse')}
                             </button>
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-700">اسم المجلد الجديد</label>
+                        <label className="text-xs font-semibold text-gray-700">{t('valuationSystem.base.folderLabel')}</label>
                         <input
                             type="text"
                             value={folderName}
                             onChange={(e) => setFolderName(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            placeholder="اسم مجلد التقييم"
+                            placeholder={t('valuationSystem.base.folderPlaceholder')}
+                            dir="auto"
                         />
                     </div>
                 </div>
@@ -277,11 +294,9 @@ const ValuationSystem = () => {
                 <div className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">رفع ملف Data.xlsx</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{t('valuationSystem.data.title')}</h3>
                     </div>
-                    <p className="text-xs text-gray-600">
-                        سيتم قراءة العمود G لإنشاء مجلدات المواقع، والعمود B لإنشاء مجلدات اللوحات داخل كل موقع.
-                    </p>
+                    <p className="text-xs text-gray-600">{t('valuationSystem.data.subtitle')}</p>
                     <button
                         type="button"
                         onClick={chooseDataFile}
@@ -289,18 +304,20 @@ const ValuationSystem = () => {
                     >
                         <span className="flex items-center gap-2">
                             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                            {dataFileName || 'اختر ملف Data.xlsx'}
+                            {dataFileName || t('valuationSystem.data.select')}
                         </span>
-                        <span className="text-xs text-blue-600 font-semibold">استعراض</span>
+                        <span className="text-xs text-blue-600 font-semibold">{t('valuationSystem.actions.select')}</span>
                     </button>
                     {dataFilePath ? (
-                        <p className="text-xs text-gray-500 break-all">المسار: {dataFilePath}</p>
+                        <p className="text-xs text-gray-500 break-all">
+                            {t('valuationSystem.data.selectedPath', { path: dataFilePath })}
+                        </p>
                     ) : (
-                        <p className="text-xs text-red-600">لم يتم اختيار ملف Data.xlsx</p>
+                        <p className="text-xs text-red-600">{t('valuationSystem.data.missing')}</p>
                     )}
                     <div className="text-xs text-gray-600 flex items-center gap-2">
                         <Info className="w-4 h-4" />
-                        سيتم تثبيت calc.xlsx تلقائياً في المجلد 3.
+                        {t('valuationSystem.data.note')}
                     </div>
                 </div>
             </div>
@@ -313,7 +330,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
                 >
                     {loadingFolders ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    إنشاء المجلدات
+                    {t('valuationSystem.actions.createFolders')}
                 </button>
                 <button
                     type="button"
@@ -322,7 +339,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
                 >
                     {loadingCalc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    تحديث calc.xlsx
+                    {t('valuationSystem.actions.updateCalc')}
                 </button>
                 <button
                     type="button"
@@ -331,7 +348,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
                 >
                     {loadingDocx ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                    إنشاء ملفات DOCX
+                    {t('valuationSystem.actions.createDocx')}
                 </button>
                 <button
                     type="button"
@@ -340,7 +357,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
                 >
                     {loadingValueCalcs ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-                    حساب القيمة (DOCX)
+                    {t('valuationSystem.actions.generateValueCalcs')}
                 </button>
                 <button
                     type="button"
@@ -349,7 +366,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-fuchsia-600 text-white text-sm font-semibold hover:bg-fuchsia-700 disabled:opacity-50"
                 >
                     {loadingPreviewImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <Images className="w-4 h-4" />}
-                    إرفاق صور المعاينة (DOCX)
+                    {t('valuationSystem.actions.appendPreviewImages')}
                 </button>
                 <button
                     type="button"
@@ -358,7 +375,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-semibold hover:bg-teal-800 disabled:opacity-50"
                 >
                     {loadingRegCerts ? <Loader2 className="w-4 h-4 animate-spin" /> : <BadgeCheck className="w-4 h-4" />}
-                    إرفاق شهادات التسجيل (DOCX)
+                    {t('valuationSystem.actions.appendRegistrationCerts')}
                 </button>
                 <button
                     type="button"
@@ -366,7 +383,7 @@ const ValuationSystem = () => {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-100 text-gray-800 text-sm font-semibold hover:bg-slate-200"
                 >
                     <RefreshCw className="w-4 h-4" />
-                    إعادة ضبط
+                    {t('valuationSystem.actions.reset')}
                 </button>
             </div>
 
@@ -382,35 +399,60 @@ const ValuationSystem = () => {
                     <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
                         <span className="font-semibold">
-                            {result.calcPath ? 'تم تحديث calc.xlsx بنجاح' : 'تم إنشاء المجلدات بنجاح'}
+                            {result.calcPath
+                                ? t('valuationSystem.result.calcUpdated')
+                                : t('valuationSystem.result.foldersCreated')}
                         </span>
                     </div>
                     <div className="text-sm text-emerald-900 space-y-1">
-                        <p>المسار الرئيسي: <span className="font-mono break-all">{result.root}</span></p>
+                        <p>
+                            {t('valuationSystem.result.rootPath')}: <span className="font-mono break-all">{result.root}</span>
+                        </p>
                         {result.created && (
                             <>
-                                <p>المجلدات الرئيسية: {result.created?.mainFolders?.length || 0}</p>
-                                <p>مجلدات المواقع: {result.created?.locations || 0}</p>
-                                <p>مجلدات اللوحات: {result.created?.plates || 0}</p>
+                                <p>
+                                    {t('valuationSystem.result.createdFolders', { count: result.created?.mainFolders?.length || 0 })}
+                                </p>
+                                <p>{t('valuationSystem.result.locations', { count: result.created?.locations || 0 })}</p>
+                                <p>{t('valuationSystem.result.plates', { count: result.created?.plates || 0 })}</p>
                             </>
                         )}
                         {result.calcPath && (
-                            <p>تم تثبيت calc.xlsx في: <span className="font-mono break-all">{result.calcPath}</span></p>
+                            <p>
+                                {t('valuationSystem.result.calcPath')}: <span className="font-mono break-all">{result.calcPath}</span>
+                            </p>
                         )}
                         {typeof result.docsCreated === 'number' && (
-                            <p>تم إنشاء ملفات DOCX: {result.docsCreated}</p>
+                            <p>{t('valuationSystem.result.docsCreated', { count: result.docsCreated })}</p>
                         )}
                         {typeof result.processed === 'number' && (
-                            <p>تم إدراج صور الحساب في: {result.processed} ملف (تخطي: {result.skipped || 0})</p>
+                            <p>
+                                {t('valuationSystem.result.valueCalcs', {
+                                    processed: result.processed,
+                                    skipped: result.skipped || 0
+                                })}
+                            </p>
                         )}
                         {typeof result.previewProcessed === 'number' && (
-                            <p>تم إدراج صور المعاينة في: {result.previewProcessed} ملف (تخطي: {result.previewSkipped || 0})</p>
+                            <p>
+                                {t('valuationSystem.result.previewImages', {
+                                    processed: result.previewProcessed,
+                                    skipped: result.previewSkipped || 0
+                                })}
+                            </p>
                         )}
                         {typeof result.certProcessed === 'number' && (
-                            <p>تم إدراج شهادات التسجيل في: {result.certProcessed} ملف (تخطي: {result.certSkipped || 0})</p>
+                            <p>
+                                {t('valuationSystem.result.registrationCerts', {
+                                    processed: result.certProcessed,
+                                    skipped: result.certSkipped || 0
+                                })}
+                            </p>
                         )}
                         {result.imagesDir && (
-                            <p>تم حفظ صور الحسابات في: <span className="font-mono break-all">{result.imagesDir}</span></p>
+                            <p>
+                                {t('valuationSystem.result.imagesDir')}: <span className="font-mono break-all">{result.imagesDir}</span>
+                            </p>
                         )}
                     </div>
                 </div>

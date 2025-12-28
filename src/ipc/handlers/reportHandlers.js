@@ -219,7 +219,8 @@ const reportHandlers = {
         try {
             const reports = Array.isArray(payload?.reports) ? payload.reports : [];
             const downloadPath = payload?.downloadPath;
-            return await pythonAPI.report.downloadRegistrationCertificates(reports, downloadPath);
+            const tabsNum = payload?.tabsNum;
+            return await pythonAPI.report.downloadRegistrationCertificates(reports, downloadPath, tabsNum);
         } catch (err) {
             console.error('[MAIN] Download registration certificates error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };

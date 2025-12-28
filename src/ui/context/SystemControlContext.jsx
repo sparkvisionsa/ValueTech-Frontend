@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSession } from './SessionContext';
 import navigation from '../constants/navigation';
+import { useTranslation } from 'react-i18next';
 
 const { valueSystemGroups } = navigation;
 
@@ -53,6 +54,7 @@ const isDowntimeExpired = (state) => {
 
 export const SystemControlProvider = ({ children }) => {
     const { token, user } = useSession();
+    const { t } = useTranslation();
     const [systemState, setSystemState] = useState(null);
     const [latestUpdate, setLatestUpdate] = useState(null);
     const [userUpdateState, setUserUpdateState] = useState(null);
@@ -84,12 +86,12 @@ export const SystemControlProvider = ({ children }) => {
             setError(null);
         } catch (err) {
             console.error('Failed to fetch system state', err);
-            setError(err.message || 'Failed to load system state');
+            setError(err.message || t('systemControl.errors.loadState'));
             setSystemState(DEFAULT_STATE);
         } finally {
             setLoadingState(false);
         }
-    }, []);
+    }, [t]);
 
     const fetchUpdateNotice = useCallback(async () => {
         if (!window?.electronAPI) return;
@@ -113,17 +115,17 @@ export const SystemControlProvider = ({ children }) => {
 
     const updateSystemState = useCallback(async (payload) => {
         if (!token) {
-            throw new Error('You must be logged in to change system state');
+            throw new Error(t('systemControl.errors.loginToChangeState'));
         }
         const headers = { Authorization: `Bearer ${token}` };
         const data = await window.electronAPI.apiRequest('PUT', '/api/system/state', payload, headers);
         setSystemState(data || DEFAULT_STATE);
         return data;
-    }, [token]);
+    }, [t, token]);
 
     const markDownloaded = async (updateId) => {
         if (!token) {
-            throw new Error('Login required to download updates');
+            throw new Error(t('systemControl.errors.loginToDownloadUpdates'));
         }
         const headers = { Authorization: `Bearer ${token}` };
         const data = await window.electronAPI.apiRequest('POST', `/api/updates/${updateId}/download`, {}, headers);
@@ -133,7 +135,7 @@ export const SystemControlProvider = ({ children }) => {
 
     const applyUpdate = async (updateId) => {
         if (!token) {
-            throw new Error('Login required to apply updates');
+            throw new Error(t('systemControl.errors.loginToApplyUpdates'));
         }
         const headers = { Authorization: `Bearer ${token}` };
         const data = await window.electronAPI.apiRequest('POST', `/api/updates/${updateId}/apply`, {}, headers);
@@ -146,7 +148,7 @@ export const SystemControlProvider = ({ children }) => {
     };
 
     const activateAfterExpiry = useCallback(async () => {
-        if (!systemState) return { success: false, error: 'No system state available' };
+        if (!systemState) return { success: false, error: t('systemControl.errors.noSystemState') };
         const payload = {
             mode: 'active',
             expectedReturn: null,
@@ -174,9 +176,12 @@ export const SystemControlProvider = ({ children }) => {
             return { success: true };
         } catch (err) {
             console.error('Failed to activate after downtime', err);
-            return { success: false, error: err?.response?.data?.message || err.message || 'Failed to activate' };
+            return {
+                success: false,
+                error: err?.response?.data?.message || err.message || t('systemControl.errors.activateFailed')
+            };
         }
-    }, [systemState, token, updateSystemState, fetchSystemState, isAdmin]);
+    }, [systemState, t, token, updateSystemState, fetchSystemState, isAdmin]);
 
     useEffect(() => {
         // Auto-switch to active once downtime expires for all users.

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './Sidebar';
 import { AlertTriangle, Bell, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
@@ -7,6 +7,8 @@ import { useNavStatus } from '../context/NavStatusContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useRam } from '../context/RAMContext'; // Updated import
 import navigation from '../constants/navigation';
+import LanguageToggle from './LanguageToggle';
+import { useTranslation } from 'react-i18next';
 const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards } = navigation;
 
 const findCardForGroup = (groupId) =>
@@ -14,6 +16,7 @@ const findCardForGroup = (groupId) =>
 
 const Layout = ({ children, currentView, onViewChange }) => {
     const { isAuthenticated, user, logout } = useSession();
+    const { t, i18n } = useTranslation();
     const {
         systemState,
         latestUpdate,
@@ -55,10 +58,17 @@ const Layout = ({ children, currentView, onViewChange }) => {
         isAvailable: isRamAvailable
     } = useRam();
 
+    const numberFormatter = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language]);
+    const formatNumber = (value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numberFormatter.format(numeric) : value;
+    };
+
     const isAdmin = user?.phone === '011111';
     const blocked = isAuthenticated && (isFeatureBlocked(currentView) || updateBlocked());
     const blockMessage = blockReason(currentView);
     const mode = systemState?.mode || 'active';
+    const modeLabel = t(`layout.modes.${mode}`, { defaultValue: mode });
     const [downtimeParts, setDowntimeParts] = useState(null);
     const [hideUpdateNotice, setHideUpdateNotice] = useState(false);
 
@@ -145,7 +155,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
 
     const requireAuth = () => {
         if (!isAuthenticated) {
-            alert('Please log in to manage updates.');
+            alert(t('layout.alerts.loginToManageUpdates'));
             return false;
         }
         return true;
@@ -156,9 +166,9 @@ const Layout = ({ children, currentView, onViewChange }) => {
         if (!requireAuth()) return;
         try {
             await markDownloaded(latestUpdate._id);
-            alert('Update download prepared for your account.');
+            alert(t('layout.alerts.updateDownloadPrepared'));
         } catch (err) {
-            const msg = err?.response?.data?.message || err.message || 'Failed to download update';
+            const msg = err?.response?.data?.message || err.message || t('layout.alerts.downloadUpdateFailed');
             alert(msg);
         }
     };
@@ -168,9 +178,9 @@ const Layout = ({ children, currentView, onViewChange }) => {
         if (!requireAuth()) return;
         try {
             await applyUpdate(latestUpdate._id);
-            alert('Update applied to your workspace.');
+            alert(t('layout.alerts.updateApplied'));
         } catch (err) {
-            const msg = err?.response?.data?.message || err.message || 'Failed to apply update';
+            const msg = err?.response?.data?.message || err.message || t('layout.alerts.applyUpdateFailed');
             alert(msg);
         }
     };
@@ -207,7 +217,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm">
                         <Bell className="w-3.5 h-3.5" />
                     </span>
-                    <span className="font-semibold text-[11px] text-slate-100">New update available</span>
+                    <span className="font-semibold text-[11px] text-slate-100">{t('layout.updateNotice.title')}</span>
                     <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-900/70 border border-slate-700 text-slate-200">
                         {latestUpdate.version}
                     </span>
@@ -216,7 +226,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     </span>
                 </div>
                 <div className="text-[10px] text-slate-300">
-                    {latestUpdate.description || latestUpdate.notes || 'Download now to stay up to date.'}
+                    {latestUpdate.description || latestUpdate.notes || t('layout.updateNotice.descriptionFallback')}
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button
@@ -225,7 +235,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         disabled={loadingUpdate}
                     >
                         <Download className="w-3.5 h-3.5" />
-                        {userUpdateState?.status === 'downloaded' ? 'Downloaded' : 'Download'}
+                        {userUpdateState?.status === 'downloaded' ? t('layout.updateNotice.downloaded') : t('layout.updateNotice.download')}
                     </button>
                     {!isMandatoryUpdate && (
                         <button
@@ -233,7 +243,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-3 py-1 text-[10px] font-semibold text-slate-200 border border-slate-700 hover:border-slate-600"
                             disabled={loadingUpdate}
                         >
-                            Later
+                            {t('layout.updateNotice.later')}
                         </button>
                     )}
                     {userUpdateState?.status === 'downloaded' && (
@@ -243,7 +253,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             disabled={loadingUpdate || userUpdateState?.status === 'applied'}
                         >
                             <ShieldCheck className="w-3.5 h-3.5" />
-                            {userUpdateState?.status === 'applied' ? 'Applied' : 'Apply update'}
+                            {userUpdateState?.status === 'applied' ? t('layout.updateNotice.applied') : t('layout.updateNotice.apply')}
                         </button>
                     )}
                 </div>
@@ -259,7 +269,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     ? 'bg-amber-500/15 text-amber-200 border-amber-400/30'
                     : 'bg-rose-500/15 text-rose-200 border-rose-400/30'
                 }`}>
-                {mode}
+                {modeLabel}
             </span>
             {systemState?.notes && (
                 <span className="text-[10px] text-slate-400 truncate">{systemState.notes}</span>
@@ -268,10 +278,10 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 onClick={fetchSystemState}
                 className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-300 hover:text-white"
                 disabled={loadingState}
-                title="Refresh status"
+                title={t('layout.status.refreshTitle')}
             >
                 <RefreshCcw className="w-3.5 h-3.5" />
-                Refresh
+                {t('layout.status.refresh')}
             </button>
         </div>
     );
@@ -285,12 +295,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
             <div className="h-6 w-6 rounded-full bg-slate-800 text-cyan-200 border border-slate-700 flex items-center justify-center text-[10px] font-semibold">
                 {(user?.phone || '').charAt(0) || '?'}
             </div>
-            <div className="text-[10px] text-slate-100 font-medium">{user?.phone || 'User'}</div>
+            <div className="text-[10px] text-slate-100 font-medium">{user?.phone || t('layout.auth.userFallback')}</div>
             <button
                 onClick={logout}
                 className="text-[9px] font-semibold text-rose-300 hover:text-rose-200 underline decoration-dotted"
             >
-                Logout
+                {t('layout.auth.logout')}
             </button>
         </div>
     ) : (
@@ -299,19 +309,30 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 onClick={() => handleAuthNav('registration')}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[10px] font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
             >
-                Register
+                {t('layout.auth.register')}
             </button>
             <button
                 onClick={() => handleAuthNav('login')}
                 className="inline-flex items-center gap-1 rounded-full border border-cyan-500/50 bg-cyan-600 px-3 py-1 text-[10px] font-semibold text-white hover:bg-cyan-500"
             >
-                Login
+                {t('layout.auth.login')}
             </button>
         </div>
     );
 
     const currentTabInfo = findTabInfo(currentView);
-    const headerTitle = currentTabInfo?.tab?.label || viewTitles[currentView] || 'Value Tech';
+    const headerTitle = (() => {
+        if (currentTabInfo?.tab?.id) {
+            return t(`navigation.tabs.${currentTabInfo.tab.id}.label`, {
+                defaultValue: currentTabInfo.tab.label
+            });
+        }
+        const viewTitle = viewTitles[currentView];
+        if (viewTitle) {
+            return t(`navigation.viewTitles.${currentView}`, { defaultValue: viewTitle });
+        }
+        return t('layout.header.defaultTitle');
+    })();
     const groupTabs = activeGroup ? valueSystemGroups[activeGroup]?.tabs || [] : [];
     const showHeaderTabs = currentView !== 'apps' && groupTabs && groupTabs.length > 0;
 
@@ -410,7 +431,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                             }`}
                                     >
                                         <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-slate-300 group-hover:bg-slate-400'}`} />
-                                        {tab.label}
+                                        {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
                                     </button>
                                 );
                             })}
@@ -436,12 +457,13 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     <div className="relative px-5 py-2.5 flex flex-col gap-1.5">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                             <div className="flex flex-col text-compact">
-                                <span className="text-[9px] font-semibold text-slate-400">Workspace</span>
+                                <span className="text-[9px] font-semibold text-slate-400">{t('layout.header.workspace')}</span>
                                 <h1 className="font-display text-[15px] font-semibold text-slate-100 leading-tight text-compact">
                                     {headerTitle}
                                 </h1>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end">
+                                <LanguageToggle />
                                 {userBadge}
                                 {statusBanner}
                                 <button
@@ -449,20 +471,20 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                     onClick={readRam}
                                     disabled={readingRam || !isRamAvailable}
                                     className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-semibold text-slate-100 shadow-[0_10px_20px_rgba(2,6,23,0.5)] hover:bg-slate-800 disabled:opacity-60"
-                                    title={!isRamAvailable ? "RAM reader not available" : "Refresh RAM info"}
+                                    title={!isRamAvailable ? t('layout.ram.unavailable') : t('layout.ram.refreshTitle')}
                                 >
                                     {readingRam ? (
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
                                         <HardDrive className="w-3.5 h-3.5" />
                                     )}
-                                    {readingRam ? 'Reading...' : 'Read RAM'}
+                                    {readingRam ? t('layout.ram.reading') : t('layout.ram.read')}
                                 </button>
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            {renderStatusPill('Taqeem', taqeemStatus)}
-                            {renderStatusPill('Company', companyStatus)}
+                            {renderStatusPill(t('layout.status.taqeem'), taqeemStatus)}
+                            {renderStatusPill(t('layout.status.company'), companyStatus)}
                             {(ramInfo || ramError) && (
                                 <div
                                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${ramError
@@ -475,9 +497,16 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                         <span>{ramError}</span>
                                     ) : (
                                         <span>
-                                            Used {ramInfo.usedGb} GB of {ramInfo.totalGb} GB
-                                            {typeof ramInfo.freeGb === 'number' ? ` (Free ${ramInfo.freeGb} GB)` : ''}
-                                            {ramInfo.usagePercentage && ` (${ramInfo.usagePercentage}%)`}
+                                            {t('layout.ram.usedOf', {
+                                                used: formatNumber(ramInfo.usedGb),
+                                                total: formatNumber(ramInfo.totalGb)
+                                            })}
+                                            {typeof ramInfo.freeGb === 'number'
+                                                ? ` (${t('layout.ram.free', { free: formatNumber(ramInfo.freeGb) })})`
+                                                : ''}
+                                            {ramInfo.usagePercentage
+                                                ? ` (${t('layout.ram.usage', { usage: formatNumber(ramInfo.usagePercentage) })})`
+                                                : ''}
                                         </span>
                                     )}
                                 </div>
@@ -486,27 +515,27 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         {isAuthenticated && !isAdmin && mode === 'inactive' && (
                             <div className="flex items-center gap-2 text-[10px] text-rose-200 bg-rose-500/15 border border-rose-400/30 px-3 py-1.5 rounded-xl">
                                 <AlertTriangle className="w-4 h-4" />
-                                <span>The system is currently inactive. Access to features is disabled.</span>
+                                <span>{t('layout.messages.inactive')}</span>
                             </div>
                         )}
                         {isAuthenticated && !isAdmin && mode === 'partial' && (
                             <div className="flex items-center gap-2 text-[10px] text-amber-200 bg-amber-500/15 border border-amber-400/30 px-3 py-1.5 rounded-xl">
                                 <AlertTriangle className="w-4 h-4" />
-                                <span>{systemState?.partialMessage || 'Only selected modules are available right now.'}</span>
+                                <span>{systemState?.partialMessage || t('layout.messages.partialFallback')}</span>
                             </div>
                         )}
                         {isAuthenticated && !isAdmin && mode === 'inactive' && downtimeParts && (
                             <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-200 bg-slate-900/70 border border-slate-700/60 px-3 py-1.5 rounded-2xl shadow-sm">
                                 <div className="flex items-center gap-2">
                                     <AlertTriangle className="w-4 h-4 text-cyan-300" />
-                                    <span className="font-semibold text-slate-100">Downtime ends in</span>
+                                    <span className="font-semibold text-slate-100">{t('layout.messages.downtimeEnds')}</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {[
-                                        { label: 'Days', value: downtimeParts.days },
-                                        { label: 'Hours', value: downtimeParts.hours },
-                                        { label: 'Minutes', value: downtimeParts.minutes },
-                                        { label: 'Seconds', value: downtimeParts.seconds }
+                                        { label: t('layout.time.days'), value: downtimeParts.days },
+                                        { label: t('layout.time.hours'), value: downtimeParts.hours },
+                                        { label: t('layout.time.minutes'), value: downtimeParts.minutes },
+                                        { label: t('layout.time.seconds'), value: downtimeParts.seconds }
                                     ].map((item) => (
                                         <div
                                             key={item.label}
@@ -522,7 +551,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         {isAuthenticated && !isAdmin && updateBlocked() && (
                             <div className="flex items-center gap-2 text-[10px] text-orange-200 bg-orange-500/15 border border-orange-400/30 px-3 py-1.5 rounded-xl">
                                 <AlertTriangle className="w-4 h-4" />
-                                <span>{blockMessage || 'A mandatory update must be applied before continuing.'}</span>
+                                <span>{blockMessage || t('layout.messages.updateBlocked')}</span>
                             </div>
                         )}
                         {updateNotice}
@@ -543,10 +572,10 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                 <AlertTriangle className="w-7 h-7 text-rose-500" />
                             </div>
                             <p className="text-[14px] font-semibold text-slate-900 mb-1">
-                                {blockMessage || 'This feature is unavailable right now.'}
+                                {blockMessage || t('layout.messages.featureUnavailable')}
                             </p>
                             <p className="text-[11px] text-slate-600 mb-4">
-                                Please refresh status or apply the latest update to continue.
+                                {t('layout.messages.refreshOrUpdate')}
                             </p>
                         </div>
                     )}
