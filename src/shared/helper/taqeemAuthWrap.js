@@ -1,55 +1,40 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+async function ensureTaqeemAuthorized(token, onViewChange) {
+    try {
+        if (!token) {
+            onViewChange?.("taqeem-login");
+            return false;
+        }
 
-export default function TaqeemAuthWrap({ children }) {
-    const [loading, setLoading] = useState(true);
-    const [authorized, setAuthorized] = useState(false);
-    const navigate = useNavigate();
-
-    useEffect(() => {
-        const authorize = async () => {
-            try {
-                // Prefer Electron as the source of truth
-                const token = await window.electronAPI.getToken();
-
-                if (!token) {
-                    navigate("/login");
-                    return;
-                }
-
-                const res = await window.electronAPI.apiRequest(
-                    "POST",
-                    "/api/taqeem/authorize",
-                    {},
-                    {
-                        Authorization: `Bearer ${token}`
-                    }
-                );
-
-                if (res?.status === "AUTHORIZED") {
-                    setAuthorized(true);
-                } else {
-                    navigate("/login");
-                }
-            } catch (err) {
-                navigate("/login");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        authorize();
-    }, [navigate]);
-
-    if (loading) {
-        return (
-            <div className="w-full h-full flex items-center justify-center">
-                Checking authorization…
-            </div>
+        const res = await window.electronAPI.apiRequest(
+            "POST",
+            "/api/users/authorize",
+            {},
+            { Authorization: `Bearer ${token}` }
         );
+
+        if (res?.status === "AUTHORIZED") return true;
+
+        if (res?.status === "LOGIN_REQUIRED" || res?.data?.status === "LOGIN_REQUIRED") {
+            onViewChange?.("login");
+            return false;
+        }
+
+        onViewChange?.("taqeem-login");
+        return false;
+
+    } catch (err) {
+        console.log("PROPS: ", Object.getOwnPropertyNames(err));
+
+        // temporary heuristic
+        if (err.message.includes("403")) {
+            onViewChange?.("login");
+            return false;
+        }
+
+        onViewChange?.("taqeem-login");
+        return false;
     }
-
-    if (!authorized) return null;
-
-    return children;
 }
+
+
+module.exports = { ensureTaqeemAuthorized };

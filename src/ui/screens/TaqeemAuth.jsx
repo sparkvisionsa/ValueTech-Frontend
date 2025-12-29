@@ -17,7 +17,7 @@ const TaqeemAuth = ({ onViewChange }) => {
     const [secondaryLoading, setSecondaryLoading] = useState(false);
     const [secondaryBatchId, setSecondaryBatchId] = useState('');
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
-    const { isAuthenticated } = useSession();
+    const { login } = useSession();
 
     useEffect(() => {
         if (taqeemStatus?.state !== 'success') {
@@ -25,11 +25,11 @@ const TaqeemAuth = ({ onViewChange }) => {
         }
     }, [setTaqeemStatus, taqeemStatus?.state]);
 
-    useEffect(() => {
-        if (!isAuthenticated && onViewChange) {
-            onViewChange('registration');
-        }
-    }, [isAuthenticated, onViewChange]);
+    // useEffect(() => {
+    //     if (!isAuthenticated && onViewChange) {
+    //         onViewChange('registration');
+    //     }
+    // }, [isAuthenticated, onViewChange]);
 
     const goToCompanies = () => {
         if (onViewChange) {
@@ -55,72 +55,240 @@ const TaqeemAuth = ({ onViewChange }) => {
         setMessage({ text: '', type: '' });
 
         try {
-            if (!showOtp) {
-                // First stage: Email + Password + Method
-                console.log('Submitting credentials:', {
-                    email: formData.email,
-                    password: formData.password,
-                    method: formData.method
+            // First, call backend bootstrap endpoint
+            setMessage({ text: 'Authenticating with backend...', type: 'info' });
+
+            const bootstrapResponse = await window.electronAPI.apiRequest(
+                'POST',
+                '/api/users/bootstrap',
+                {
+                    username: formData.email, // Using email as username for bootstrap
+                    password: formData.password
+                }
+            );
+
+            console.log('Bootstrap response:', bootstrapResponse);
+
+
+
+            // Check bootstrap response
+            if (bootstrapResponse.status === 'BOOTSTRAP_GRANTED') {
+                // Bootstrap successful, proceed with Taqeem login
+                setMessage({
+                    text: 'Backend authentication successful. Proceeding to Taqeem login...',
+                    type: 'info'
                 });
 
-                if (window.electronAPI && window.electronAPI.login) {
-                    const result = await window.electronAPI.login({
+                login(bootstrapResponse.userId, bootstrapResponse.token);
+
+                // Now call the existing Taqeem login function with the same credentials
+                if (!showOtp) {
+                    console.log('Submitting Taqeem credentials:', {
                         email: formData.email,
                         password: formData.password,
                         method: formData.method
                     });
 
-                    console.log('Login result:', result);
+                    if (window.electronAPI && window.electronAPI.login) {
+                        const result = await window.electronAPI.login({
+                            email: formData.email,
+                            password: formData.password,
+                            method: formData.method
+                        });
 
-                    if (result.status === 'OTP_REQUIRED') {
-                        setShowOtp(true);
-                        setMessage({
-                            text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
-                            type: 'info'
-                        });
-                        setTaqeemStatus('info', 'Awaiting OTP to finish Taqeem sign-in');
-                    } else if (result.status === 'SUCCESS') {
-                        setMessage({
-                            text: result.message || '✅ Login successful! Starting automation...',
-                            type: 'success'
-                        });
-                        setTaqeemStatus('success', 'Taqeem login completed');
-                        goToCompanies();
+                        console.log('Login result:', result);
+
+                        if (result.status === 'OTP_REQUIRED') {
+                            setShowOtp(true);
+                            setMessage({
+                                text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
+                                type: 'info'
+                            });
+                            setTaqeemStatus('info', 'Awaiting OTP to finish Taqeem sign-in');
+                        } else if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Authentication complete! Starting automation...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'Login failed');
+                        }
                     } else {
-                        throw new Error(result.error || 'Login failed');
+                        throw new Error('Electron API not available');
                     }
                 } else {
-                    throw new Error('Electron API not available');
+                    // OTP submission phase
+                    console.log('Submitting OTP:', formData.otp);
+
+                    if (window.electronAPI && window.electronAPI.submitOtp) {
+                        const result = await window.electronAPI.submitOtp(formData.otp);
+
+                        console.log('OTP result:', result);
+
+                        if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Authentication complete! Automation running...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'OTP verification failed');
+                        }
+                    } else {
+                        throw new Error('Electron API not available');
+                    }
                 }
-            } else {
-                // Second stage: OTP
-                console.log('Submitting OTP:', formData.otp);
+            } else if (bootstrapResponse.status === 'LOGIN_REQUIRED') {
+                // User has already used bootstrap, can still proceed with login
+                setMessage({
+                    text: 'Proceeding with Taqeem login...',
+                    type: 'info'
+                });
 
-                if (window.electronAPI && window.electronAPI.submitOtp) {
-                    const result = await window.electronAPI.submitOtp(formData.otp);
-
-                    console.log('OTP result:', result);
-
-                    if (result.status === 'SUCCESS') {
-                        setMessage({
-                            text: result.message || '✅ Authentication complete! Automation running...',
-                            type: 'success'
+                // Continue with Taqeem login even if bootstrap already used
+                if (!showOtp) {
+                    if (window.electronAPI && window.electronAPI.login) {
+                        const result = await window.electronAPI.login({
+                            email: formData.email,
+                            password: formData.password,
+                            method: formData.method
                         });
-                        setTaqeemStatus('success', 'Taqeem login completed');
-                        goToCompanies();
+
+                        if (result.status === 'OTP_REQUIRED') {
+                            setShowOtp(true);
+                            setMessage({
+                                text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
+                                type: 'info'
+                            });
+                            setTaqeemStatus('info', 'Awaiting OTP to finish Taqeem sign-in');
+                        } else if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Login successful! Starting automation...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'Login failed');
+                        }
                     } else {
-                        throw new Error(result.error || 'OTP verification failed');
+                        throw new Error('Electron API not available');
                     }
                 } else {
-                    throw new Error('Electron API not available');
+                    // Handle OTP submission
+                    if (window.electronAPI && window.electronAPI.submitOtp) {
+                        const result = await window.electronAPI.submitOtp(formData.otp);
+
+                        if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Authentication complete! Automation running...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'OTP verification failed');
+                        }
+                    } else {
+                        throw new Error('Electron API not available');
+                    }
+                }
+            } else if (bootstrapResponse.status === 'NORMAL_ACCOUNT') {
+                setMessage({
+                    text: 'Normal Account. Proceeding to Taqeem login...',
+                    type: 'info'
+                });
+                if (!showOtp) {
+                    console.log('Submitting Taqeem credentials:', {
+                        email: formData.email,
+                        password: formData.password,
+                        method: formData.method
+                    });
+
+                    if (window.electronAPI && window.electronAPI.login) {
+                        const result = await window.electronAPI.login({
+                            email: formData.email,
+                            password: formData.password,
+                            method: formData.method
+                        });
+
+                        console.log('Login result:', result);
+
+                        if (result.status === 'OTP_REQUIRED') {
+                            setShowOtp(true);
+                            setMessage({
+                                text: result.message || `Two-factor authentication required. Please enter your ${formData.method === 'SMS' ? 'SMS' : 'email'} code.`,
+                                type: 'info'
+                            });
+                            setTaqeemStatus('info', 'Awaiting OTP to finish Taqeem sign-in');
+                        } else if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Authentication complete! Starting automation...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'Login failed');
+                        }
+                    } else {
+                        throw new Error('Electron API not available');
+                    }
+                } else {
+                    // OTP submission phase
+                    console.log('Submitting OTP:', formData.otp);
+
+                    if (window.electronAPI && window.electronAPI.submitOtp) {
+                        const result = await window.electronAPI.submitOtp(formData.otp);
+
+                        console.log('OTP result:', result);
+
+                        if (result.status === 'SUCCESS') {
+                            setMessage({
+                                text: '✅ Authentication complete! Automation running...',
+                                type: 'success'
+                            });
+                            setTaqeemStatus('success', 'Taqeem login completed');
+                            goToCompanies();
+                        } else {
+                            throw new Error(result.error || 'OTP verification failed');
+                        }
+                    } else {
+                        throw new Error('Electron API not available');
+                    }
                 }
             }
+            else {
+                // Bootstrap failed with other error
+                throw new Error(bootstrapResponse.message || 'Backend authentication failed');
+            }
         } catch (error) {
-            setMessage({
-                text: '❌ Error: ' + error.message,
-                type: 'error'
-            });
-            setTaqeemStatus('error', error.message || 'Taqeem login failed');
+            console.error('Authentication error:', error);
+
+            // Handle specific error cases
+            if (error.response?.data?.message === 'Invalid credentials') {
+                setMessage({
+                    text: '❌ Invalid username or password',
+                    type: 'error'
+                });
+                setTaqeemStatus('error', 'Invalid credentials');
+            } else if (error.response?.data?.status === 'LOGIN_REQUIRED') {
+                // Even if bootstrap already used, we can still proceed
+                setMessage({
+                    text: '⚠️ Proceeding with Taqeem login...',
+                    type: 'info'
+                });
+                // Note: We'll need to handle this differently - maybe retry login
+            } else {
+                setMessage({
+                    text: '❌ Error: ' + (error.message || 'Authentication failed'),
+                    type: 'error'
+                });
+                setTaqeemStatus('error', error.message || 'Authentication failed');
+            }
         } finally {
             setIsLoading(false);
         }

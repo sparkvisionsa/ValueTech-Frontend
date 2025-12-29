@@ -47,7 +47,7 @@ const AppContent = () => {
     const { syncNavForView, setActiveTab } = useValueNav();
 
     const handleViewChange = (nextView) => {
-        const protectedViews = ['taqeem-login', 'get-companies'];
+        const protectedViews = ['get-companies'];
         if (!isAuthenticated && protectedViews.includes(nextView)) {
             setPendingProtectedView(nextView);
             setCurrentView('registration');
@@ -138,7 +138,7 @@ const AppContent = () => {
                 return <Statics />;
 
             case 'upload-report-elrajhi':
-                return <ElRajhiUploadReport />;
+                return <ElRajhiUploadReport onViewChange={handleViewChange} />;
 
             case 'download-certificate':
                 return <DownloadCertificate />;

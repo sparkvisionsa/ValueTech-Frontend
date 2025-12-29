@@ -6,6 +6,8 @@ import httpClient from "../../api/httpClient";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 import EditReportModal from "../components/EditReportModal";
 import { useRam } from "../context/RAMContext";
+import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import { useSession } from "../context/SessionContext";
 
 import {
     FileSpreadsheet,
@@ -392,7 +394,7 @@ const worksheetToObjects = (worksheet) => {
     return rows;
 };
 
-const UploadReportElrajhi = () => {
+const UploadReportElrajhi = ({ onViewChange }) => {
     const {
         excelFile,
         setExcelFile,
@@ -715,8 +717,14 @@ const UploadReportElrajhi = () => {
         throw new Error("uploadExcelOnly is deprecated in this flow.");
     };
 
+    const { token } = useSession();
+
+    console.log("TOKEN:", token);
+
     const handleSubmitElrajhi = async () => {
         try {
+            const ok = await ensureTaqeemAuthorized(token, onViewChange);
+            if (!ok) return;
             setSendingValidation(true);
             setIsPausedValidation(false);
             setValidationMessage({
@@ -2084,8 +2092,8 @@ const UploadReportElrajhi = () => {
                                 <RefreshCw className="w-4 h-4" />
                                 Reset
                             </button>
+                        </div>
                     </div>
-                </div>
                 </div>
 
                 <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
@@ -2412,7 +2420,7 @@ const UploadReportElrajhi = () => {
                             ) : (
                                 <Send className="w-4 h-4" />
                             )}
-                            Send all reports 
+                            Send all reports
                         </button>
                         {sendingValidation && (
                             <ControlButtons
@@ -2434,7 +2442,7 @@ const UploadReportElrajhi = () => {
                             ) : (
                                 <Files className="w-4 h-4" />
                             )}
-                            Send only reports with PDFs 
+                            Send only reports with PDFs
                         </button>
                         {pdfOnlySending && (
                             <ControlButtons
