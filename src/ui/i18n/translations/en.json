@@ -124,14 +124,30 @@
     "navigation": {
         "apps": "Apps",
         "groups": {
-            "evaluationSources": { "title": "Evaluation Sources" },
-            "uploadReports": { "title": "Upload Reports" },
-            "uploadSingleReport": { "title": "Upload Single Report" },
-            "taqeemInfo": { "title": "Taqeem Info" },
-            "companyConsole": { "title": "Company Dashboard" },
-            "settings": { "title": "Settings" },
-            "deleteReport": { "title": "Delete Report" },
-            "adminConsole": { "title": "Super Admin Console" }
+            "evaluationSources": {
+                "title": "Evaluation Sources"
+            },
+            "uploadReports": {
+                "title": "Upload Reports"
+            },
+            "uploadSingleReport": {
+                "title": "Upload Single Report"
+            },
+            "taqeemInfo": {
+                "title": "Taqeem Info"
+            },
+            "companyConsole": {
+                "title": "Company Dashboard"
+            },
+            "settings": {
+                "title": "Settings"
+            },
+            "deleteReport": {
+                "title": "Delete Report"
+            },
+            "adminConsole": {
+                "title": "Super Admin Console"
+            }
         },
         "tabs": {
             "word-copy": {
@@ -299,6 +315,8 @@
         "cardBadge": "Main"
     },
     "registration": {
+        "optional": "Optional",
+        "taqeemUsernameHelp": "Leaving this empty will create a new user",
         "errors": {
             "chooseAccountType": "Please choose an account type.",
             "failed": "Registration failed. Please try again."
@@ -321,12 +339,14 @@
             "companyName": "Company Name",
             "companyHead": "Company Head",
             "phone": "Phone Number",
-            "password": "Password"
+            "password": "Password",
+            "taqeemUsername": "Taqeem Username"
         },
         "placeholders": {
             "companyHead": "Head of the company",
             "phone": "Enter your phone number",
-            "password": "Enter your password"
+            "password": "Enter your password",
+            "taqeemUsername": "Enter your Taqeem username"
         },
         "actions": {
             "registering": "Registering...",

@@ -1,4 +1,4 @@
-async function ensureTaqeemAuthorized(token, onViewChange) {
+async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn) {
     try {
         if (!token) {
             onViewChange?.("taqeem-login");
@@ -11,6 +11,11 @@ async function ensureTaqeemAuthorized(token, onViewChange) {
             {},
             { Authorization: `Bearer ${token}` }
         );
+
+        if (res?.status === "AUTHORIZED" && !isTaqeemLoggedIn) {
+            onViewChange?.("taqeem-login");
+            return false;
+        }
 
         if (res?.status === "AUTHORIZED") return true;
 
@@ -27,7 +32,7 @@ async function ensureTaqeemAuthorized(token, onViewChange) {
 
         // temporary heuristic
         if (err.message.includes("403")) {
-            onViewChange?.("login");
+            onViewChange?.("registration");
             return false;
         }
 

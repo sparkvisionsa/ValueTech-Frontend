@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } from "../../api/report";
@@ -8,6 +8,7 @@ import EditReportModal from "../components/EditReportModal";
 import { useRam } from "../context/RAMContext";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { useSession } from "../context/SessionContext";
+import { useNavStatus } from "../context/NavStatusContext";
 
 import {
     FileSpreadsheet,
@@ -721,9 +722,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
     console.log("TOKEN:", token);
 
+    const { taqeemStatus } = useNavStatus();
+
+    const isTaqeemLoggedIn = taqeemStatus?.state === "success";
+
     const handleSubmitElrajhi = async () => {
         try {
-            const ok = await ensureTaqeemAuthorized(token, onViewChange);
+            const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
             if (!ok) return;
             setSendingValidation(true);
             setIsPausedValidation(false);

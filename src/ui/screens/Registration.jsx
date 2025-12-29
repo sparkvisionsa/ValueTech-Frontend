@@ -6,7 +6,13 @@ import { useTranslation } from 'react-i18next';
 const Registration = ({ onViewChange }) => {
     const [step, setStep] = useState('welcome');
     const [userType, setUserType] = useState('');
-    const [formData, setFormData] = useState({ phone: '', password: '', companyName: 'companyA', companyHead: '' });
+    const [formData, setFormData] = useState({
+        phone: '',
+        password: '',
+        companyName: 'companyA',
+        companyHead: '',
+        taqeemUsername: ''  // New field
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const { login } = useSession();
@@ -45,6 +51,11 @@ const Registration = ({ onViewChange }) => {
             if (userType === 'company') {
                 registrationData.companyName = formData.companyName;
                 registrationData.companyHead = formData.companyHead;
+            }
+
+            // Add Taqeem Username only if provided (optional)
+            if (formData.taqeemUsername && formData.taqeemUsername.trim() !== '') {
+                registrationData.taqeemUsername = formData.taqeemUsername.trim();
             }
 
             // CALL THE IMPORTED API FUNCTION
@@ -165,6 +176,26 @@ const Registration = ({ onViewChange }) => {
                     </>
                 )}
 
+                {/* New Taqeem Username Field - Optional */}
+                <div>
+                    <label htmlFor="taqeemUsername" className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('registration.fields.taqeemUsername')} <span className="text-gray-500 text-xs">({t('registration.optional')})</span>
+                    </label>
+                    <input
+                        type="text"
+                        id="taqeemUsername"
+                        name="taqeemUsername"
+                        value={formData.taqeemUsername}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t('registration.placeholders.taqeemUsername')}
+                        dir="auto"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                        {t('registration.taqeemUsernameHelp')}
+                    </p>
+                </div>
+
                 <div>
                     <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                         {t('registration.fields.phone')}
@@ -226,5 +257,3 @@ const Registration = ({ onViewChange }) => {
 };
 
 export default Registration;
-
-

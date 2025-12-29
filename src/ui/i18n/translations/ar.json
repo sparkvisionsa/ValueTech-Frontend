@@ -124,14 +124,30 @@
     "navigation": {
         "apps": "التطبيقات",
         "groups": {
-            "evaluationSources": { "title": "مصادر التقييم" },
-            "uploadReports": { "title": "رفع التقارير" },
-            "uploadSingleReport": { "title": "رفع تقرير واحد" },
-            "taqeemInfo": { "title": "معلومات تقييم" },
-            "companyConsole": { "title": "لوحة الشركة" },
-            "settings": { "title": "الإعدادات" },
-            "deleteReport": { "title": "حذف تقرير" },
-            "adminConsole": { "title": "لوحة المدير العام" }
+            "evaluationSources": {
+                "title": "مصادر التقييم"
+            },
+            "uploadReports": {
+                "title": "رفع التقارير"
+            },
+            "uploadSingleReport": {
+                "title": "رفع تقرير واحد"
+            },
+            "taqeemInfo": {
+                "title": "معلومات تقييم"
+            },
+            "companyConsole": {
+                "title": "لوحة الشركة"
+            },
+            "settings": {
+                "title": "الإعدادات"
+            },
+            "deleteReport": {
+                "title": "حذف تقرير"
+            },
+            "adminConsole": {
+                "title": "لوحة المدير العام"
+            }
         },
         "tabs": {
             "word-copy": {
@@ -299,6 +315,8 @@
         "cardBadge": "الرئيسية"
     },
     "registration": {
+        "optional": "اختياري",
+        "taqeemUsernameHelp": "تترك هذا الحقل فارغاً لإنشاء مستخدم جديد",
         "errors": {
             "chooseAccountType": "يرجى اختيار نوع الحساب.",
             "failed": "فشل التسجيل. يرجى المحاولة مرة أخرى."
@@ -321,12 +339,14 @@
             "companyName": "اسم الشركة",
             "companyHead": "مدير الشركة",
             "phone": "رقم الهاتف",
-            "password": "كلمة المرور"
+            "password": "كلمة المرور",
+            "taqeemUsername": "اسم مستخدم تقييم"
         },
         "placeholders": {
             "companyHead": "اسم مدير الشركة",
             "phone": "أدخل رقم هاتفك",
-            "password": "أدخل كلمة المرور"
+            "password": "أدخل كلمة المرور",
+            "taqeemUsername": "أدخل اسم مستخدم تقييم"
         },
         "actions": {
             "registering": "جارٍ التسجيل...",
