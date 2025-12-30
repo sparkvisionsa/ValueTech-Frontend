@@ -309,6 +309,13 @@ async def handle_command(cmd):
         
         result = await ElRajhiFiller(browser, batch_id, tabs_num, pdf_only, finalize_submission=finalize_submission)
         result["commandId"] = cmd.get("commandId")
+
+        if result.get("status") == "SUCCESS":
+            await check_elrajhi_batches(
+                browser,
+                batch_id=batch_id,
+                tabs_num=tabs_num,
+            )
         
         print(json.dumps(result), flush=True)
 

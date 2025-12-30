@@ -587,6 +587,7 @@ async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_u
 
         # Clear process state after completion
         clear_process(process_id)
+        
 
         return {
             "status": "SUCCESS",

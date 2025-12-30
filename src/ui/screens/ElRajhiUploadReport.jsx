@@ -820,6 +820,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     type: "success",
                     text: `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
                 });
+
+                await loadBatchList();
             } else {
                 setValidationMessage({
                     type: "error",
