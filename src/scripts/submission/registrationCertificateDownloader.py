@@ -105,6 +105,9 @@ async def get_asset_name_from_report_table(page, timeout: int = 8) -> str:
     last_value = ""
     header_labels = [
         AR_ASSET_TABLE_HEADER,
+        AR_ASSET_NAME_LABEL,
+        AR_ASSET_TITLE_LABEL,
+        AR_ASSET_NAME_LABEL_ALT,
         EN_ASSET_NAME_LABEL,
         "Asset Name/Description",
         "Asset Name / Description",
@@ -194,6 +197,118 @@ async def get_asset_name_from_report_table(page, timeout: int = 8) -> str:
                         const value = findInTable(table);
                         if (value) return value;
                     }}
+                    return '';
+                }}
+                """
+            )
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, str):
+                last_value = value.strip()
+        except Exception:
+            pass
+        await page.sleep(0.4)
+    return last_value
+
+
+async def get_asset_name_from_report_details(page, timeout: int = 8) -> str:
+    end = time.time() + max(1, timeout)
+    last_value = ""
+    labels = [
+        AR_ASSET_NAME_LABEL,
+        AR_ASSET_TITLE_LABEL,
+        AR_ASSET_NAME_LABEL_ALT,
+        EN_ASSET_NAME_LABEL,
+        "Asset Name/Description",
+        "Asset Name / Description",
+        "Asset Description",
+    ]
+    labels_json = json.dumps(labels)
+    while time.time() < end:
+        try:
+            value = await page.evaluate(
+                f"""
+                () => {{
+                    const normalize = (value) => (value || '')
+                        .replace(/[\\u00a0]/g, ' ')
+                        .replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g, '')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+
+                    const labels = {labels_json}.map((t) => normalize(t));
+                    const sortedLabels = labels.slice().sort((a, b) => b.length - a.length);
+                    const isLabel = (text) => sortedLabels.some((label) => text === label || text.includes(label));
+
+                    const tables = Array.from(document.querySelectorAll('table'));
+                    for (const table of tables) {{
+                        const rows = Array.from(table.querySelectorAll('tr'));
+                        for (const row of rows) {{
+                            const cells = Array.from(row.querySelectorAll('th, td'));
+                            if (cells.length < 2) continue;
+                            const label = normalize(cells[0]?.textContent || '');
+                            if (!label || !isLabel(label)) continue;
+                            const value = normalize(cells[1]?.textContent || '');
+                            if (value && !isLabel(value)) return value;
+                        }}
+                    }}
+
+                    const labelNodes = Array.from(
+                        document.querySelectorAll('label, span, dt, th, td, div, p, li')
+                    );
+                    for (const node of labelNodes) {{
+                        const labelText = normalize(node.textContent || '');
+                        if (!labelText || !isLabel(labelText)) continue;
+
+                        let sibling = node.nextElementSibling;
+                        while (sibling) {{
+                            const value = normalize(sibling.textContent || '');
+                            if (value && !isLabel(value)) return value;
+                            sibling = sibling.nextElementSibling;
+                        }}
+
+                        const parent = node.parentElement;
+                        if (parent) {{
+                            const siblings = Array.from(parent.children).filter((el) => el !== node);
+                            for (const sib of siblings) {{
+                                const value = normalize(sib.textContent || '');
+                                if (value && !isLabel(value)) return value;
+                            }}
+                        }}
+                    }}
+
+                    const inputSelectors = [
+                        'input[name="asset_name"]',
+                        'input[name*="asset_name" i]',
+                        'input[id*="asset_name" i]',
+                        'input[name*="asset name" i]',
+                        'input[placeholder*="Asset Name" i]',
+                        'textarea[name="asset_name"]',
+                        'textarea[name*="asset_name" i]',
+                        'textarea[id*="asset_name" i]',
+                        'textarea[placeholder*="Asset Name" i]'
+                    ];
+                    for (const selector of inputSelectors) {{
+                        const field = document.querySelector(selector);
+                        if (!field) continue;
+                        const value = normalize(field.value || field.getAttribute('value') || '');
+                        if (value && !isLabel(value)) return value;
+                    }}
+
+                    const rawText = document.body?.innerText || '';
+                    const lines = rawText
+                        .split(/\\n+/)
+                        .map((line) => normalize(line))
+                        .filter(Boolean);
+                    for (let i = 0; i < lines.length; i += 1) {{
+                        const line = lines[i];
+                        const token = sortedLabels.find((label) => line.includes(label));
+                        if (!token) continue;
+                        let cleaned = normalize(line.replace(token, '').replace(':', ''));
+                        if (cleaned && !isLabel(cleaned)) return cleaned;
+                        const nextLine = lines[i + 1];
+                        if (nextLine && !isLabel(nextLine)) return nextLine;
+                    }}
+
                     return '';
                 }}
                 """
@@ -616,6 +731,8 @@ async def download_single_certificate(page, browser, report_id, asset_name, down
         await page.sleep(1)
 
         asset_name_page = repair_mojibake((await get_asset_name_from_report_table(page)).strip())
+        if not asset_name_page:
+            asset_name_page = repair_mojibake((await get_asset_name_from_report_details(page)).strip())
 
         target = await find_registration_certificate_target(page)
         if not target:
@@ -640,7 +757,7 @@ async def download_single_certificate(page, browser, report_id, asset_name, down
         cookies = await browser.cookies.get_all()
         cookie_header = build_cookie_header(cookies)
 
-        fallback_name = asset_name_page or asset_name or "certificate"
+        fallback_name = asset_name_page or asset_name or ""
         target_path = download_pdf_with_cookies(
             registration_url,
             download_path,
