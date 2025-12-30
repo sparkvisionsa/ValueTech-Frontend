@@ -123,29 +123,76 @@ async def get_asset_name_from_report_table(page, timeout: int = 8) -> str:
                         .trim();
 
                     const targets = {header_json}.map((t) => normalize(t));
-                    const table = document.querySelector('#m-table');
-                    if (!table) return '';
+                    const isTarget = (text) =>
+                        targets.some((t) => text === t || text.includes(t));
+                    const tables = [];
+                    const push = (node) => {{
+                        if (node && !tables.includes(node)) tables.push(node);
+                    }};
 
-                    const headers = Array.from(table.querySelectorAll('thead th'));
-                    if (!headers.length) return '';
+                    [
+                        '#m-table',
+                        'table#m-table',
+                        '.m-table',
+                        'table.m-table',
+                        '#mTable',
+                        '.mTable'
+                    ].forEach((selector) => push(document.querySelector(selector)));
 
-                    let targetIndex = -1;
-                    for (let i = 0; i < headers.length; i += 1) {{
-                        const text = normalize(headers[i]?.textContent || '');
-                        if (!text) continue;
-                        if (targets.some((t) => text === t || text.includes(t))) {{
-                            targetIndex = i;
-                            break;
-                        }}
+                    if (!tables.length) {{
+                        Array.from(document.querySelectorAll('table')).forEach(push);
                     }}
 
-                    if (targetIndex === -1) return '';
-                    const rows = Array.from(table.querySelectorAll('tbody tr'));
-                    for (const row of rows) {{
-                        const cells = Array.from(row.querySelectorAll('td'));
-                        const cell = cells[targetIndex];
-                        const text = normalize(cell?.textContent || '');
-                        if (text) return text;
+                    const findInTable = (table) => {{
+                        if (!table) return '';
+                        const rows = Array.from(table.querySelectorAll('tr'));
+                        if (!rows.length) return '';
+
+                        const headCells = Array.from(table.querySelectorAll('thead th'));
+                        let headerCells = headCells;
+                        let startRow = 0;
+                        if (!headerCells.length && rows[0]) {{
+                            headerCells = Array.from(rows[0].querySelectorAll('th, td'));
+                            startRow = 1;
+                        }}
+
+                        let targetIndex = -1;
+                        for (let i = 0; i < headerCells.length; i += 1) {{
+                            const text = normalize(headerCells[i]?.textContent || '');
+                            if (!text) continue;
+                            if (isTarget(text)) {{
+                                targetIndex = i;
+                                break;
+                            }}
+                        }}
+
+                        if (targetIndex !== -1) {{
+                            const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+                            const dataRows = bodyRows.length ? bodyRows : rows.slice(startRow);
+                            for (const row of dataRows) {{
+                                const cells = Array.from(row.querySelectorAll('td, th'));
+                                const text = normalize(cells[targetIndex]?.textContent || '');
+                                if (text) return text;
+                            }}
+                        }}
+
+                        for (const row of rows) {{
+                            const cells = Array.from(row.querySelectorAll('td, th'));
+                            if (cells.length < 2) continue;
+                            const label = normalize(cells[0]?.textContent || '');
+                            if (!label) continue;
+                            if (isTarget(label)) {{
+                                const value = normalize(cells[1]?.textContent || '');
+                                if (value) return value;
+                            }}
+                        }}
+
+                        return '';
+                    }};
+
+                    for (const table of tables) {{
+                        const value = findInTable(table);
+                        if (value) return value;
                     }}
                     return '';
                 }}
@@ -569,9 +616,6 @@ async def download_single_certificate(page, browser, report_id, asset_name, down
         await page.sleep(1)
 
         asset_name_page = repair_mojibake((await get_asset_name_from_report_table(page)).strip())
-        page_title = ""
-        if not asset_name_page:
-            page_title = repair_mojibake((await get_report_title(page, report_id=report_id)).strip())
 
         target = await find_registration_certificate_target(page)
         if not target:
@@ -596,7 +640,7 @@ async def download_single_certificate(page, browser, report_id, asset_name, down
         cookies = await browser.cookies.get_all()
         cookie_header = build_cookie_header(cookies)
 
-        fallback_name = asset_name_page or asset_name or page_title or f"report_{report_id}"
+        fallback_name = asset_name_page or asset_name or "certificate"
         target_path = download_pdf_with_cookies(
             registration_url,
             download_path,

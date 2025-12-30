@@ -1,4 +1,4 @@
-import React, { use, useEffect, useState } from "react";
+import React, {use, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } from "../../api/report";
@@ -460,6 +460,10 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
     const [sendToConfirmerValidation, setSendToConfirmerValidation] = useState(false);
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
+    const validationExcelInputRef = useRef(null);
+    const validationPdfInputRef = useRef(null);
+    const mainExcelInputRef = useRef(null);
+    const mainPdfInputRef = useRef(null);
     const [batchList, setBatchList] = useState([]);
     const [batchReports, setBatchReports] = useState({});
     const [expandedBatch, setExpandedBatch] = useState(null);
@@ -481,6 +485,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [validationReportIssues, setValidationReportIssues] = useState([]);
     const [validationReportSnapshot, setValidationReportSnapshot] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("report-info");
+    const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
 
     const resetMainValidationState = () => {
         setMainReportIssues([]);
@@ -1306,9 +1311,18 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
+    const clearFileInput = (inputRef) => {
+        if (inputRef?.current) {
+            inputRef.current.value = null;
+        }
+    };
+
     const handleExcelChange = async (e) => {
         resetMessages();
         resetMainValidationState();
+        setBatchId("");
+        setExcelResult(null);
+        setDownloadPath(null);
         const file = e.target.files?.[0];
         setExcelFile(file || null);
         setRememberedFiles((prev) => ({
@@ -1318,6 +1332,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         if (file) {
             await runReportValidationForFile(file, "main");
         }
+        clearFileInput(mainExcelInputRef);
     };
 
     const handlePdfsChange = (e) => {
@@ -1328,6 +1343,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             ...prev,
             mainPdfs: files.map((f) => f.name),
         }));
+        clearFileInput(mainPdfInputRef);
     };
 
     const resetValidationBanner = () => setValidationMessage(null);
@@ -1591,6 +1607,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const handleValidationExcelChange = (e) => {
         resetValidationBanner();
         resetValidationCardState();
+        setValidationReports([]);
+        setMarketAssets([]);
+        setValidationDownloadPath(null);
         const files = Array.from(e.target.files || []);
         const excel = files[0] || null;
         setValidationExcelFile(excel);
@@ -1598,16 +1617,30 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             ...prev,
             validationExcel: excel ? excel.name : null,
         }));
+        clearFileInput(validationExcelInputRef);
+    };
+
+    const openValidationPdfPicker = () => {
+        if (!validationPdfInputRef.current) return;
+        validationPdfInputRef.current.value = null;
+        validationPdfInputRef.current.click();
     };
 
     const handleValidationPdfsChange = (e) => {
         resetValidationBanner();
+        setValidationReports([]);
+        setMarketAssets([]);
+        setValidationDownloadPath(null);
         const files = Array.from(e.target.files || []);
+        if (files.length) {
+            setWantsPdfUpload(true);
+        }
         setValidationPdfFiles(files);
         setRememberedFiles((prev) => ({
             ...prev,
             validationPdfs: files.map((file) => file.name),
         }));
+        clearFileInput(validationPdfInputRef);
     };
 
     const handlePdfToggle = (checked) => {
@@ -1618,6 +1651,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 ...prev,
                 validationPdfs: [],
             }));
+        } else {
+            openValidationPdfPicker();
         }
     };
 
@@ -1638,12 +1673,18 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setIsPausedPdfOnly(false);
         setWantsPdfUpload(false);
         resetValidationCardState();
+        resetValidationBanner();
+        clearFileInput(validationExcelInputRef);
+        clearFileInput(validationPdfInputRef);
     };
 
     const registerValidationSelection = async () => {
         resetValidationBanner();
 
         if (!validationExcelFile) {
+            setValidationReports([]);
+            setMarketAssets([]);
+            setValidationDownloadPath(null);
             setValidationMessage({
                 type: "error",
                 text: "Select an Excel file before validation.",
@@ -1651,6 +1692,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             return;
         }
         if (wantsPdfUpload && !validationPdfFiles.length) {
+            setValidationReports([]);
+            setMarketAssets([]);
+            setValidationDownloadPath(null);
             setValidationMessage({
                 type: "error",
                 text: "Add at least one PDF file or disable PDF upload.",
@@ -1717,6 +1761,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
+    useEffect(() => {
+        if (!validationExcelFile) return;
+        registerValidationSelection();
+    }, [validationExcelFile, validationPdfFiles, wantsPdfUpload]);
+
     const clearAll = () => {
         resetAllFiles();
         resetMainFlow();
@@ -1724,6 +1773,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setIsPausedMain(false);
         resetMessages();
         resetMainValidationState();
+        clearFileInput(mainExcelInputRef);
+        clearFileInput(mainPdfInputRef);
     };
 
     // Control button component for pause/resume/stop
@@ -2025,7 +2076,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             <div className="space-y-1">
                 <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3">
                     <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[200px] flex-1">
+                        <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[170px] flex-[0.85]">
                             <div className="flex items-center gap-2 text-[10px] text-blue-900">
                                 <FolderOpen className="w-4 h-4" />
                                 <span className="font-semibold">
@@ -2037,58 +2088,58 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 </span>
                             </div>
                             <input
+                                ref={validationExcelInputRef}
                                 type="file"
                                 accept=".xlsx,.xls"
                                 className="hidden"
                                 onChange={handleValidationExcelChange}
+                                onClick={(e) => {
+                                    e.currentTarget.value = null;
+                                }}
                             />
                             <span className="text-[10px] font-semibold text-blue-900">Browse</span>
                         </label>
-                        <label className="inline-flex items-center gap-2 rounded-lg border border-blue-900/15 bg-blue-50 px-2 py-2 text-[10px] font-semibold text-blue-900 leading-tight">
-                            <input
-                                type="checkbox"
-                                className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
-                                checked={wantsPdfUpload}
-                                onChange={(e) => handlePdfToggle(e.target.checked)}
-                            />
-                            <span>Upload PDFs</span>
-                        </label>
-                        {wantsPdfUpload && (
-                            <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[200px] flex-1">
-                                <div className="flex items-center gap-2 text-[10px] text-blue-900">
-                                    <Files className="w-4 h-4" />
-                                    <span className="font-semibold">
-                                        {validationPdfFiles.length
-                                            ? `${validationPdfFiles.length} file(s) selected`
-                                            : rememberedFiles.validationPdfs.length
-                                                ? `Last: ${rememberedFiles.validationPdfs.length} PDF(s)`
-                                                : "Choose PDF files"}
-                                    </span>
-                                </div>
+                        <div className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 transition hover:bg-blue-50 min-w-[230px] flex-[1.35]">
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-blue-900">
                                 <input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf"
-                                    className="hidden"
-                                    onChange={handleValidationPdfsChange}
+                                    type="checkbox"
+                                    className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
+                                    checked={wantsPdfUpload}
+                                    onChange={(e) => handlePdfToggle(e.target.checked)}
                                 />
-                                <span className="text-[10px] font-semibold text-blue-900">Browse</span>
-                            </label>
-                        )}
-                        <div className="flex items-center gap-1">
+                                <Files className="w-4 h-4" />
+                                <span className="font-semibold">Upload PDFs</span>
+                                <span dir="rtl" className="text-[9px] text-blue-800/70 leading-snug">
+                                    هل تريد الحاق ملفات pdf ام تريد استخدام ملفات مؤقته
+                                </span>
+                                <span className="text-[10px] text-blue-800/80">
+                                    {validationPdfFiles.length
+                                        ? `${validationPdfFiles.length} file(s) selected`
+                                        : rememberedFiles.validationPdfs.length
+                                            ? `Last: ${rememberedFiles.validationPdfs.length} PDF(s)`
+                                            : "Choose PDF files"}
+                                </span>
+                            </div>
                             <button
                                 type="button"
-                                onClick={registerValidationSelection}
-                                disabled={savingValidation || loadingValuers}
-                                className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2.5 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
+                                onClick={() => handlePdfToggle(true)}
+                                className="text-[10px] font-semibold text-blue-900 hover:text-blue-800"
                             >
-                                {(savingValidation || loadingValuers) ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Upload className="w-4 h-4" />
-                                )}
-                                Validate files
+                                Browse
                             </button>
+                            <input
+                                ref={validationPdfInputRef}
+                                type="file"
+                                multiple
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={handleValidationPdfsChange}
+                                onClick={(e) => {
+                                    e.currentTarget.value = null;
+                                }}
+                            />
+                        </div>
+                        <div className="flex items-center gap-1">
                             <button
                                 type="button"
                                 onClick={resetValidationSection}
@@ -2097,6 +2148,95 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 <RefreshCw className="w-4 h-4" />
                                 Reset
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-3 shadow-sm">
+                    <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
+                    <div className="relative flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
+                                    <Send className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-semibold text-blue-950">Send to Taqeem</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-full border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">
+                                <Table className="w-4 h-4 text-blue-900" />
+                                <span>Tabs auto</span>
+                                <span className="text-blue-900/70">
+                                    {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
+                                </span>
+                                <span className="text-blue-900/60">(RAM)</span>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
+                                    checked={sendToConfirmerValidation}
+                                    onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
+                                />
+                                <span>
+                                    Do you want to send the report to the confirmer? /هل تريد ارسال التقارير الي المعتمد مباشرة ؟
+                                </span>
+                            </label>
+                        </div>
+                        {validationReportIssues.length ? (
+                            <div className="flex items-center gap-2 text-[10px] text-rose-600">
+                                <AlertTriangle className="w-4 h-4" />
+                                Resolve the report info issues above to enable sending.
+                            </div>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2 items-center">
+                            <button
+                                type="button"
+                                onClick={handleSubmitElrajhi}
+                                disabled={sendingValidation || !canSendReports}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                                {sendingValidation ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Send className="w-4 h-4" />
+                                )}
+                                Send all reports 
+                            </button>
+                            {sendingValidation && (
+                                <ControlButtons
+                                    isPaused={isPausedValidation}
+                                    isRunning={sendingValidation}
+                                    onPause={handlePauseValidation}
+                                    onResume={handleResumeValidation}
+                                    onStop={handleStopValidation}
+                                />
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleSubmitPdfOnly}
+                                disabled={pdfOnlySending || !canSendPdfOnly}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-900 text-white text-[11px] font-semibold hover:bg-blue-800 disabled:opacity-50"
+                            >
+                                {pdfOnlySending ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Files className="w-4 h-4" />
+                                )}
+                                Send only reports with PDFs 
+                            </button>
+                            {pdfOnlySending && (
+                                <ControlButtons
+                                    isPaused={isPausedPdfOnly}
+                                    isRunning={pdfOnlySending}
+                                    onPause={handlePausePdfOnly}
+                                    onResume={handleResumePdfOnly}
+                                    onStop={handleStopPdfOnly}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2123,26 +2263,40 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 </button>
                             )}
                         </div>
-                        <div className="mt-2 inline-flex rounded-full bg-white/10 p-0.5 text-[10px] font-semibold">
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
+                            <div className="inline-flex rounded-full bg-white/10 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setValidationTableTab("report-info")}
+                                    className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
+                                        ? "bg-white text-blue-900 shadow-sm"
+                                        : "text-blue-100 hover:text-white"
+                                        }`}
+                                >
+                                    Report Info validation
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setValidationTableTab("pdf-assets")}
+                                    className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
+                                        ? "bg-white text-blue-900 shadow-sm"
+                                        : "text-blue-100 hover:text-white"
+                                        }`}
+                                >
+                                    Validate PDFs & assets data
+                                </button>
+                            </div>
                             <button
                                 type="button"
-                                onClick={() => setValidationTableTab("report-info")}
-                                className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
-                                    ? "bg-white text-blue-900 shadow-sm"
-                                    : "text-blue-100 hover:text-white"
-                                    }`}
+                                onClick={() => setIsValidationTableCollapsed((prev) => !prev)}
+                                className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[10px] font-semibold text-white/90 shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
                             >
-                                Report Info validation
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setValidationTableTab("pdf-assets")}
-                                className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
-                                    ? "bg-white text-blue-900 shadow-sm"
-                                    : "text-blue-100 hover:text-white"
-                                    }`}
-                            >
-                                Validate PDFs & assets data
+                                {isValidationTableCollapsed ? (
+                                    <ChevronDown className="w-3 h-3" />
+                                ) : (
+                                    <ChevronUp className="w-3 h-3" />
+                                )}
+                                {isValidationTableCollapsed ? "Show table" : "Hide table"}
                             </button>
                         </div>
                     </div>
@@ -2181,79 +2335,86 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                     </span>
                                 </div>
                                 {hasReportInfoData ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
-                                            <thead className="text-[10px] uppercase tracking-wide text-white/90">
-                                                <tr>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {reportInfoFields.map((field) => {
-                                                    const fieldIssues = reportInfoIssuesByField[field.label] || [];
-                                                    const hasIssue = fieldIssues.length > 0;
-                                                    const hasFieldValue = hasValue(field.value);
-                                                    const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
-                                                    const statusTone = hasIssue
-                                                        ? "bg-rose-50 text-rose-700 border-rose-200"
-                                                        : hasFieldValue
-                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                                            : "bg-amber-50 text-amber-700 border-amber-200";
-                                                    const notesText = hasIssue
-                                                        ? fieldIssues.map((issue) => issue.message).join(" / ")
-                                                        : hasFieldValue
-                                                            ? "Looks good"
-                                                            : "Missing in Excel";
-                                                    return (
-                                                        <tr key={field.label}>
+                                    isValidationTableCollapsed ? (
+                                        <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                            <ChevronDown className="w-3 h-3" />
+                                            Table hidden.
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
+                                            <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                                <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                                    <tr>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {reportInfoFields.map((field) => {
+                                                        const fieldIssues = reportInfoIssuesByField[field.label] || [];
+                                                        const hasIssue = fieldIssues.length > 0;
+                                                        const hasFieldValue = hasValue(field.value);
+                                                        const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
+                                                        const statusTone = hasIssue
+                                                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                            : hasFieldValue
+                                                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                                : "bg-amber-50 text-amber-700 border-amber-200";
+                                                        const notesText = hasIssue
+                                                            ? fieldIssues.map((issue) => issue.message).join(" / ")
+                                                            : hasFieldValue
+                                                                ? "Looks good"
+                                                                : "Missing in Excel";
+                                                        return (
+                                                            <tr key={field.label}>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                                    {field.label}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                                    {hasFieldValue ? field.value : "N/A"}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
+                                                                        {statusLabel}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                                    {notesText}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                    {extraReportInfoIssues.map((issue, idx) => (
+                                                        <tr key={`issue-extra-${idx}`}>
                                                             <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
-                                                                {field.label}
+                                                                {issue.field || "Issue"}
                                                             </td>
                                                             <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
-                                                                {hasFieldValue ? field.value : "N/A"}
+                                                                {issue.location || "Report Info"}
                                                             </td>
                                                             <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
-                                                                    {statusLabel}
+                                                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                                                                    Issue
                                                                 </span>
                                                             </td>
                                                             <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
-                                                                {notesText}
+                                                                {issue.message}
                                                             </td>
                                                         </tr>
-                                                    );
-                                                })}
-                                                {extraReportInfoIssues.map((issue, idx) => (
-                                                    <tr key={`issue-extra-${idx}`}>
-                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
-                                                            {issue.field || "Issue"}
-                                                        </td>
-                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
-                                                            {issue.location || "Report Info"}
-                                                        </td>
-                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                            <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                                                                Issue
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
-                                                            {issue.message}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )
                                 ) : null}
                             </div>
                         ) : (
                             <div className="space-y-1">
                                 <div className="flex flex-wrap items-center justify-between gap-1">
                                     <div className="text-[10px] font-semibold text-blue-900">PDFs & assets validation</div>
-                                    <div className="flex flex-wrap gap-1 text-[10px] font-semibold">
+                                    <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold">
                                         <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-900">
                                             Assets: {validationReports.length}
                                         </span>
@@ -2284,89 +2445,96 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                     </div>
                                 )}
                                 {validationReports.length ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
-                                            <thead className="text-[10px] uppercase tracking-wide text-white/90">
-                                                <tr>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">#</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Asset name</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">PDF match</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Client name</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Valuers (ID / Name / %)</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left">Total %</th>
-                                                    <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Report ID</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {validationReports.map((report, idx) => {
-                                                    const hasValuerData = report.hasValuerData || (report.valuers || []).length > 0;
-                                                    const totalPct = hasValuerData ? Number(report.totalPercentage ?? 0) : null;
-                                                    const totalValid = !hasValuerData || Math.abs((totalPct || 0) - 100) < 0.001;
-                                                    const totalTone = hasValuerData
-                                                        ? totalValid
-                                                            ? "text-emerald-700"
-                                                            : "text-rose-700"
-                                                        : "text-slate-500";
-                                                    return (
-                                                        <tr key={report.id || `${report.asset_name}-${idx}`}>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg text-blue-900/80">
-                                                                {idx + 1}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 font-semibold text-blue-900">
-                                                                {report.asset_name || `Asset ${idx + 1}`}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                {report.pdf_name ? (
-                                                                    <div className="inline-flex items-center gap-2 text-emerald-700">
-                                                                        <FileIcon className="w-4 h-4" />
-                                                                        <span className="font-semibold text-[10px]">{report.pdf_name}</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-slate-500">No matching PDF</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/80">
-                                                                {report.client_name || "Pending"}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                <div className="flex flex-wrap gap-1 text-[10px]">
-                                                                    {(report.valuers || []).length ? (
-                                                                        (report.valuers || []).map((v, vIdx) => (
-                                                                            <span
-                                                                                key={`${report.id}-valuer-${vIdx}`}
-                                                                                className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-blue-900"
-                                                                            >
-                                                                                <span className="font-semibold">{v.valuerId || "N/A"}</span>
-                                                                                <span>{v.valuerName || "N/A"}</span>
-                                                                                <span>({Number(v.percentage ?? 0)}%)</span>
-                                                                            </span>
-                                                                        ))
+                                    isValidationTableCollapsed ? (
+                                        <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                            <ChevronDown className="w-3 h-3" />
+                                            Table hidden.
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
+                                            <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                                <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                                    <tr>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">#</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Asset name</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">PDF match</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Client name</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Valuers (ID / Name / %)</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Total %</th>
+                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Report ID</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {validationReports.map((report, idx) => {
+                                                        const hasValuerData = report.hasValuerData || (report.valuers || []).length > 0;
+                                                        const totalPct = hasValuerData ? Number(report.totalPercentage ?? 0) : null;
+                                                        const totalValid = !hasValuerData || Math.abs((totalPct || 0) - 100) < 0.001;
+                                                        const totalTone = hasValuerData
+                                                            ? totalValid
+                                                                ? "text-emerald-700"
+                                                                : "text-rose-700"
+                                                            : "text-slate-500";
+                                                        return (
+                                                            <tr key={report.id || `${report.asset_name}-${idx}`}>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg text-blue-900/80">
+                                                                    {idx + 1}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 font-semibold text-blue-900">
+                                                                    {report.asset_name || `Asset ${idx + 1}`}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                    {report.pdf_name ? (
+                                                                        <div className="inline-flex items-center gap-2 text-emerald-700">
+                                                                            <FileIcon className="w-4 h-4" />
+                                                                            <span className="font-semibold text-[10px]">{report.pdf_name}</span>
+                                                                        </div>
                                                                     ) : (
-                                                                        <span className="text-[10px] text-slate-400">N/A</span>
+                                                                        <span className="text-[10px] text-slate-500">No matching PDF</span>
                                                                     )}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                <span className={`font-semibold text-[10px] ${totalTone}`}>
-                                                                    {hasValuerData ? `${totalPct}%` : "N/A"}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg">
-                                                                {report.report_id ? (
-                                                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                                                                        <CheckCircle2 className="w-3 h-3" />
-                                                                        {report.report_id}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/80">
+                                                                    {report.client_name || "Pending"}
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                    <div className="flex flex-wrap gap-1 text-[10px]">
+                                                                        {(report.valuers || []).length ? (
+                                                                            (report.valuers || []).map((v, vIdx) => (
+                                                                                <span
+                                                                                    key={`${report.id}-valuer-${vIdx}`}
+                                                                                    className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-blue-900"
+                                                                                >
+                                                                                    <span className="font-semibold">{v.valuerId || "N/A"}</span>
+                                                                                    <span>{v.valuerName || "N/A"}</span>
+                                                                                    <span>({Number(v.percentage ?? 0)}%)</span>
+                                                                                </span>
+                                                                            ))
+                                                                        ) : (
+                                                                            <span className="text-[10px] text-slate-400">N/A</span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                                    <span className={`font-semibold text-[10px] ${totalTone}`}>
+                                                                        {hasValuerData ? `${totalPct}%` : "N/A"}
                                                                     </span>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-slate-400">Pending</span>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                                </td>
+                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg">
+                                                                    {report.report_id ? (
+                                                                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                                                            <CheckCircle2 className="w-3 h-3" />
+                                                                            {report.report_id}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-slate-400">Pending</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )
                                 ) : null}
                             </div>
                         )}
@@ -2487,10 +2655,14 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             </span>
                         </div>
                         <input
+                            ref={mainExcelInputRef}
                             type="file"
                             accept=".xlsx,.xls"
                             className="hidden"
                             onChange={handleExcelChange}
+                            onClick={(e) => {
+                                e.currentTarget.value = null;
+                            }}
                         />
                         <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
@@ -2525,11 +2697,15 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             </span>
                         </div>
                         <input
+                            ref={mainPdfInputRef}
                             type="file"
                             multiple
                             accept=".pdf"
                             className="hidden"
                             onChange={handlePdfsChange}
+                            onClick={(e) => {
+                                e.currentTarget.value = null;
+                            }}
                         />
                         <span className="text-xs text-blue-600 font-semibold">Browse</span>
                     </label>
