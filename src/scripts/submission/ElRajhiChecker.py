@@ -173,13 +173,17 @@ async def check_elrajhi_batches(browser, batch_id=None, tabs_num=3):
             "error": "No reports found for provided batch" if batch_id else "No reports found",
         }
 
-    tabs = max(1, min(tabs_num or 1, 5))
     new_browser = await spawn_new_browser(browser)
+    tabs = min(len(reports), tabs_num)
     main_page = new_browser.main_tab
     
     pages = [main_page]
     try:
-        pages = [await new_browser.get("about:blank", new_tab=True) for _ in range(tabs)]
+        tabs = min(len(reports), tabs_num)  
+        pages = [main_page] + [
+            await new_browser.get("about:blank", new_tab=True)
+            for _ in range(max(0, tabs - 1))
+        ]
     except Exception:
         pages = []
 

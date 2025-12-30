@@ -1,4 +1,4 @@
-import React, {use, useEffect, useRef, useState } from "react";
+import React, { use, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } from "../../api/report";
@@ -2204,7 +2204,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 ) : (
                                     <Send className="w-4 h-4" />
                                 )}
-                                Send all reports 
+                                Send all reports
                             </button>
                             {sendingValidation && (
                                 <ControlButtons
@@ -2226,7 +2226,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 ) : (
                                     <Files className="w-4 h-4" />
                                 )}
-                                Send only reports with PDFs 
+                                Send only reports with PDFs
                             </button>
                             {pdfOnlySending && (
                                 <ControlButtons
@@ -3059,7 +3059,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                             ) : (
                                                                 <RefreshCw className="w-4 h-4" />
                                                             )}
-                                                            Check batch
+                                                            Check status
                                                         </button>
                                                         <button
                                                             type="button"
@@ -3266,6 +3266,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                 } else if (report.report_status === "SENT") {
                                                                                     status = "SENT";
                                                                                 }
+                                                                                else if (report.report_status === "CONFIRMED") {
+                                                                                    status = "CONFIRMED";
+                                                                                }
 
                                                                                 else {
                                                                                     status = normalizedStatus;
@@ -3299,6 +3302,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
                                                                                                         <Send className="w-3 h-3" />
                                                                                                         Sent
+                                                                                                    </span>
+                                                                                                ) : status === "CONFIRMED" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                        <CheckCircle2 className="w-3 h-3" /> Confirmed
+
                                                                                                     </span>
                                                                                                 )
                                                                                                     : status === "CONFIRMED" ? (
