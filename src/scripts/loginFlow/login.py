@@ -194,8 +194,12 @@ async def startLogin(page, email, password, method, auto_otp=False):
             return msg
 
         await login_btn.click()
-        error_icon = await wait_for_element(page, ".pf-c-alert__icon", timeout=5)
-        if error_icon:
+        error_text_1 = "user_not_found."
+        error_text_2 = "Invalid username or password."
+        await asyncio.sleep(3)
+
+        html_content = await page.get_content()
+        if error_text_1 in html_content or error_text_2 in html_content:
             msg = {"status": "NOT_FOUND", "error": "User not found", "recoverable": True}
             print(json.dumps(msg), flush=True)
             return msg

@@ -32,6 +32,30 @@ const reportHandlers = {
         }
     },
 
+    async handleCompleteFlow(event, reportId, tabsNum) {
+        try {
+            console.log('[MAIN] Received complete flow request:', reportId, tabsNum);
+
+            const result = await pythonAPI.report.completeFlow(reportId, tabsNum);
+            console.log("Result at handler:", result);
+
+            if (result.status === 'SUCCESS') {
+                return { status: 'SUCCESS', message: 'Flow completed' };
+
+            } else if (result.status === 'FAILED') {
+                return { status: 'FAILED', error: result.error || 'Flow failed' };
+
+            }
+            else {
+                return { status: 'ERROR', error: result.error || 'Flow failed' };
+            }
+
+        } catch (error) {
+            console.error('[MAIN] Complete flow error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
+
     async handleCreateMacros(event, reportId, macroCount, tabsNum, batchSize) {
         try {
             console.log('[MAIN] Received create macros request:', reportId, macroCount, tabsNum, batchSize);
@@ -271,9 +295,6 @@ const reportHandlers = {
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },
-
-
-
 
     async handleMacroFill(event, reportId, tabsNum) {
         try {

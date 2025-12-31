@@ -4,26 +4,6 @@ function safeInvoke(channel, ...args) {
     return ipcRenderer.invoke(channel, ...args);
 }
 
-async function newSafeInvoke(channel, ...args) {
-    const result = await ipcRenderer.invoke(channel, ...args);
-
-    // Only unwrap if it is explicitly flagged
-    if (result && result.__ipcWrapped) {
-        const { message, error } = result;
-
-        if (error) {
-            const err = new Error(error.message || "IPC call failed");
-            Object.assign(err, error);
-            throw err;
-        }
-
-        return message;
-    }
-
-    // If handler did not use wrapper, keep legacy behavior
-    return result;
-}
-
 
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
@@ -65,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     validateReport: (reportId) => safeInvoke('validate-report', reportId),
     createMacros: (reportId, macroCount, tabsNum, batchSize) => safeInvoke('create-macros', reportId, macroCount, tabsNum, batchSize),
     extractAssetData: (excelFilePath) => safeInvoke('extract-asset-data', excelFilePath),
+    completeFlow: (reportId, tabsNum) => safeInvoke('complete-flow', reportId, tabsNum),
 
     grabMacroIds: (reportId, tabsNum) => safeInvoke('grab-macro-ids', reportId, tabsNum),
     pauseGrabMacroIds: (reportId) => safeInvoke('pause-grab-macro-ids', reportId),

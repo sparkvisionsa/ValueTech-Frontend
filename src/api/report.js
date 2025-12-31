@@ -5,10 +5,44 @@ const uploadAssetDataToDatabase = async (reportId, reportData) => {
     return await httpClient.post(url, { reportId, reportData });
 };
 
+const createReportWithCommonFields = async (reportId, reportData, commonFields) => {
+    const url = `/report/createReportWithCommonFields`;
+    return await httpClient.post(url, { reportId, reportData, commonFields });
+};
+
 const updateUrgentReport = async (reportId, reportData) => {
     const url = `/report/updateUrgentReport`;
     return await httpClient.put(url, { reportId, reportData });
 };
+
+const getAllReports = async (options = {}) => {
+    const url = `/report/getAllReports`;
+
+    const {
+        page = 1,
+        limit = 10,
+        ...filters
+    } = options;
+
+    console.log("page", page);
+
+    const params = new URLSearchParams({
+        page: page,
+        limit: limit
+    });
+
+    Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== "") {
+            params.append(key, filters[key]);
+        }
+    });
+
+    const fullUrl = `${url}?${params.toString()}`;
+    const response = await httpClient.get(fullUrl);
+
+    return response.data;
+};
+
 
 const reportExistenceCheck = async (reportId) => {
     const url = `/report/reportExistenceCheck/${reportId}`;
@@ -104,11 +138,13 @@ const createManualMultiApproachReport = async (payload) => {
 
 module.exports = {
     uploadAssetDataToDatabase,
+    createReportWithCommonFields,
     reportExistenceCheck,
     addCommonFields,
     checkMissingPages,
     uploadElrajhiBatch,
     multiExcelUpload,
+    getAllReports,
     fetchLatestUserReport,
     createDuplicateReport,
     updateUrgentReport,

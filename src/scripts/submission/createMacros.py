@@ -71,8 +71,7 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
 
         asset_url = f"https://qima.taqeem.sa/report/asset/create/{report_id}"
 
-        new_browser = await spawn_new_browser(browser)
-        main_page = await new_browser.get(asset_url)
+        main_page = await browser.get(asset_url)
         await asyncio.sleep(2)
 
         distribution = calculate_tab_batches(macro_count, max_tabs, batch_size)
@@ -83,7 +82,7 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
 
         pages = [main_page]
         for _ in range(len(distribution) - 1):
-            new_tab = await new_browser.get(asset_url, new_tab=True)
+            new_tab = await browser.get(asset_url, new_tab=True)
             pages.append(new_tab)
             await asyncio.sleep(1)
 
@@ -218,8 +217,9 @@ async def create_macros_multi_tab(browser, report_id, macro_count, macro_data_te
                     clear_process(report_id)
                     return result
 
-        # Close extra tabs
-        await new_browser.stop()
+        ### NEW: Close extra tabs
+        for p in pages[1:]:
+            await p.close()
 
         # Clear process state
         clear_process(report_id)

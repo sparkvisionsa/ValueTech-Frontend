@@ -15,6 +15,7 @@ from scripts.submission.createMacros import (
     stop_create_macros
 )
 
+from scripts.submission.completeFlow import run_complete_report_flow
 from scripts.submission.grabMacroIds import (
     get_all_macro_ids_parallel, 
     pause_grab_macro_ids,
@@ -443,6 +444,17 @@ async def handle_command(cmd):
         max_rounds = int(cmd.get("maxRounds", 10))
 
         result = await delete_report_flow(report_id=report_id, max_rounds=max_rounds)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
+    elif action == "complete-flow":
+        browser = await get_browser()
+        
+        report_id = cmd.get("reportId")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await run_complete_report_flow(browser, report_id, tabs_num=tabs_num)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)

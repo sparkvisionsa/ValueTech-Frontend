@@ -17,6 +17,14 @@ class ReportCommands {
         });
     }
 
+    async completeFlow(reportId, tabsNum) {
+        return this._sendCommand({
+            action: 'complete-flow',
+            reportId,
+            tabsNum
+        });
+    }
+
     async createMacros(reportId, macroCount, tabsNum, batchSize) {
         return this._sendCommand({
             action: 'create-macros',

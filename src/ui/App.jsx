@@ -19,6 +19,7 @@ import AssetCreate from './screens/AssetCreate';
 import UploadExcel from './screens/UploadExcel';
 import AddCommonFields from './screens/AddCommonFields';
 import GrabMacroIds from './screens/GrabMacroIds';
+import UploadAssets from './screens/UploadAssets';
 import SubmitMacro from './screens/MacroEdits';
 import DeleteReport from './screens/DeleteReport';
 import GetCompanies from './screens/GetCompanies';
@@ -112,6 +113,9 @@ const AppContent = () => {
 
             case 'grab-macro-ids':
                 return <GrabMacroIds />;
+
+            case 'upload-assets':
+                return <UploadAssets />;
 
             case 'macro-edit':
                 return <SubmitMacro />;

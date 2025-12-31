@@ -46,6 +46,11 @@ const valueSystemGroups = {
                 id: 'manual-multi-report',
                 label: 'Manual Multi-Report Upload',
                 description: 'Upload multiple reports manually for bulk processing.'
+            },
+            {
+                id: 'upload-assets',
+                label: 'Upload Assets',
+                description: 'Upload asset files and attach them to existing reports.'
             }
         ]
     },
