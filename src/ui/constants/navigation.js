@@ -34,8 +34,8 @@ const valueSystemGroups = {
             },
             {
                 id: 'duplicate-report',
-                label: 'Duplicate report & send new',
-                description: 'Duplicate existing reports, update data, and send a fresh submission.'
+                label: 'Upload Manual Report',
+                description: 'Fill report info, upload Excel assets, and send to Taqeem.'
             },
             {
                 id: 'multi-excel-upload',
@@ -143,7 +143,7 @@ const viewTitles = {
     apps: 'Apps',
     'upload-report-elrajhi': 'Upload Report (El Rajhi)',
     'download-certificate': 'Download certificate with ID',
-    'duplicate-report': 'Duplicate report & send new',
+    'duplicate-report': 'Upload Manual Report',
     'multi-excel-upload': 'Multi-Excel Upload',
     'manual-multi-report': 'Manual Multi-Report Upload',
     'macro-edit': 'Edit Macro',

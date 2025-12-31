@@ -104,6 +104,31 @@ const multiExcelUpload = async (validationExcelFiles, validationPdfFiles) => {
     return response.data;
 };
 
+const fetchMultiApproachReports = async () => {
+    const response = await httpClient.get("/multi-approach");
+    return response.data;
+};
+
+const updateMultiApproachReport = async (reportId, payload) => {
+    const response = await httpClient.patch(`/multi-approach/${reportId}`, payload);
+    return response.data;
+};
+
+const deleteMultiApproachReport = async (reportId) => {
+    const response = await httpClient.delete(`/multi-approach/${reportId}`);
+    return response.data;
+};
+
+const updateMultiApproachAsset = async (reportId, assetIndex, payload) => {
+    const response = await httpClient.patch(`/multi-approach/${reportId}/assets/${assetIndex}`, payload);
+    return response.data;
+};
+
+const deleteMultiApproachAsset = async (reportId, assetIndex) => {
+    const response = await httpClient.delete(`/multi-approach/${reportId}/assets/${assetIndex}`);
+    return response.data;
+};
+
 const fetchLatestUserReport = async () => {
     const url = `/duplicate-report/latest`;
     const response = await httpClient.get(url);
@@ -119,6 +144,31 @@ const createDuplicateReport = async (payload) => {
     });
     return response.data;
 }
+
+const fetchDuplicateReports = async () => {
+    const response = await httpClient.get("/duplicate-report");
+    return response.data;
+};
+
+const updateDuplicateReport = async (reportId, payload) => {
+    const response = await httpClient.patch(`/duplicate-report/${reportId}`, payload);
+    return response.data;
+};
+
+const deleteDuplicateReport = async (reportId) => {
+    const response = await httpClient.delete(`/duplicate-report/${reportId}`);
+    return response.data;
+};
+
+const updateDuplicateReportAsset = async (reportId, assetIndex, payload) => {
+    const response = await httpClient.patch(`/duplicate-report/${reportId}/assets/${assetIndex}`, payload);
+    return response.data;
+};
+
+const deleteDuplicateReportAsset = async (reportId, assetIndex) => {
+    const response = await httpClient.delete(`/duplicate-report/${reportId}/assets/${assetIndex}`);
+    return response.data;
+};
 
 const fetchElrajhiBatches = async () => {
     const response = await httpClient.get("/elrajhi-upload/batches");
@@ -147,8 +197,18 @@ module.exports = {
     getAllReports,
     fetchLatestUserReport,
     createDuplicateReport,
+    fetchDuplicateReports,
+    updateDuplicateReport,
+    deleteDuplicateReport,
+    updateDuplicateReportAsset,
+    deleteDuplicateReportAsset,
     updateUrgentReport,
     fetchElrajhiBatches,
     fetchElrajhiBatchReports,
-    createManualMultiApproachReport
+    createManualMultiApproachReport,
+    fetchMultiApproachReports,
+    updateMultiApproachReport,
+    deleteMultiApproachReport,
+    updateMultiApproachAsset,
+    deleteMultiApproachAsset
 };

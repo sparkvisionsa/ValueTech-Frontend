@@ -43,6 +43,7 @@ export default function GetCompanies({ onViewChange }) {
             revive: (value) => normalizeCompany(value),
         }
     );
+    const [returnView, , resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
     const [navigationComplete, setNavigationComplete, _resetNavigationComplete] = usePersistentState("get-companies:navigationComplete", false, { storage: 'session' });
     const { taqeemStatus, setCompanyStatus } = useNavStatus();
     const { isAuthenticated } = useSession();
@@ -139,6 +140,11 @@ export default function GetCompanies({ onViewChange }) {
                 setNavigationComplete(true);
                 const displayName = repairMojibake(chosen.name) || "company";
                 setCompanyStatus('success', `Navigated to ${displayName} (Office ${officeText})`);
+                if (returnView && onViewChange) {
+                    const nextView = returnView;
+                    resetReturnView();
+                    setTimeout(() => onViewChange(nextView), 400);
+                }
             } else {
                 setError(data.error || 'Failed to navigate to company');
                 setCompanyStatus('error', data.error || 'Failed to navigate to company');

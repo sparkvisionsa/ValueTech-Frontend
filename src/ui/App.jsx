@@ -148,10 +148,10 @@ const AppContent = () => {
                 return <DownloadCertificate />;
 
             case 'duplicate-report':
-                return <DuplicateReport />;
+                return <DuplicateReport onViewChange={handleViewChange} />;
 
             case 'multi-excel-upload':
-                return <MultiExcelUpload />;
+                return <MultiExcelUpload onViewChange={handleViewChange} />;
 
             case 'manual-multi-report':
                 return <ManualMultiReport />;

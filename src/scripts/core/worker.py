@@ -52,7 +52,7 @@ from scripts.submission.ElRajhiFiller import (
 from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
 from scripts.submission.registrationCertificateDownloader import download_registration_certificates
 from scripts.submission.duplicateReport import run_duplicate_report
-from scripts.submission.mutliReportFiller import create_reports_by_batch
+from scripts.submission.mutliReportFiller import create_reports_by_batch, create_new_report
 
 from scripts.submission.checkMacroStatus import (
     RunCheckMacroStatus, 
@@ -373,7 +373,12 @@ async def handle_command(cmd):
     elif action == "duplicate-report":
         record_id = cmd.get("recordId")
         company_url = cmd.get("companyUrl") or cmd.get("url") or cmd.get("company")
-        result = await run_duplicate_report(record_id=record_id, company_url=company_url)
+        tabs_num = cmd.get("tabsNum")
+        try:
+            tabs_num = int(tabs_num) if tabs_num is not None else 3
+        except Exception:
+            tabs_num = 3
+        result = await run_duplicate_report(record_id=record_id, company_url=company_url, tabs_num=tabs_num)
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
@@ -617,6 +622,17 @@ async def handle_command(cmd):
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
+
+    elif action == "create-report-by-id":
+        browser = await get_browser()
+
+        record_id = cmd.get("recordId") or cmd.get("record_id")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await create_new_report(browser, record_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
         
     elif action == "close":
         await closeBrowser()
@@ -656,7 +672,7 @@ async def handle_command(cmd):
                 "create-macros", "grab-macro-ids", "macro-edit",
                 "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
                 "full-check", "half-check", "register", "close", "ping",
-                "duplicate-report", "get-reports-by-batch",
+                "duplicate-report", "get-reports-by-batch", "create-report-by-id",
                 "download-registration-certificates"
             ],
             "commandId": cmd.get("commandId")

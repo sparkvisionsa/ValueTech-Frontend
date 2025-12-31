@@ -167,8 +167,8 @@
                 "description": "تنزيل شهادة تسجيل باستخدام رقم التقرير."
             },
             "duplicate-report": {
-                "label": "تكرار التقرير وإرسال جديد",
-                "description": "نسخ التقارير وتحديث البيانات وإرسال نسخة جديدة."
+                "label": "رفع تقرير يدوي",
+                "description": "أدخل بيانات التقرير وارفع ملف الإكسل ثم أرسل إلى تقييم."
             },
             "multi-excel-upload": {
                 "label": "رفع ملفات إكسل متعددة",
@@ -273,7 +273,7 @@
             "apps": "التطبيقات",
             "upload-report-elrajhi": "رفع تقرير (الراجحي)",
             "download-certificate": "تنزيل شهادة برقم التقرير",
-            "duplicate-report": "تكرار التقرير وإرسال جديد",
+            "duplicate-report": "رفع تقرير يدوي",
             "multi-excel-upload": "رفع ملفات إكسل متعددة",
             "manual-multi-report": "رفع تقارير متعددة يدوياً",
             "macro-edit": "تعديل الماكرو",

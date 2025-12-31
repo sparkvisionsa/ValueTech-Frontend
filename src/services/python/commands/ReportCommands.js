@@ -238,6 +238,14 @@ class ReportCommands {
         });
     }
 
+    async createReportById(recordId, tabsNum) {
+        return this._sendCommand({
+            action: 'create-report-by-id',
+            recordId,
+            tabsNum
+        });
+    }
+
     async fullCheck(reportId, tabsNum) {
         return this._sendCommand({
             action: 'full-check',
@@ -369,11 +377,12 @@ class ReportCommands {
         });
     }
 
-    async duplicateReport(recordId, company) {
+    async duplicateReport(recordId, company, tabsNum) {
         return this._sendCommand({
             action: 'duplicate-report',
             recordId,
-            company
+            company,
+            tabsNum
         });
     }
 }

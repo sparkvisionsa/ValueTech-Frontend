@@ -130,6 +130,15 @@ const reportHandlers = {
         }
     },
 
+    async handleCreateReportById(event, recordId, tabsNum) {
+        try {
+            return await pythonAPI.report.createReportById(recordId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Create report by id error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handleRetryElRajhiReport(event, batchId, tabsNum) {
         try {
             return await pythonAPI.report.retryAlRahjiReport(batchId, tabsNum);
@@ -550,9 +559,17 @@ const reportHandlers = {
         }
     },
 
-    async handleDuplicateReport(event, recordId, company) {
+    async handleDuplicateReport(event, recordId, company, tabsNum) {
         try {
-            return await pythonAPI.report.duplicateReport(recordId, company);
+            let resolvedCompany = company;
+            let resolvedTabs = tabsNum;
+
+            if (typeof company === 'number' && tabsNum === undefined) {
+                resolvedTabs = company;
+                resolvedCompany = undefined;
+            }
+
+            return await pythonAPI.report.duplicateReport(recordId, resolvedCompany, resolvedTabs);
         } catch (err) {
             console.error('[MAIN] Duplicate report navigation error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };

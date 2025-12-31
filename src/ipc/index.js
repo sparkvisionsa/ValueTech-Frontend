@@ -45,6 +45,7 @@ function registerIpcHandlers() {
     ipcMain.handle('elrajhi-reupload-report', reportHandlers.handleReuploadElRajhiReport);
     ipcMain.handle('duplicate-report', reportHandlers.handleDuplicateReport);
     ipcMain.handle('create-reports-by-batch', reportHandlers.handleCreateReportsByBatch);
+    ipcMain.handle('create-report-by-id', reportHandlers.handleCreateReportById);
     ipcMain.handle('retry-ElRajhi-report', reportHandlers.handleRetryElRajhiReport);
     ipcMain.handle('retry-ElRajhi-report-by-report-ids', reportHandlers.handleRetryElRajhiReportByReportIds);
     ipcMain.handle('finalize-multiple-reports', reportHandlers.handleFinalizeMultipleReports);
@@ -154,6 +155,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('elrajhi-reupload-report');
     ipcMain.removeAllListeners('duplicate-report');
     ipcMain.removeAllListeners('create-reports-by-batch');
+    ipcMain.removeAllListeners('create-report-by-id');
     ipcMain.removeAllListeners('retry-ElRajhi-report');
     ipcMain.removeAllListeners('retry-ElRajhi-report-by-report-ids');
     ipcMain.removeAllListeners('finalize-multiple-reports');
