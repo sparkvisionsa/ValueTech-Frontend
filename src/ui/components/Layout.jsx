@@ -1,6 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from './Sidebar';
-import { AlertTriangle, Bell, Download, HardDrive, Loader2, RefreshCcw, ShieldCheck } from 'lucide-react';
+import {
+    AlertTriangle,
+    AppWindow,
+    Bell,
+    Building2,
+    Compass,
+    Download,
+    FileText,
+    HardDrive,
+    Layers,
+    Loader2,
+    RefreshCcw,
+    Settings,
+    ShieldCheck,
+    Trash2,
+    UploadCloud
+} from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useNavStatus } from '../context/NavStatusContext';
@@ -9,10 +25,113 @@ import { useRam } from '../context/RAMContext'; // Updated import
 import navigation from '../constants/navigation';
 import LanguageToggle from './LanguageToggle';
 import { useTranslation } from 'react-i18next';
-const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards } = navigation;
+const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards, isValueSystemView } = navigation;
 
 const findCardForGroup = (groupId) =>
     valueSystemCards.find((card) => Array.isArray(card.groups) && card.groups.includes(groupId));
+
+const heroThemes = {
+    uploadReports: {
+        surface: 'from-white via-cyan-50 to-blue-50',
+        accent: 'from-cyan-500 to-blue-600',
+        border: 'border-cyan-200/70',
+        blob: 'bg-cyan-200/60',
+        text: 'text-cyan-700'
+    },
+    uploadSingleReport: {
+        surface: 'from-white via-emerald-50 to-teal-50',
+        accent: 'from-emerald-500 to-teal-600',
+        border: 'border-emerald-200/70',
+        blob: 'bg-emerald-200/60',
+        text: 'text-emerald-700'
+    },
+    taqeemInfo: {
+        surface: 'from-white via-sky-50 to-indigo-50',
+        accent: 'from-sky-500 to-indigo-600',
+        border: 'border-sky-200/70',
+        blob: 'bg-sky-200/60',
+        text: 'text-sky-700'
+    },
+    deleteReport: {
+        surface: 'from-white via-rose-50 to-orange-50',
+        accent: 'from-rose-500 to-orange-500',
+        border: 'border-rose-200/70',
+        blob: 'bg-rose-200/60',
+        text: 'text-rose-700'
+    },
+    evaluationSources: {
+        surface: 'from-white via-amber-50 to-orange-50',
+        accent: 'from-amber-500 to-orange-500',
+        border: 'border-amber-200/70',
+        blob: 'bg-amber-200/60',
+        text: 'text-amber-700'
+    },
+    companyConsole: {
+        surface: 'from-white via-emerald-50 to-teal-50',
+        accent: 'from-emerald-500 to-teal-600',
+        border: 'border-emerald-200/70',
+        blob: 'bg-emerald-200/60',
+        text: 'text-emerald-700'
+    },
+    settings: {
+        surface: 'from-white via-slate-50 to-slate-100',
+        accent: 'from-slate-600 to-slate-800',
+        border: 'border-slate-200/80',
+        blob: 'bg-slate-200/70',
+        text: 'text-slate-600'
+    },
+    adminConsole: {
+        surface: 'from-white via-amber-50 to-orange-50',
+        accent: 'from-amber-500 to-orange-600',
+        border: 'border-amber-200/70',
+        blob: 'bg-amber-200/60',
+        text: 'text-amber-700'
+    },
+    default: {
+        surface: 'from-white via-slate-50 to-slate-100',
+        accent: 'from-slate-700 to-slate-900',
+        border: 'border-slate-200/80',
+        blob: 'bg-slate-200/70',
+        text: 'text-slate-600'
+    }
+};
+
+const heroIcons = {
+    uploadReports: UploadCloud,
+    uploadSingleReport: FileText,
+    taqeemInfo: Compass,
+    deleteReport: Trash2,
+    evaluationSources: Layers,
+    settings: Settings,
+    companyConsole: Building2,
+    adminConsole: ShieldCheck
+};
+
+const getInitials = (label = '') => {
+    const words = String(label).split(' ').filter(Boolean);
+    const initials = words.slice(0, 3).map((word) => word[0]?.toUpperCase());
+    return initials.join('') || 'VT';
+};
+
+const HeroArt = ({ label, theme, Icon }) => {
+    const initials = getInitials(label);
+    const SafeIcon = Icon || AppWindow;
+    return (
+        <div
+            aria-hidden="true"
+            className={`relative h-24 w-full max-w-[240px] overflow-hidden rounded-2xl border ${theme.border} bg-gradient-to-br ${theme.surface} shadow-sm`}
+        >
+            <div className={`pointer-events-none absolute -left-6 -top-6 h-20 w-20 rounded-full ${theme.blob}`} />
+            <div className={`pointer-events-none absolute bottom-2 right-2 h-12 w-12 rounded-2xl bg-gradient-to-br ${theme.accent} opacity-90`} />
+            <div className="relative flex h-full flex-col justify-between p-3">
+                <span className={`inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br ${theme.accent} text-white shadow-sm`}>
+                    <SafeIcon className="h-4 w-4" />
+                </span>
+                <span className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${theme.text}`}>{initials}</span>
+            </div>
+        </div>
+    );
+};
 
 const Layout = ({ children, currentView, onViewChange }) => {
     const { isAuthenticated, user, logout } = useSession();
@@ -321,11 +440,19 @@ const Layout = ({ children, currentView, onViewChange }) => {
     );
 
     const currentTabInfo = findTabInfo(currentView);
+    const resolvedGroupId = activeGroup || currentTabInfo?.groupId || null;
+    const resolvedGroup = resolvedGroupId ? valueSystemGroups[resolvedGroupId] : null;
+    const resolvedGroupLabel = resolvedGroup
+        ? t(`navigation.groups.${resolvedGroupId}.title`, { defaultValue: resolvedGroup.title })
+        : null;
     const headerTitle = (() => {
         if (currentTabInfo?.tab?.id) {
             return t(`navigation.tabs.${currentTabInfo.tab.id}.label`, {
                 defaultValue: currentTabInfo.tab.label
             });
+        }
+        if (currentView === 'apps' && resolvedGroupLabel) {
+            return resolvedGroupLabel;
         }
         const viewTitle = viewTitles[currentView];
         if (viewTitle) {
@@ -333,8 +460,31 @@ const Layout = ({ children, currentView, onViewChange }) => {
         }
         return t('layout.header.defaultTitle');
     })();
-    const groupTabs = activeGroup ? valueSystemGroups[activeGroup]?.tabs || [] : [];
-    const showHeaderTabs = currentView !== 'apps' && groupTabs && groupTabs.length > 0;
+    const groupTabs = resolvedGroup?.tabs || [];
+    const isValueView = currentView === 'apps' || isValueSystemView(currentView);
+    const showHeaderTabs = isValueView && groupTabs.length > 0;
+    const tabLabel = currentTabInfo?.tab?.id
+        ? t(`navigation.tabs.${currentTabInfo.tab.id}.label`, {
+            defaultValue: currentTabInfo.tab.label
+        })
+        : null;
+    const tabDescription = currentTabInfo?.tab?.id
+        ? t(`navigation.tabs.${currentTabInfo.tab.id}.description`, {
+            defaultValue: currentTabInfo.tab.description
+        })
+        : null;
+    const heroTitle = tabLabel || resolvedGroupLabel || headerTitle;
+    const heroArtLabel = resolvedGroupLabel || heroTitle;
+    const heroKicker = resolvedGroupLabel && tabLabel
+        ? resolvedGroupLabel
+        : resolvedGroupLabel
+            ? t('apps.mainLinks')
+            : null;
+    const heroSubtitle = tabDescription
+        || (currentView === 'apps' && resolvedGroupLabel ? t('apps.stage.selectTab') : '');
+    const heroTheme = heroThemes[resolvedGroupId] || heroThemes.default;
+    const HeroIcon = heroIcons[resolvedGroupId] || AppWindow;
+    const showHero = Boolean(resolvedGroupLabel || tabLabel);
 
     const handleBreadcrumbClick = (item) => {
         switch (item.kind) {
@@ -394,49 +544,80 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const PageChrome = () => {
         if (!breadcrumbs || breadcrumbs.length === 0) return null;
         return (
-            <div className="mb-4 flex flex-col gap-2 page-animate">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex flex-wrap items-center gap-1 text-[11px] text-slate-600 text-compact">
-                        {breadcrumbs.map((item, idx) => {
-                            const isLast = idx === breadcrumbs.length - 1;
-                            return (
-                                <React.Fragment key={item.key + idx}>
-                                    <button
-                                        onClick={() => handleBreadcrumbClick(item)}
-                                        className={`px-1 py-0.5 text-[11px] font-semibold transition ${isLast
-                                            ? 'text-slate-900'
-                                            : 'text-slate-500 hover:text-slate-900'
-                                            }`}
-                                    >
-                                        {item.label}
-                                    </button>
-                                    {idx < breadcrumbs.length - 1 && (
-                                        <span className="text-slate-400 text-[11px]">/</span>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                    </div>
-                    {showHeaderTabs && (
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                            {groupTabs.map((tab) => {
-                                const isActive = currentView === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => onViewChange(tab.id)}
-                                        className={`group inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold text-compact transition ${isActive
-                                            ? 'bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]'
-                                            : 'bg-white/70 text-slate-600 border border-slate-200 hover:border-slate-300 hover:text-slate-900'
-                                            }`}
-                                    >
-                                        <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-slate-300 group-hover:bg-slate-400'}`} />
-                                        {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
-                                    </button>
-                                );
-                            })}
+            <div className="mb-5">
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 px-4 py-4 shadow-sm sm:px-5">
+                    <div className="pointer-events-none absolute -top-16 right-12 h-28 w-28 rounded-full bg-cyan-200/40 blur-3xl" />
+                    <div className="pointer-events-none absolute bottom-0 left-8 h-24 w-24 rounded-full bg-emerald-200/35 blur-3xl" />
+                    <div className="relative flex flex-col gap-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 text-compact">
+                                {breadcrumbs.map((item, idx) => {
+                                    const isLast = idx === breadcrumbs.length - 1;
+                                    return (
+                                        <React.Fragment key={item.key + idx}>
+                                            <button
+                                                onClick={() => handleBreadcrumbClick(item)}
+                                                className={`px-1.5 py-0.5 text-[10px] font-semibold ${isLast
+                                                    ? 'text-slate-900'
+                                                    : 'text-slate-500 hover:text-slate-900'
+                                                    }`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                            {idx < breadcrumbs.length - 1 && (
+                                                <span className="text-slate-300 text-[11px]">/</span>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </div>
+                            {showHeaderTabs && (
+                                <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                                    {groupTabs.map((tab) => {
+                                        const isActive = currentView === tab.id;
+                                        const isBlocked = isFeatureBlocked(tab.id);
+                                        const reason = isBlocked ? blockReason(tab.id) : '';
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => !isBlocked && onViewChange(tab.id)}
+                                                disabled={isBlocked}
+                                                title={isBlocked && reason ? reason : undefined}
+                                                className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold ${isBlocked
+                                                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                    : isActive
+                                                        ? 'border-slate-900 bg-slate-900 text-white shadow-[0_6px_16px_rgba(15,23,42,0.15)]'
+                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                                                    }`}
+                                            >
+                                                {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
-                    )}
+                        {showHero && (
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                    {heroKicker && (
+                                        <p className="text-[9px] uppercase tracking-[0.25em] text-slate-400">
+                                            {heroKicker}
+                                        </p>
+                                    )}
+                                    <h2 className="font-display text-[18px] font-semibold text-slate-900 leading-tight text-compact">
+                                        {heroTitle}
+                                    </h2>
+                                    {heroSubtitle && (
+                                        <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+                                            {heroSubtitle}
+                                        </p>
+                                    )}
+                                </div>
+                                <HeroArt label={heroArtLabel} theme={heroTheme} Icon={HeroIcon} />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         );
