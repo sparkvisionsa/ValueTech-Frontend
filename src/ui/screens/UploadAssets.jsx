@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useRam } from "../context/RAMContext";
+import { useSession } from "../context/SessionContext";
 import {
     Upload,
     AlertTriangle,
@@ -13,7 +14,6 @@ import {
     User,
     Info
 } from "lucide-react";
-import { createReportWithCommonFields } from "../../api/report";
 import ReportsTable from "../components/ReportsTable";
 
 const UploadAssets = () => {
@@ -25,6 +25,8 @@ const UploadAssets = () => {
     const [success, setSuccess] = useState("");
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
+
+    const { token } = useSession();
 
     // Common fields state
     const [inspectionDate, setInspectionDate] = useState("");
@@ -268,20 +270,27 @@ const UploadAssets = () => {
             });
 
             // Call the new backend endpoint
-            const result = await createReportWithCommonFields(
-                reportId.trim(),
-                previewData,
+            const result = await window.electronAPI.apiRequest(
+                "POST",
+                "/api/report/createReportWithCommonFields",
                 {
-                    region: region || undefined,
-                    city: city || undefined,
-                    inspectionDate: inspectionDate || undefined,
-                    ownerName: ownerName || undefined
+                    reportId: reportId.trim(),
+                    reportData: previewData,
+                    commonFields: {
+                        region: region || undefined,
+                        city: city || undefined,
+                        inspectionDate: inspectionDate || undefined,
+                        ownerName: ownerName || undefined
+                    }
+                },
+                {
+                    Authorization: `Bearer ${token}`
                 }
             );
 
             console.log("[UploadAssets] Upload response:", result);
 
-            if (result.data.success) {
+            if (result.success) {
                 const successMessage = `✅ Successfully created report "${reportId}" with ${previewData.length} assets`;
 
                 // Add common fields info if any were applied
@@ -318,7 +327,7 @@ const UploadAssets = () => {
                 }
 
             } else {
-                setError(result.data.message || "Failed to create report");
+                setError(result.message || "Failed to create report");
             }
 
         } catch (err) {
