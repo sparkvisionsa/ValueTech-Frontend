@@ -156,5 +156,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     appendValuationRegistrationCertificates: (payload) => safeInvoke('valuation-append-registration-certificates', payload),
 
     // Word utilities
-    copyWordFile: (payload) => safeInvoke('word-copy-files', payload)
+    copyWordFile: (payload) => safeInvoke('word-copy-files', payload),
+
+    // Image utilities
+    openExternal: (url) => safeInvoke('open-external', url),
+    downloadImage: (url, filename) => safeInvoke('download-image', { url, filename }),
+    showImageWindow: (url) => safeInvoke('show-image-window', url)
 });

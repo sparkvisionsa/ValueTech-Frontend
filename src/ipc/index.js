@@ -1,18 +1,65 @@
 const { ipcMain } = require('electron');
-const { authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers, systemHandlers, valuationHandlers, wordHandlers } = require('./handlers');
+
+let authHandlers, reportHandlers, workerHandlers, healthHandlers, packageHandlers, systemHandlers, valuationHandlers, wordHandlers;
+
+try {
+    const handlers = require('./handlers');
+    authHandlers = handlers.authHandlers;
+    reportHandlers = handlers.reportHandlers;
+    workerHandlers = handlers.workerHandlers;
+    healthHandlers = handlers.healthHandlers;
+    packageHandlers = handlers.packageHandlers;
+    systemHandlers = handlers.systemHandlers;
+    valuationHandlers = handlers.valuationHandlers;
+    wordHandlers = handlers.wordHandlers;
+    console.log('[IPC] All handler modules loaded successfully');
+} catch (error) {
+    console.error('[IPC] ERROR loading handlers:', error);
+    throw error;
+}
 
 function registerIpcHandlers() {
+    // Clear any existing handlers first to avoid duplicates
+    try {
+        ipcMain.removeHandler('api-request');
+        ipcMain.removeHandler('read-ram');
+        ipcMain.removeHandler('open-external');
+        ipcMain.removeHandler('download-image');
+        ipcMain.removeHandler('show-image-window');
+        ipcMain.removeHandler('read-file');
+    } catch (err) {
+        // Ignore errors if handlers don't exist
+    }
+
+    // Helper function to safely register handlers
+    const safeHandle = (channel, handler, handlerName) => {
+        if (handler && typeof handler === 'function') {
+            try {
+                ipcMain.handle(channel, handler);
+                return true;
+            } catch (err) {
+                console.error(`[IPC] ERROR registering handler '${handlerName}' for channel '${channel}':`, err);
+                return false;
+            }
+        } else {
+            console.error(`[IPC] ERROR: Handler '${handlerName}' for channel '${channel}' is not a function or is undefined`);
+            return false;
+        }
+    };
+
     // Auth handlers
-    ipcMain.handle('login', authHandlers.handleLogin);
-    ipcMain.handle('submit-otp', authHandlers.handleSubmitOtp);
-    ipcMain.handle('check-status', authHandlers.handleCheckStatus);
-    ipcMain.handle('get-companies', authHandlers.handleGetCompanies);
-    ipcMain.handle('navigate-to-company', authHandlers.handleNavigateToCompany);
-    ipcMain.handle('register', authHandlers.handleRegister);
-    ipcMain.handle('auth-set-refresh-token', authHandlers.handleSetRefreshToken);
-    ipcMain.handle('auth-clear-refresh-token', authHandlers.handleClearRefreshToken);
-    ipcMain.handle('get-token', authHandlers.getRefreshToken)
-    ipcMain.handle('open-taqeem-login', authHandlers.handleOpenTaqeemLogin);
+    if (authHandlers) {
+        safeHandle('login', authHandlers.handleLogin, 'authHandlers.handleLogin');
+        safeHandle('submit-otp', authHandlers.handleSubmitOtp, 'authHandlers.handleSubmitOtp');
+        safeHandle('check-status', authHandlers.handleCheckStatus, 'authHandlers.handleCheckStatus');
+        safeHandle('get-companies', authHandlers.handleGetCompanies, 'authHandlers.handleGetCompanies');
+        safeHandle('navigate-to-company', authHandlers.handleNavigateToCompany, 'authHandlers.handleNavigateToCompany');
+        safeHandle('register', authHandlers.handleRegister, 'authHandlers.handleRegister');
+        safeHandle('auth-set-refresh-token', authHandlers.handleSetRefreshToken, 'authHandlers.handleSetRefreshToken');
+        safeHandle('auth-clear-refresh-token', authHandlers.handleClearRefreshToken, 'authHandlers.handleClearRefreshToken');
+        safeHandle('get-token', authHandlers.getRefreshToken, 'authHandlers.getRefreshToken');
+        safeHandle('open-taqeem-login', authHandlers.handleOpenTaqeemLogin, 'authHandlers.handleOpenTaqeemLogin');
+    }
 
 
     // Report handlers
@@ -83,23 +130,31 @@ function registerIpcHandlers() {
 
 
     // Worker handlers
-    ipcMain.handle('ping-worker', workerHandlers.handlePing);
-    ipcMain.handle('worker-status', workerHandlers.handleWorkerStatus);
-    ipcMain.handle('show-open-dialog', workerHandlers.showOpenDialog);
-    ipcMain.handle('show-open-dialog-pdfs', workerHandlers.showOpenDialogPdfs);
-    ipcMain.handle('show-open-dialog-word', workerHandlers.showOpenDialogWord);
-    ipcMain.handle('show-open-dialog-images', workerHandlers.showOpenDialogImages);
-    ipcMain.handle('select-folder', workerHandlers.selectFolder);
-    ipcMain.handle('read-folder', workerHandlers.readFolder);
+    if (workerHandlers) {
+        safeHandle('ping-worker', workerHandlers.handlePing, 'workerHandlers.handlePing');
+        safeHandle('worker-status', workerHandlers.handleWorkerStatus, 'workerHandlers.handleWorkerStatus');
+        safeHandle('show-open-dialog', workerHandlers.showOpenDialog, 'workerHandlers.showOpenDialog');
+        safeHandle('show-open-dialog-pdfs', workerHandlers.showOpenDialogPdfs, 'workerHandlers.showOpenDialogPdfs');
+        safeHandle('show-open-dialog-word', workerHandlers.showOpenDialogWord, 'workerHandlers.showOpenDialogWord');
+        safeHandle('show-open-dialog-images', workerHandlers.showOpenDialogImages, 'workerHandlers.showOpenDialogImages');
+        safeHandle('select-folder', workerHandlers.selectFolder, 'workerHandlers.selectFolder');
+        safeHandle('read-folder', workerHandlers.readFolder, 'workerHandlers.readFolder');
+        safeHandle('read-file', workerHandlers.readFile, 'workerHandlers.readFile');
+        safeHandle('open-external', workerHandlers.openExternal, 'workerHandlers.openExternal');
+        safeHandle('download-image', workerHandlers.downloadImage, 'workerHandlers.downloadImage');
+        safeHandle('show-image-window', workerHandlers.showImageWindow, 'workerHandlers.showImageWindow');
+    } else {
+        console.error('[IPC] ERROR: workerHandlers not found!');
+    }
 
     //Health handlers
     ipcMain.handle('check-server-health', healthHandlers.handleHealth);
 
     // Package handlers
-    ipcMain.handle('api-request', packageHandlers.handleApiRequest);
+    safeHandle('api-request', packageHandlers?.handleApiRequest, 'packageHandlers.handleApiRequest');
 
     // System info handlers
-    ipcMain.handle('read-ram', systemHandlers.handleReadRam);
+    safeHandle('read-ram', systemHandlers?.handleReadRam, 'systemHandlers.handleReadRam');
 
     // Valuation system
     ipcMain.handle('valuation-create-folders', valuationHandlers.handleCreateFolders);

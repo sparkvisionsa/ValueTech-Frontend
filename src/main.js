@@ -218,8 +218,9 @@ function createWindow() {
 
 // Electron app event handlers
 app.whenReady().then(() => {
+    // Register IPC handlers BEFORE creating window to avoid race conditions
+    registerIpcHandlers();
     createWindow();
-    registerIpcHandlers(); // Register all IPC handlers
 });
 
 app.on('window-all-closed', async () => {
@@ -242,8 +243,9 @@ app.on('window-all-closed', async () => {
 app.on('activate', () => {
     // On macOS, re-create window when dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) {
+        // Ensure handlers are registered before creating window
+        registerIpcHandlers();
         createWindow();
-        registerIpcHandlers(); // Re-register handlers for new window
     }
 });
 

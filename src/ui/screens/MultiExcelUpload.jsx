@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRam } from "../context/RAMContext";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
@@ -21,9 +21,11 @@ import {
     ChevronDown,
     ChevronUp,
     ChevronRight,
+    Download,
 } from "lucide-react";
 import { multiExcelUpload, fetchMultiApproachReports, updateMultiApproachReport, deleteMultiApproachReport, updateMultiApproachAsset, deleteMultiApproachAsset } from "../../api/report"; // Adjust the import path as needed
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import httpClient from "../../api/httpClient";
 
 const InputField = ({
     label,
@@ -33,15 +35,15 @@ const InputField = ({
     ...props
 }) => (
     <div className={`space-y-1 ${className}`}>
-        <label className="block text-[10px] font-semibold text-blue-900/70">
-            {label} {required && <span className="text-rose-500">*</span>}
+        <label className="block text-[10px] font-semibold text-slate-700">
+            {label} {required && <span className="text-rose-500 ml-0.5">*</span>}
         </label>
         <input
             {...props}
-            className={`w-full px-2 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+            className={`w-full px-2 py-1.5 border rounded-md text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all ${error ? "border-rose-400 bg-rose-50" : "border-slate-300 bg-white"
                 }`}
         />
-        {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
+        {error && <p className="text-rose-600 text-[10px] mt-0.5 font-medium">{error}</p>}
     </div>
 );
 
@@ -54,12 +56,12 @@ const SelectField = ({
     ...props
 }) => (
     <div className={`space-y-1 ${className}`}>
-        <label className="block text-[10px] font-semibold text-blue-900/70">
-            {label} {required && <span className="text-rose-500">*</span>}
+        <label className="block text-[10px] font-semibold text-slate-700">
+            {label} {required && <span className="text-rose-500 ml-0.5">*</span>}
         </label>
         <select
             {...props}
-            className={`w-full px-2 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+            className={`w-full px-2 py-1.5 border rounded-md text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all cursor-pointer ${error ? "border-rose-400 bg-rose-50" : "border-slate-300 bg-white"
                 }`}
         >
             {options.map((opt) => (
@@ -68,7 +70,7 @@ const SelectField = ({
                 </option>
             ))}
         </select>
-        {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
+        {error && <p className="text-rose-600 text-[10px] mt-0.5 font-medium">{error}</p>}
     </div>
 );
 
@@ -80,22 +82,22 @@ const TextAreaField = ({
     ...props
 }) => (
     <div className={`space-y-1 ${className}`}>
-        <label className="block text-[10px] font-semibold text-blue-900/70">
-            {label} {required && <span className="text-rose-500">*</span>}
+        <label className="block text-[10px] font-semibold text-slate-700">
+            {label} {required && <span className="text-rose-500 ml-0.5">*</span>}
         </label>
         <textarea
             {...props}
-            className={`w-full px-2 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+            className={`w-full px-2 py-1.5 border rounded-md text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all resize-none ${error ? "border-rose-400 bg-rose-50" : "border-slate-300 bg-white"
                 }`}
         />
-        {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
+        {error && <p className="text-rose-600 text-[10px] mt-0.5 font-medium">{error}</p>}
     </div>
 );
 
 const Section = ({ title, children }) => (
-    <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-2.5">
-        <div className="flex items-center justify-between mb-1.5">
-            <h3 className="text-[13px] font-semibold text-blue-950">{title}</h3>
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3 mb-3">
+        <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
         </div>
         {children}
     </div>
@@ -104,15 +106,15 @@ const Section = ({ title, children }) => (
 const Modal = ({ open, onClose, title, children, maxWidth = "max-w-6xl" }) => {
     if (!open) return null;
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 px-4 py-6 overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 backdrop-blur-sm px-4 py-4 overflow-auto">
             <div className={`w-full ${maxWidth}`}>
-                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-lg">
-                    <div className="flex items-center justify-between border-b border-blue-900/10 px-4 py-3">
-                        <h3 className="text-[14px] font-semibold text-blue-950">{title}</h3>
+                <div className="rounded-xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 bg-slate-50/50">
+                        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
                         <button
                             type="button"
                             onClick={onClose}
-                            className="text-[12px] font-semibold text-blue-700 hover:text-blue-900"
+                            className="text-xs font-medium text-slate-600 hover:text-slate-900 px-2 py-1 rounded-md hover:bg-slate-100 transition-colors"
                         >
                             Close
                         </button>
@@ -592,7 +594,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [validationMessage, setValidationMessage] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("report-info");
     const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
-    const [reports, setReports] = useState([]);
+    const [reports, setReports, resetReports] = usePersistentState("multiExcel:reports", [], { storage: "session" });
     const [reportsLoading, setReportsLoading] = useState(false);
     const [reportsError, setReportsError] = useState(null);
     const [expandedReports, setExpandedReports] = useState([]);
@@ -603,6 +605,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [assetSelectFilters, setAssetSelectFilters] = useState({});
     const [assetActionBusy, setAssetActionBusy] = useState({});
     const [editingReportId, setEditingReportId] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
     const [formData, setFormData] = useState(buildDefaultFormData());
     const [errors, setErrors] = useState({});
     const [reportUsers, setReportUsers] = useState([]);
@@ -617,9 +621,12 @@ const MultiExcelUpload = ({ onViewChange }) => {
     });
     const [actionStatus, setActionStatus] = useState(null);
     const [updatingReport, setUpdatingReport] = useState(false);
+    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [pendingSubmit, setPendingSubmit, resetPendingSubmit] = usePersistentState("multiExcel:pendingSubmit", null, { storage: "session" });
     const [pendingBatch, setPendingBatch, resetPendingBatch] = usePersistentState("multiExcel:pendingBatch", null, { storage: "session" });
     const [, setReturnView, resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
+
+    const pdfInputRef = useRef(null);
 
     const { ramInfo } = useRam();
     const recommendedTabs = ramInfo?.recommendedTabs || 1;
@@ -641,6 +648,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
         setWantsPdfUpload(checked);
         if (!checked) {
             setPdfFiles([]);
+        } else {
+            if (pdfInputRef?.current) {
+                pdfInputRef.current.value = null;
+                pdfInputRef.current.click();
+            }
         }
         resetMessages();
         resetValidation();
@@ -672,7 +684,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
     const isEditing = Boolean(editingReportId);
 
-    const loadReports = useCallback(async () => {
+    const loadReports = useCallback(async (append = false) => {
         try {
             setReportsLoading(true);
             setReportsError(null);
@@ -681,17 +693,43 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 throw new Error(result?.message || "Failed to load reports.");
             }
             const reportList = Array.isArray(result.reports) ? result.reports : [];
-            setReports(reportList);
+            if (append) {
+                // Merge with existing reports, avoiding duplicates
+                setReports((prev) => {
+                    const existingIds = new Set(prev.map(r => getReportRecordId(r)).filter(Boolean));
+                    const newReports = reportList.filter(r => {
+                        const id = getReportRecordId(r);
+                        return id && !existingIds.has(id);
+                    });
+                    const merged = [...prev, ...newReports];
+                    return merged;
+                });
+            } else {
+                // Replace all reports (initial load or explicit refresh)
+                setReports(reportList);
+                setCurrentPage(1);
+            }
         } catch (err) {
             setReportsError(err?.message || "Failed to load reports.");
         } finally {
             setReportsLoading(false);
         }
-    }, []);
+    }, [setReports]);
 
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
+    // Load reports automatically on mount if we don't have any
     useEffect(() => {
-        loadReports();
-    }, [loadReports]);
+        if (reports.length === 0 && !reportsLoading) {
+            loadReports(false);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Only run on mount - loadReports is stable
 
     const pdfMatchInfo = useMemo(() => {
         if (!wantsPdfUpload) {
@@ -1064,13 +1102,13 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 setValidationMessage({
                     type: "success",
                     text: shouldValidatePdf
-                        ? "All Excel files look valid and PDFs are matched. You can upload & create reports."
-                        : `All Excel files look valid. PDFs will use ${DUMMY_PDF_NAME}. You can upload & create reports.`,
+                        ? "All Excel files look valid and PDFs are matched. You can Upload & Send To Taqeem."
+                        : `All Excel files look valid. PDFs will use ${DUMMY_PDF_NAME}. You can Upload & Send To Taqeem.`,
                 });
             } else {
                 setValidationMessage({
                     type: "error",
-                    text: "Validation found issues. Fix them to enable upload & create reports.",
+                    text: "Validation found issues. Fix them to enable Upload & Send To Taqeem.",
                 });
             }
         } catch (err) {
@@ -1135,7 +1173,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
             setBatchId(batchIdFromApi);
             setUploadResult(data);
             setSuccess(`Files uploaded successfully. Batch ID: ${batchIdFromApi}. Inserted ${insertedCount} report(s).`);
-            await loadReports();
+            // Load new reports and append to existing ones
+            await loadReports(true);
 
             setLoading(false);
             await createReportsByBatch(batchIdFromApi, recommendedTabs, insertedCount);
@@ -1180,9 +1219,40 @@ const MultiExcelUpload = ({ onViewChange }) => {
     );
 
     const orderedReports = useMemo(() => {
-        return [...reports].sort(
-            (a, b) => getReportSortTimestamp(a) - getReportSortTimestamp(b)
-        );
+        return [...reports].sort((a, b) => {
+            const idA = getReportRecordId(a);
+            const idB = getReportRecordId(b);
+            
+            // Special handling: id=1 (or "1") should always be last
+            const isIdOneA = idA === 1 || idA === "1" || String(idA).trim() === "1";
+            const isIdOneB = idB === 1 || idB === "1" || String(idB).trim() === "1";
+            
+            if (isIdOneA && !isIdOneB) return 1; // id=1 goes to end
+            if (!isIdOneA && isIdOneB) return -1; // id=1 goes to end
+            if (isIdOneA && isIdOneB) return 0; // Both are id=1, keep order
+            
+            // Primary sort: by timestamp (newest first)
+            const timestampA = getReportSortTimestamp(a);
+            const timestampB = getReportSortTimestamp(b);
+            
+            if (timestampA !== timestampB) {
+                return timestampB - timestampA; // Newest first
+            }
+            
+            // Secondary sort: by ID (higher IDs first, so id=1 appears last)
+            // Try to parse as numbers if possible
+            const numA = typeof idA === 'string' ? parseInt(idA, 10) : (typeof idA === 'number' ? idA : 0);
+            const numB = typeof idB === 'string' ? parseInt(idB, 10) : (typeof idB === 'number' ? idB : 0);
+            
+            if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+                return numB - numA; // Higher IDs first (so id=1 is last)
+            }
+            
+            // Fallback: string comparison
+            const strA = String(idA || '');
+            const strB = String(idB || '');
+            return strB.localeCompare(strA);
+        });
     }, [reports]);
 
     const reportIndexMap = useMemo(() => {
@@ -1196,21 +1266,39 @@ const MultiExcelUpload = ({ onViewChange }) => {
         return map;
     }, [orderedReports]);
 
-    const visibleReports = useMemo(() => {
+    const filteredReports = useMemo(() => {
         if (reportSelectFilter === "all") return orderedReports;
         return orderedReports.filter(
             (report) => getReportStatus(report) === reportSelectFilter
         );
     }, [orderedReports, reportSelectFilter]);
 
+    const totalPages = Math.max(1, Math.ceil(filteredReports.length / itemsPerPage));
+    
+    const visibleReports = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        return filteredReports.slice(startIndex, endIndex);
+    }, [filteredReports, currentPage, itemsPerPage]);
+
+    useEffect(() => {
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(1);
+        }
+    }, [totalPages]);
+
     useEffect(() => {
         if (reportSelectFilter === "all") {
             setSelectedReportIds([]);
             return;
         }
-        const ids = visibleReports.map(getReportRecordId).filter(Boolean);
+        const ids = filteredReports.map(getReportRecordId).filter(Boolean);
         setSelectedReportIds(ids);
-    }, [reportSelectFilter, visibleReports]);
+    }, [reportSelectFilter, filteredReports]);
+    
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [reportSelectFilter]);
 
     const toggleReportExpansion = (reportId) => {
         setExpandedReports((prev) =>
@@ -1415,6 +1503,85 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 delete next[`${reportId}:${assetIndex}`];
                 return next;
             });
+        }
+    };
+
+    const downloadExcelTemplate = async () => {
+        try {
+            setDownloadingTemplate(true);
+            setActionStatus({
+                type: "info",
+                message: "Downloading Excel template...",
+            });
+
+            // File is in public folder, so it's accessible at root path
+            // Try different possible file extensions
+            const possibleExtensions = [".xlsx", ".xls", ""];
+            let downloadSuccess = false;
+            let lastError = null;
+
+            for (const ext of possibleExtensions) {
+                try {
+                    const fileName = `multi-excel-template${ext}`;
+                    // Files in public folder are served at root path
+                    const templatePath = `/multi-excel-template${ext}`;
+                    
+                    const response = await fetch(templatePath);
+                    
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            lastError = new Error(`File ${fileName} not found`);
+                            continue; // Try next extension
+                        }
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    // Get blob data
+                    const blob = await response.blob();
+                    
+                    // Extract filename from Content-Disposition header or use default
+                    const disposition = response.headers.get("content-disposition") || "";
+                    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    const filename = match && match[1]
+                        ? match[1].replace(/['"]/g, '')
+                        : `multi-excel-template${ext || ".xlsx"}`;
+
+                    // Create download link
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.setAttribute("download", filename);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+
+                    downloadSuccess = true;
+                    setActionStatus({
+                        type: "success",
+                        message: "Excel template downloaded successfully.",
+                    });
+                    break;
+                } catch (err) {
+                    lastError = err;
+                    // Continue to next extension if this one fails
+                    console.log(`Failed to download multi-excel-template${ext}:`, err.message);
+                }
+            }
+
+            if (!downloadSuccess) {
+                throw lastError || new Error("Template file not found. Please ensure the template exists in the public folder.");
+            }
+        } catch (err) {
+            console.error("Failed to download Excel template", err);
+            setActionStatus({
+                type: "error",
+                message: err?.message?.includes("404") || err?.message?.includes("not found")
+                    ? "Template file not found. Please contact administrator to ensure the template file exists in the public folder."
+                    : err?.message || "Failed to download Excel template. Please try again.",
+            });
+        } finally {
+            setDownloadingTemplate(false);
         }
     };
 
@@ -1646,23 +1813,23 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
     const actionAlert = actionStatus ? (
         <div
-            className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${actionStatus.type === "error"
-                ? "border-rose-200 bg-rose-50 text-rose-700"
+            className={`mb-2 rounded-lg border px-3 py-2 flex items-start gap-2 text-xs ${actionStatus.type === "error"
+                ? "border-rose-300 bg-rose-50 text-rose-700"
                 : actionStatus.type === "warning"
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
                     : actionStatus.type === "info"
-                        ? "border-sky-200 bg-sky-50 text-sky-700"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        ? "border-blue-300 bg-blue-50 text-blue-700"
+                        : "border-emerald-300 bg-emerald-50 text-emerald-700"
                 }`}
         >
             {actionStatus.type === "success" ? (
-                <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
             ) : actionStatus.type === "info" ? (
-                <Info className="w-4 h-4 mt-0.5" />
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
             ) : actionStatus.type === "warning" ? (
-                <AlertTriangle className="w-4 h-4 mt-0.5" />
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             ) : (
-                <AlertTriangle className="w-4 h-4 mt-0.5" />
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             )}
             <div className="font-semibold">{actionStatus.message}</div>
         </div>
@@ -1722,7 +1889,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     ) : null}
 
                     {issues.length ? (
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-hidden">
                             <table className="min-w-full text-xs">
                                 <thead className="bg-rose-50/90 text-rose-700">
                                     <tr>
@@ -1754,171 +1921,118 @@ const MultiExcelUpload = ({ onViewChange }) => {
     };
 
     return (
-        <div className="relative p-3 space-y-3 page-animate">
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white/75 shadow-xl backdrop-blur">
-                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-sky-200/40 blur-3xl" />
-                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl" />
-                <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 py-3">
+        <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
+                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
+                <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-3">
                     <div className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Batch Automation
                         </p>
-                        <h2 className="text-xl md:text-2xl font-display text-compact text-slate-900">
+                        <h2 className="text-lg md:text-xl font-display text-compact text-slate-900 font-bold">
                             Multi-Excel Upload
                         </h2>
-                        <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-2.5 py-0.5 shadow-sm">
-                                <Table className="h-3.5 w-3.5 text-emerald-600" />
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-700">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
+                                <Table className="h-3 w-3 text-emerald-600" />
                                 {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""} auto
                             </span>
-                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-2.5 py-0.5 shadow-sm">
-                                <Files className="h-3.5 w-3.5 text-sky-600" />
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
+                                <Files className="h-3 w-3 text-sky-600" />
                                 {wantsPdfUpload ? "PDF upload on" : "PDF upload optional"}
                             </span>
-                            <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-2.5 py-0.5 shadow-sm">
-                                <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
+                                <ShieldCheck className="h-3 w-3 text-indigo-600" />
                                 Validation enabled
                             </span>
                         </div>
                     </div>
+                    <div className="flex items-center gap-2 mt-2 md:mt-0">
+                        <button
+                            type="button"
+                            onClick={downloadExcelTemplate}
+                            disabled={downloadingTemplate}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {downloadingTemplate ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Download className="w-3.5 h-3.5" />
+                            )}
+                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.15fr_1.15fr_0.7fr]">
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-400" />
-                    <div className="p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="h-9 w-9 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center">
-                                    <FileSpreadsheet className="w-5 h-5 text-sky-600" />
-                                </div>
-                                <div>
-                                    <h3 className="text-[12px] font-semibold text-slate-900">Excel sources</h3>
-                                    <span className="text-xs text-slate-500">.xlsx / .xls</span>
-                                </div>
-                            </div>
-                            <span className="text-xs font-semibold text-slate-500">
-                                {excelFiles.length} selected
-                            </span>
-                        </div>
-                        <label className="group flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 transition">
-                            <div className="flex items-center gap-2 text-[12px] text-slate-700">
-                                <FolderOpen className="w-4 h-4 text-slate-500 group-hover:text-slate-700" />
-                                <span className="font-medium">
-                                    {excelFiles.length ? `${excelFiles.length} Excel file(s) selected` : "Choose Excel files"}
+            <div className="space-y-2">
+                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
+                            <div className="flex items-center gap-2 text-xs text-slate-700">
+                                <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                                <span className="font-semibold">
+                                    {excelFiles.length
+                                        ? excelFiles.length === 1
+                                            ? <span className="truncate max-w-[150px]" title={excelFiles[0].name}>{excelFiles[0].name}</span>
+                                            : `${excelFiles.length} file(s) selected`
+                                        : "Choose Excel file"}
                                 </span>
                             </div>
                             <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
-                            <span className="text-xs font-semibold text-slate-600">Browse</span>
+                            <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
-
-                        {excelFiles.length > 0 && (
-                            <div className="max-h-28 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-2">
-                                <ul className="text-xs text-slate-600 space-y-1">
-                                    {excelFiles.map((file, index) => (
-                                        <li key={index} className="flex items-center gap-2 p-1 rounded-lg bg-white/80">
-                                            <FileIcon className="w-3 h-3 flex-shrink-0 text-slate-400" />
-                                            <span className="truncate">{file.name}</span>
-                                            <span className="text-slate-400 text-xs">
-                                                ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-400" />
-                    <div className="p-3 space-y-2">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                                    <Files className="w-5 h-5 text-indigo-600" />
-                                </div>
-                                <div>
-                                    <h3 className="text-[12px] font-semibold text-slate-900">PDF attachments</h3>
-                                    <span className="text-xs text-slate-500">
-                                        {wantsPdfUpload ? "Match Excel filename" : `Auto-use ${DUMMY_PDF_NAME}`}
-                                    </span>
-                                </div>
-                            </div>
-                            <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                                 <input
                                     type="checkbox"
-                                    className="h-4 w-4 text-slate-900 border-slate-400 focus:ring-slate-700"
+                                    className="h-3.5 w-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
                                     checked={wantsPdfUpload}
                                     onChange={(e) => handlePdfToggle(e.target.checked)}
                                 />
-                                Upload PDFs
-                            </label>
-                        </div>
-
-                        {wantsPdfUpload ? (
-                            <>
-                                <label className="group flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 transition">
-                                    <div className="flex items-center gap-2 text-[12px] text-slate-700">
-                                        <FolderOpen className="w-4 h-4 text-slate-500 group-hover:text-slate-700" />
-                                        <span className="font-medium">
-                                            {pdfFiles.length ? `${pdfFiles.length} PDF file(s) selected` : "Choose PDF files"}
-                                        </span>
-                                    </div>
-                                    <input type="file" multiple accept=".pdf" className="hidden" onChange={handlePdfChange} />
-                                    <span className="text-xs font-semibold text-slate-600">Browse</span>
-                                </label>
-
-                                {pdfFiles.length > 0 && (
-                                    <div className="max-h-28 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/70 p-2">
-                                        <ul className="text-xs text-slate-600 space-y-1">
-                                            {pdfFiles.slice(0, 5).map((file, index) => (
-                                                <li key={index} className="flex items-center gap-2 p-1 rounded-lg bg-white/80">
-                                                    <FileIcon className="w-3 h-3 flex-shrink-0 text-slate-400" />
-                                                    <span className="truncate">{file.name}</span>
-                                                    <span className="text-slate-400 text-xs">
-                                                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                                    </span>
-                                                </li>
-                                            ))}
-                                            {pdfFiles.length > 5 && (
-                                                <li className="text-xs text-slate-500 text-center">
-                                                    + {pdfFiles.length - 5} more files
-                                                </li>
-                                            )}
-                                        </ul>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-600">
-                                Placeholder PDF will be applied per Excel during upload.
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm card-animate">
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-sky-500" />
-                    <div className="p-3 space-y-2">
-                        <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                                <Table className="w-5 h-5 text-emerald-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-[12px] font-semibold text-slate-900">Tabs runtime</h3>
-                                <span className="text-xs text-slate-500">Auto based on RAM</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-900 px-3 py-2 text-white">
-                            <div className="flex items-center gap-2">
-                                <Hash className="w-4 h-4 text-emerald-300" />
-                                <span className="text-[12px] font-semibold">
-                                    {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
+                                <Files className="w-4 h-4 text-blue-600" />
+                                <span className="font-semibold">Upload PDFs</span>
+                                <span className="text-xs text-slate-600">
+                                    {pdfFiles.length
+                                        ? `${pdfFiles.length} file(s) selected`
+                                        : "Choose PDF files"}
                                 </span>
                             </div>
-                            <span className="text-xs text-slate-300">Auto</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (pdfInputRef?.current) {
+                                        pdfInputRef.current.value = null;
+                                        pdfInputRef.current.click();
+                                    }
+                                }}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
+                            >
+                                Browse
+                            </button>
+                            <input
+                                ref={pdfInputRef}
+                                type="file"
+                                multiple
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={handlePdfChange}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setExcelFiles([]);
+                                    setPdfFiles([]);
+                                    resetMessages();
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Reset
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1927,96 +2041,97 @@ const MultiExcelUpload = ({ onViewChange }) => {
             {/* Status Messages */}
             {(error || success) && (
                 <div
-                    className={`rounded-2xl border px-3 py-2 flex items-start gap-3 shadow-sm card-animate ${error
-                        ? "bg-rose-50/90 text-rose-700 border-rose-100"
-                        : "bg-emerald-50/90 text-emerald-700 border-emerald-100"
+                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
+                        ? "bg-rose-50 text-rose-700 border-rose-300"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-300"
                         }`}
                 >
                     {error ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5" />
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     ) : (
-                        <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     )}
-                    <div className="text-sm">{error || success}</div>
+                    <div className="text-xs font-medium">{error || success}</div>
                 </div>
             )}
 
-            <div className="space-y-3">
-                    <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden card-animate">
-                        <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900 px-2 py-2 text-white">
+            <div className="space-y-2">
+                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden card-animate">
+                        <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 px-3 py-2.5 text-white">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="space-y-1">
-                                    <p className="text-[11px] font-semibold">Validation console</p>
+                                <div className="space-y-0.5">
+                                    <p className="text-xs font-semibold">Validation Console</p>
+                                    <p className="text-[10px] text-blue-100">Review and validate your Excel files before upload</p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => runValidation(excelFiles, pdfMatchInfo.pdfMap)}
                                     disabled={validating || !excelFiles.length}
-                                    className="inline-flex items-center gap-2 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-white/20 disabled:opacity-60"
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
                                     {validating ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
-                                        <RefreshCw className="w-3 h-3" />
+                                        <RefreshCw className="w-3.5 h-3.5" />
                                     )}
                                     {validating ? "Validating..." : "Re-validate"}
                                 </button>
                             </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
-                                <div className="inline-flex rounded-full bg-white/10 p-0.5">
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium">
+                                <div className="inline-flex rounded-md bg-white/15 p-0.5 gap-0.5">
                                     <button
                                         type="button"
                                         onClick={() => setValidationTableTab("report-info")}
-                                        className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
+                                        className={`px-3 py-1 rounded-md transition-all ${validationTableTab === "report-info"
                                             ? "bg-white text-blue-900 shadow-sm"
-                                            : "text-blue-100 hover:text-white"
+                                            : "text-blue-100 hover:text-white hover:bg-white/10"
                                             }`}
                                     >
-                                        Report Info validation
+                                        Report Info
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setValidationTableTab("pdf-assets")}
-                                        className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
+                                        className={`px-3 py-1 rounded-md transition-all ${validationTableTab === "pdf-assets"
                                             ? "bg-white text-blue-900 shadow-sm"
-                                            : "text-blue-100 hover:text-white"
+                                            : "text-blue-100 hover:text-white hover:bg-white/10"
                                             }`}
                                     >
-                                        Validate PDFs &amp; assets data
+                                        PDFs &amp; Assets
                                     </button>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => setIsValidationTableCollapsed((prev) => !prev)}
-                                    className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[10px] font-semibold text-white/90 shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
+                                    className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/15 px-2.5 py-1 text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
                                 >
                                     {isValidationTableCollapsed ? (
-                                        <ChevronDown className="w-3 h-3" />
+                                        <ChevronDown className="w-3.5 h-3.5" />
                                     ) : (
-                                        <ChevronUp className="w-3 h-3" />
+                                        <ChevronUp className="w-3.5 h-3.5" />
                                     )}
-                                    {isValidationTableCollapsed ? "Show table" : "Hide table"}
+                                    {isValidationTableCollapsed ? "Show" : "Hide"}
                                 </button>
                             </div>
                         </div>
                         <div className="p-2 space-y-2">
                             {validationMessage && (
                                 <div
-                                    className={`rounded-lg border px-2 py-1 inline-flex items-start gap-1 text-[10px] ${validationMessage.type === "error"
-                                        ? "bg-rose-50 text-rose-700 border-rose-100"
+                                    className={`rounded-md border px-3 py-2 inline-flex items-start gap-2 text-xs ${validationMessage.type === "error"
+                                        ? "bg-rose-50 text-rose-700 border-rose-300"
                                         : validationMessage.type === "success"
-                                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                            : "bg-blue-50 text-blue-700 border-blue-100"
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                            : "bg-blue-50 text-blue-700 border-blue-300"
                                         }`}
                                 >
                                     {validationMessage.type === "error" ? (
-                                        <AlertTriangle className="w-4 h-4 mt-0.5" />
+                                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                     ) : validationMessage.type === "success" ? (
-                                        <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                     ) : (
-                                        <Info className="w-4 h-4 mt-0.5" />
+                                        <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                     )}
-                                    <div className="text-[10px]">{validationMessage.text}</div>
+                                    <div className="text-xs font-medium">{validationMessage.text}</div>
                                 </div>
                             )}
 
@@ -2044,32 +2159,32 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                             const fieldLabels = new Set(reportFields.map((field) => field.label));
                                             const extraIssues = reportIssues.filter((issue) => !fieldLabels.has(issue.field));
                                             return (
-                                                <div key={item.fileName} className="rounded-lg border border-blue-900/10 bg-white p-2">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                        <div className="text-[10px] font-semibold text-blue-900">{item.fileName}</div>
+                                                <div key={item.fileName} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                                        <div className="text-xs font-semibold text-slate-800">{item.fileName}</div>
                                                         <span
-                                                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${reportIssues.length
-                                                                ? "bg-rose-50 text-rose-700 border-rose-100"
-                                                                : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                            className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${reportIssues.length
+                                                                ? "bg-rose-50 text-rose-700 border-rose-300"
+                                                                : "bg-emerald-50 text-emerald-700 border-emerald-300"
                                                                 }`}
                                                         >
                                                             {reportIssues.length ? `${reportIssues.length} issue(s)` : "All fields OK"}
                                                         </span>
                                                     </div>
                                                     {isValidationTableCollapsed ? (
-                                                        <div className="flex items-center gap-1 text-[10px] text-blue-900/70 mt-1">
-                                                            <ChevronDown className="w-3 h-3" />
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1">
+                                                            <ChevronDown className="w-3.5 h-3.5" />
                                                             Table hidden.
                                                         </div>
                                                     ) : (
-                                                        <div className="overflow-x-auto max-h-[260px] overflow-y-auto mt-2">
-                                                            <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
-                                                                <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                                        <div className="overflow-x-auto max-h-[200px] overflow-y-auto mt-2">
+                                                            <table className="min-w-full text-xs border-collapse">
+                                                                <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
                                                                     <tr>
-                                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
-                                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
-                                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
-                                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
+                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider rounded-tl-md">Field</th>
+                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Value</th>
+                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
+                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider rounded-tr-md">Notes</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
@@ -2079,48 +2194,48 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                         const hasFieldValue = hasValue(field.value);
                                                                         const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
                                                                         const statusTone = hasIssue
-                                                                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                                            ? "bg-rose-50 text-rose-700 border-rose-300"
                                                                             : hasFieldValue
-                                                                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                                                                : "bg-amber-50 text-amber-700 border-amber-200";
+                                                                                ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                                                                : "bg-amber-50 text-amber-700 border-amber-300";
                                                                         const notesText = hasIssue
                                                                             ? fieldIssues.map((issue) => issue.message).join(" / ")
                                                                             : hasFieldValue
                                                                                 ? "Looks good"
                                                                                 : "Missing in Excel";
                                                                         return (
-                                                                            <tr key={field.label}>
-                                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                                            <tr key={field.label} className="border-b border-slate-200 hover:bg-slate-50/50">
+                                                                                <td className="px-2 py-1.5 bg-white font-semibold text-slate-800">
                                                                                     {field.label}
                                                                                 </td>
-                                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                                                <td className="px-2 py-1.5 bg-white text-slate-700">
                                                                                     {hasFieldValue ? field.value : "N/A"}
                                                                                 </td>
-                                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
+                                                                                <td className="px-2 py-1.5 bg-white">
+                                                                                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone}`}>
                                                                                         {statusLabel}
                                                                                     </span>
                                                                                 </td>
-                                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                                                <td className="px-2 py-1.5 bg-white text-slate-600 text-[10px]">
                                                                                     {notesText}
                                                                                 </td>
                                                                             </tr>
                                                                         );
                                                                     })}
                                                                     {extraIssues.map((issue, idx) => (
-                                                                        <tr key={`issue-extra-${idx}`}>
-                                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                                        <tr key={`issue-extra-${idx}`} className="border-b border-slate-200 hover:bg-slate-50/50">
+                                                                            <td className="px-2 py-1.5 bg-white font-semibold text-slate-800">
                                                                                 {issue.field || "Issue"}
                                                                             </td>
-                                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                                            <td className="px-2 py-1.5 bg-white text-slate-700">
                                                                                 {issue.location || "Report Info"}
                                                                             </td>
-                                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                                                                            <td className="px-2 py-1.5 bg-white">
+                                                                                <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
                                                                                     Issue
                                                                                 </span>
                                                                             </td>
-                                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                                            <td className="px-2 py-1.5 bg-white text-slate-600 text-[10px]">
                                                                                 {issue.message || "Issue detected"}
                                                                             </td>
                                                                         </tr>
@@ -2134,23 +2249,23 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                         })}
                                     </div>
                                 ) : (
-                                    <div className="p-3 border border-dashed border-blue-900/20 rounded-2xl bg-white/70 text-[11px] text-blue-900/60 flex items-center justify-center">
+                                    <div className="p-6 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-sm text-slate-600 flex items-center justify-center font-medium">
                                         Validation results will appear here after reading the Excel.
                                     </div>
                                 )
                             ) : (
                                 <div className="space-y-2">
                                     {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
-                                        <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[10px] text-rose-700">
-                                            <div className="font-semibold">File matching issues</div>
+                                        <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                                            <div className="font-semibold mb-1">File matching issues</div>
                                             <div className="mt-1 space-y-1">
                                                 {pdfMatchInfo.excelsMissingPdf.length > 0 && (
-                                                    <div>
+                                                    <div className="font-medium">
                                                         Excel files missing PDF: {pdfMatchInfo.excelsMissingPdf.join(", ")}
                                                     </div>
                                                 )}
                                                 {pdfMatchInfo.unmatchedPdfs.length > 0 && (
-                                                    <div>
+                                                    <div className="font-medium">
                                                         Unmatched PDFs: {pdfMatchInfo.unmatchedPdfs.join(", ")}
                                                     </div>
                                                 )}
@@ -2159,49 +2274,49 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                     )}
                                     {validationItems.length ? (
                                         <div className="space-y-2">
-                                            <div className="rounded-lg border border-blue-900/10 bg-white p-2">
-                                                <div className="text-[10px] font-semibold text-blue-900 mb-2">Assets &amp; PDF summary</div>
+                                            <div className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+                                                <div className="text-xs font-semibold text-slate-800 mb-2">Assets &amp; PDF summary</div>
                                                 {isValidationTableCollapsed ? (
-                                                    <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
-                                                        <ChevronDown className="w-3 h-3" />
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                                        <ChevronDown className="w-3.5 h-3.5" />
                                                         Table hidden.
                                                     </div>
                                                 ) : (
-                                                    <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
-                                                        <table className="min-w-full text-[10px] text-slate-700">
-                                                            <thead className="bg-blue-900/10 text-blue-900">
+                                                    <div className="overflow-x-auto max-h-[180px] overflow-y-auto">
+                                                        <table className="min-w-full text-xs text-slate-700">
+                                                            <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0">
                                                                 <tr>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Excel</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">PDF</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Market</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Cost</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Market total</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Cost total</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Assets total</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Report total</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Issues</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">PDF</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Market</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Cost</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Market total</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Cost total</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Assets total</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Report total</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Issues</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 {validationItems.map((item) => {
                                                                     const assetIssues = (item.issues || []).filter((issue) => !isReportInfoIssue(issue));
                                                                     return (
-                                                                        <tr key={`summary-${item.fileName}`} className="border-t border-blue-900/10">
-                                                                            <td className="px-2 py-1 text-blue-900/90">{item.fileName}</td>
-                                                                            <td className="px-2 py-1">
+                                                                        <tr key={`summary-${item.fileName}`} className="border-b border-slate-200 hover:bg-slate-50/50">
+                                                                            <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
+                                                                            <td className="px-2 py-1.5">
                                                                                 {item.pdfMatched ? (
-                                                                                    <span className="text-emerald-700">Matched</span>
+                                                                                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Matched</span>
                                                                                 ) : (
-                                                                                    <span className="text-rose-700">Missing</span>
+                                                                                    <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Missing</span>
                                                                                 )}
                                                                             </td>
-                                                                            <td className="px-2 py-1">{item.counts?.marketAssets ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{item.counts?.costAssets ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{item.totals?.marketTotal ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{item.totals?.costTotal ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{item.totals?.assetsTotalValue ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{item.totals?.reportTotalValue ?? "-"}</td>
-                                                                            <td className="px-2 py-1">{assetIssues.length}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.counts?.marketAssets ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.counts?.costAssets ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.totals?.marketTotal ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.totals?.costTotal ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.totals?.assetsTotalValue ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{item.totals?.reportTotalValue ?? "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700 font-medium">{assetIssues.length}</td>
                                                                         </tr>
                                                                     );
                                                                 })}
@@ -2211,16 +2326,16 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                 )}
                                             </div>
                                             {!isValidationTableCollapsed && (
-                                                <div className="rounded-lg border border-blue-900/10 bg-white p-2">
-                                                    <div className="text-[10px] font-semibold text-blue-900 mb-2">Issues</div>
-                                                    <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
-                                                        <table className="min-w-full text-[10px] text-slate-700">
-                                                            <thead className="bg-blue-900/10 text-blue-900">
+                                                <div className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+                                                    <div className="text-xs font-semibold text-slate-800 mb-2">Issues</div>
+                                                    <div className="overflow-x-auto max-h-[180px] overflow-y-auto">
+                                                        <table className="min-w-full text-xs text-slate-700">
+                                                            <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0">
                                                                 <tr>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Excel</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Field</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Location</th>
-                                                                    <th className="px-2 py-1 text-left font-semibold">Details</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Field</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Location</th>
+                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Details</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -2228,20 +2343,20 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                     const assetIssues = (item.issues || []).filter((issue) => !isReportInfoIssue(issue));
                                                                     if (!assetIssues.length) {
                                                                         return [
-                                                                            <tr key={`issue-none-${item.fileName}`} className="border-t border-blue-900/10">
-                                                                                <td className="px-2 py-1 text-blue-900/90">{item.fileName}</td>
-                                                                                <td className="px-2 py-1" colSpan={3}>
+                                                                            <tr key={`issue-none-${item.fileName}`} className="border-b border-slate-200">
+                                                                                <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
+                                                                                <td className="px-2 py-1.5 text-slate-600" colSpan={3}>
                                                                                     No issues
                                                                                 </td>
                                                                             </tr>,
                                                                         ];
                                                                     }
                                                                     return assetIssues.map((issue, idx) => (
-                                                                        <tr key={`issue-${item.fileName}-${idx}`} className="border-t border-blue-900/10">
-                                                                            <td className="px-2 py-1 text-blue-900/90">{item.fileName}</td>
-                                                                            <td className="px-2 py-1 font-semibold">{issue.field}</td>
-                                                                            <td className="px-2 py-1">{issue.location || "-"}</td>
-                                                                            <td className="px-2 py-1">{issue.message}</td>
+                                                                        <tr key={`issue-${item.fileName}-${idx}`} className="border-b border-slate-200 hover:bg-slate-50/50">
+                                                                            <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
+                                                                            <td className="px-2 py-1.5 font-semibold text-slate-800">{issue.field}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{issue.location || "-"}</td>
+                                                                            <td className="px-2 py-1.5 text-slate-700">{issue.message}</td>
                                                                         </tr>
                                                                     ));
                                                                 })}
@@ -2252,7 +2367,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                             )}
                                         </div>
                                     ) : (
-                                        <div className="p-3 border border-dashed border-blue-900/20 rounded-2xl bg-white/70 text-[11px] text-blue-900/60 flex items-center justify-center">
+                                        <div className="p-3 border border-dashed border-slate-300 rounded-lg bg-slate-50 text-xs text-slate-600 flex items-center justify-center font-medium">
                                             Validation results will appear here after reading the Excel.
                                         </div>
                                     )}
@@ -2262,25 +2377,25 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     </div>
             </div>
             {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                     type="button"
                     onClick={handleUploadAndCreate}
                     disabled={loading || creatingReports || !isReadyToUpload}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white text-[12px] font-semibold shadow-lg hover:opacity-90 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white text-xs font-semibold shadow-md hover:shadow-lg hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all"
                 >
                     {(loading || creatingReports) ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                         <Send className="w-4 h-4" />
                     )}
-                    {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Create Reports"}
+                    {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Send To Taqeem"}
                 </button>
 
                 <button
                     type="button"
                     onClick={resetAll}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 hover:border-slate-400 transition-colors"
                 >
                     <RefreshCw className="w-4 h-4" />
                     Reset All
@@ -2288,81 +2403,87 @@ const MultiExcelUpload = ({ onViewChange }) => {
             </div>
 
             <Section title="Reports">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="text-[11px] text-blue-900/70">
-                        Total reports: {reports.length}{batchId ? ` | Latest batch: ${batchId}` : ""}
-                    </div>
-                    <div className="flex items-center gap-2">
+                <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
-                            onClick={loadReports}
-                            className="inline-flex items-center gap-1 rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                            onClick={() => loadReports(false)}
+                            disabled={reportsLoading}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Refresh
+                            <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
+                            {reportsLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
-                        <span className="text-[10px] font-semibold text-blue-900/60">Filter status</span>
-                        <select
-                            value={reportSelectFilter}
-                            onChange={(e) => setReportSelectFilter(e.target.value)}
-                            className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900"
-                        >
-                            <option value="all">All statuses</option>
-                            <option value="complete">Complete</option>
-                            <option value="incomplete">Incomplete</option>
-                            <option value="sent">Sent</option>
-                            <option value="approved">Approved</option>
-                        </select>
+                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+                            Filter:
+                            <select
+                                value={reportSelectFilter}
+                                onChange={(e) => setReportSelectFilter(e.target.value)}
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                            >
+                                <option value="all">All statuses</option>
+                                <option value="complete">Complete</option>
+                                <option value="incomplete">Incomplete</option>
+                                <option value="sent">Sent</option>
+                                <option value="approved">Approved</option>
+                            </select>
+                        </label>
+                        {filteredReports.length > 0 && (
+                            <span className="text-xs text-slate-600 ml-auto font-medium">
+                                Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
+                            </span>
+                        )}
                     </div>
                 </div>
 
                 {actionAlert}
 
-                {reportsLoading && (
-                    <div className="flex items-center gap-2 text-[10px] text-blue-900/70">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {reportsLoading && reports.length === 0 && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600 py-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
                         Loading reports...
                     </div>
                 )}
 
                 {reportsError && (
-                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[10px] text-rose-700">
+                    <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 font-medium">
                         {reportsError}
                     </div>
                 )}
 
                 {!reportsLoading && !reports.length && (
-                    <div className="text-[10px] text-blue-900/60">
+                    <div className="text-xs text-slate-600 py-2 text-center">
                         No multi-approach reports found yet.
                     </div>
                 )}
 
                 {!reportsLoading && reports.length > 0 && !visibleReports.length && (
-                    <div className="text-[10px] text-blue-900/60">
+                    <div className="text-xs text-slate-600 py-2 text-center">
                         No reports match the selected status.
                     </div>
                 )}
 
                 {visibleReports.length > 0 && (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-[10px] text-slate-700">
-                            <thead className="bg-blue-900/10 text-blue-900">
-                                <tr>
-                                    <th className="px-2 py-1 text-left w-10">#</th>
-                                    <th className="px-2 py-1 text-left w-8"></th>
-                                    <th className="px-2 py-1 text-left">Report ID</th>
-                                    <th className="px-2 py-1 text-left">Client</th>
-                                    <th className="px-2 py-1 text-left">Final value</th>
-                                    <th className="px-2 py-1 text-left">Status</th>
-                                    <th className="px-2 py-1 text-left">Action</th>
-                                    <th className="px-2 py-1 text-left">Select</th>
-                                </tr>
-                            </thead>
+                    <div className="w-full overflow-x-auto">
+                        <div className="min-w-full">
+                            <table className="w-full text-xs text-slate-700">
+                                <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-800 border-b-2 border-blue-200">
+                                    <tr>
+                                        <th className="px-2 py-2 text-left w-12 text-[10px] font-semibold uppercase tracking-wider">#</th>
+                                        <th className="px-2 py-2 text-left w-10 text-[10px] font-semibold uppercase tracking-wider"></th>
+                                        <th className="px-2 py-2 text-left w-32 text-[10px] font-semibold uppercase tracking-wider">Report ID</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Client</th>
+                                        <th className="px-2 py-2 text-left w-24 text-[10px] font-semibold uppercase tracking-wider">Final value</th>
+                                        <th className="px-2 py-2 text-left w-28 text-[10px] font-semibold uppercase tracking-wider">Status</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Action</th>
+                                        <th className="px-2 py-2 text-left w-16 text-[10px] font-semibold uppercase tracking-wider">Select</th>
+                                    </tr>
+                                </thead>
                             <tbody>
                                 {visibleReports.map((report, idx) => {
                                     const recordId = getReportRecordId(report);
-                                    const reportIndex =
-                                        (recordId && reportIndexMap.get(recordId)) || idx + 1;
+                                    const globalIndex = filteredReports.findIndex(r => getReportRecordId(r) === recordId);
+                                    const reportIndex = globalIndex >= 0 ? globalIndex + 1 : ((currentPage - 1) * itemsPerPage) + idx + 1;
                                     const statusKey = getReportStatus(report);
                                     const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
                                     const isExpanded = recordId ? expandedReports.includes(recordId) : false;
@@ -2380,16 +2501,16 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                                     return (
                                         <React.Fragment key={recordId || `report-${idx}`}>
-                                            <tr className="border-t border-blue-900/10 bg-white">
-                                                <td className="px-2 py-1 text-blue-900/70">
+                                            <tr className="border-t border-slate-200 bg-white hover:bg-blue-50/30 transition-colors">
+                                                <td className="px-2 py-2 text-slate-600 text-xs font-medium">
                                                     {reportIndex}
                                                 </td>
-                                                <td className="px-2 py-1">
+                                                <td className="px-2 py-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => recordId && toggleReportExpansion(recordId)}
                                                         disabled={!recordId}
-                                                        className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-blue-900/20 text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+                                                        className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-slate-300 text-slate-700 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 transition-colors"
                                                         aria-label={isExpanded ? "Hide assets" : "Show assets"}
                                                     >
                                                         {isExpanded ? (
@@ -2399,21 +2520,21 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                         )}
                                                     </button>
                                                 </td>
-                                                <td className="px-2 py-1">
-                                                    <div className="text-[11px] font-semibold text-blue-950">
+                                                <td className="px-2 py-2">
+                                                    <div className="text-xs font-semibold text-slate-900 truncate" title={report.report_id || "Not sent"}>
                                                         {report.report_id || "Not sent"}
                                                     </div>
-                                                    <div className="text-[10px] text-blue-900/50">
+                                                    <div className="text-[10px] text-slate-500 truncate" title={recordId || "-"}>
                                                         {recordId || "-"}
                                                     </div>
                                                 </td>
-                                                <td className="px-2 py-1">
-                                                    {report.client_name || "-"}
+                                                <td className="px-2 py-2 truncate" title={report.client_name || "-"}>
+                                                    <span className="text-xs text-slate-700">{report.client_name || "-"}</span>
                                                 </td>
-                                                <td className="px-2 py-1">
+                                                <td className="px-2 py-2 text-xs font-medium text-slate-700">
                                                     {report.value || report.final_value || "-"}
                                                 </td>
-                                                <td className="px-2 py-1">
+                                                <td className="px-2 py-2">
                                                     <span
                                                         className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                                                             reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
@@ -2422,8 +2543,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                         {reportStatusLabels[statusKey] || statusKey}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1">
-                                                    <div className="flex flex-wrap items-center gap-2">
+                                                <td className="px-2 py-2">
+                                                    <div className="flex flex-col gap-1">
                                                         <select
                                                             defaultValue=""
                                                             disabled={!recordId || submitting || !!reportBusy}
@@ -2432,7 +2553,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                 handleReportAction(report, action);
                                                                 e.target.value = "";
                                                             }}
-                                                            className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
+                                                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                                                         >
                                                             <option value="">Actions</option>
                                                             <option value="retry">Retry submit</option>
@@ -2442,39 +2563,30 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                             <option value="approve">Approve</option>
                                                             <option value="download">Download certificate</option>
                                                         </select>
-                                                        <button
-                                                            type="button"
-                                                            disabled={!recordId || submitting || !!reportBusy}
-                                                            onClick={() => handleReportAction(report, "send")}
-                                                            className="inline-flex items-center gap-1 rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50"
-                                                        >
-                                                            <Send className="w-3.5 h-3.5" />
-                                                            Submit to Taqeem
-                                                        </button>
                                                     </div>
                                                     {reportBusy && (
-                                                        <div className="text-[10px] text-blue-900/60 mt-1">
+                                                        <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
                                                             Working...
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-2 py-1">
+                                                <td className="px-2 py-2 text-center">
                                                     <input
                                                         type="checkbox"
                                                         disabled={!recordId}
                                                         checked={!!recordId && selectedReportSet.has(recordId)}
                                                         onChange={() => recordId && toggleReportSelection(recordId)}
-                                                        className="h-3.5 w-3.5 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
                                                     />
                                                 </td>
                                             </tr>
                                             {isExpanded && (
                                                 <tr>
-                                                    <td colSpan={8} className="bg-blue-50/40 border-t border-blue-900/10">
+                                                    <td colSpan={8} className="bg-blue-50/20 border-t border-blue-200">
                                                         <div className="p-2 space-y-2">
                                                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                <div className="text-[10px] text-blue-900/70">
-                                                                    Assets: {assetList.length}
+                                                                <div className="text-xs text-slate-700 font-medium">
+                                                                    Assets: <span className="text-blue-600 font-semibold">{assetList.length}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <select
@@ -2484,7 +2596,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                             handleBulkAssetAction(report, action);
                                                                             e.target.value = "";
                                                                         }}
-                                                                        className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
+                                                                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                                                                     >
                                                                         <option value="">Asset actions</option>
                                                                         <option value="delete">Delete</option>
@@ -2492,60 +2604,58 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                     </select>
                                                                 </div>
                                                             </div>
-                                                            <div className="rounded-xl border border-blue-900/10 overflow-hidden">
-                                                                <div className="max-h-64 overflow-auto">
-                                                                    <table className="min-w-full text-[10px] text-slate-700">
-                                                                        <thead className="bg-white text-blue-900">
+                                                            <div className="rounded-md border border-slate-200 overflow-hidden bg-white shadow-sm">
+                                                                <div className="max-h-48 overflow-y-auto">
+                                                                    <table className="w-full text-xs text-slate-700">
+                                                                        <thead className="bg-slate-50 text-slate-800 border-b border-slate-200 sticky top-0">
                                                                             <tr>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Macro ID</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Asset name</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Final value</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Approach</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Status</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">Actions</th>
-                                                                                <th className="px-2 py-1 text-left font-semibold">
-                                                                                    <div className="flex flex-col gap-1">
-                                                                                        <select
-                                                                                            value={assetFilter}
-                                                                                            onChange={(e) => {
-                                                                                                const nextFilter = e.target.value;
-                                                                                                setAssetSelectFilters((prev) => ({
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Macro ID</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Asset name</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Final value</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Approach</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Actions</th>
+                                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">
+                                                                                    <select
+                                                                                        value={assetFilter}
+                                                                                        onChange={(e) => {
+                                                                                            const nextFilter = e.target.value;
+                                                                                            setAssetSelectFilters((prev) => ({
+                                                                                                ...prev,
+                                                                                                [recordId]: nextFilter,
+                                                                                            }));
+                                                                                            if (nextFilter === "all") {
+                                                                                                setSelectedAssetsByReport((prev) => ({
                                                                                                     ...prev,
-                                                                                                    [recordId]: nextFilter,
+                                                                                                    [recordId]: [],
                                                                                                 }));
-                                                                                                if (nextFilter === "all") {
-                                                                                                    setSelectedAssetsByReport((prev) => ({
-                                                                                                        ...prev,
-                                                                                                        [recordId]: [],
-                                                                                                    }));
-                                                                                                    return;
-                                                                                                } else {
-                                                                                                    const nextSelection = assetList
-                                                                                                        .map((asset, assetIndex) => ({ asset, assetIndex }))
-                                                                                                        .filter(({ asset }) =>
-                                                                                                            getAssetStatus(asset, report) === nextFilter
-                                                                                                        )
-                                                                                                        .map(({ assetIndex }) => assetIndex);
-                                                                                                    setSelectedAssetsByReport((prev) => ({
-                                                                                                        ...prev,
-                                                                                                        [recordId]: nextSelection,
-                                                                                                    }));
-                                                                                                }
-                                                                                            }}
-                                                                                            className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
-                                                                                        >
-                                                                                            <option value="all">All assets</option>
-                                                                                            <option value="complete">Complete</option>
-                                                                                            <option value="incomplete">Incomplete</option>
-                                                                                        </select>
-                                                                                    </div>
+                                                                                                return;
+                                                                                            } else {
+                                                                                                const nextSelection = assetList
+                                                                                                    .map((asset, assetIndex) => ({ asset, assetIndex }))
+                                                                                                    .filter(({ asset }) =>
+                                                                                                        getAssetStatus(asset, report) === nextFilter
+                                                                                                    )
+                                                                                                    .map(({ assetIndex }) => assetIndex);
+                                                                                                setSelectedAssetsByReport((prev) => ({
+                                                                                                    ...prev,
+                                                                                                    [recordId]: nextSelection,
+                                                                                                }));
+                                                                                            }
+                                                                                        }}
+                                                                                        className="rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                                                                                    >
+                                                                                        <option value="all">All assets</option>
+                                                                                        <option value="complete">Complete</option>
+                                                                                        <option value="incomplete">Incomplete</option>
+                                                                                    </select>
                                                                                 </th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
                                                                             {visibleAssets.length === 0 && (
                                                                                 <tr>
-                                                                                    <td colSpan={7} className="px-2 py-2 text-center text-blue-900/60">
+                                                                                    <td colSpan={7} className="px-2 py-2 text-center text-slate-500 text-xs">
                                                                                         {assetList.length
                                                                                             ? "No assets match the selected status."
                                                                                             : "No assets available for this report."}
@@ -2557,20 +2667,20 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                 const assetBusy = assetActionBusy[`${recordId}:${assetIndex}`];
                                                                                 const macroId = getAssetMacroId(asset, report);
                                                                                 return (
-                                                                                    <tr key={`${recordId}-${assetIndex}`} className="border-t border-blue-900/10">
-                                                                                        <td className="px-2 py-1 text-blue-900/70">
+                                                                                    <tr key={`${recordId}-${assetIndex}`} className="border-t border-slate-200 hover:bg-slate-50/50">
+                                                                                        <td className="px-2 py-1.5 text-slate-600 text-xs">
                                                                                             {macroId || "Not created"}
                                                                                         </td>
-                                                                                        <td className="px-2 py-1 text-blue-900/90">
+                                                                                        <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
                                                                                             {asset.asset_name || "-"}
                                                                                         </td>
-                                                                                        <td className="px-2 py-1 text-blue-900/80">
+                                                                                        <td className="px-2 py-1.5 text-slate-700 text-xs">
                                                                                             {asset.final_value || "-"}
                                                                                         </td>
-                                                                                        <td className="px-2 py-1 text-blue-900/80">
+                                                                                        <td className="px-2 py-1.5 text-slate-600 text-xs">
                                                                                             {getAssetApproach(asset)}
                                                                                         </td>
-                                                                                        <td className="px-2 py-1">
+                                                                                        <td className="px-2 py-1.5">
                                                                                             <span
                                                                                                 className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                                                                                                     assetStatusClasses[assetStatus] || "border-blue-200 bg-blue-50 text-blue-700"
@@ -2579,7 +2689,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                 {assetStatusLabels[assetStatus] || assetStatus}
                                                                                             </span>
                                                                                         </td>
-                                                                                        <td className="px-2 py-1">
+                                                                                        <td className="px-2 py-1.5">
                                                                                             <select
                                                                                                 defaultValue=""
                                                                                                 disabled={!!assetBusy}
@@ -2588,7 +2698,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                     handleAssetAction(report, assetIndex, action);
                                                                                                     e.target.value = "";
                                                                                                 }}
-                                                                                                className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
+                                                                                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                                                                                             >
                                                                                                 <option value="">Actions</option>
                                                                                                 <option value="delete">Delete</option>
@@ -2596,12 +2706,12 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                 <option value="edit">Edit</option>
                                                                                             </select>
                                                                                         </td>
-                                                                                        <td className="px-2 py-1">
+                                                                                        <td className="px-2 py-1.5">
                                                                                             <input
                                                                                                 type="checkbox"
                                                                                                 checked={selectedAssetSet.has(assetIndex)}
                                                                                                 onChange={() => toggleAssetSelection(recordId, assetIndex)}
-                                                                                                className="h-3.5 w-3.5 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                                                                                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
                                                                                             />
                                                                                         </td>
                                                                                     </tr>
@@ -2620,6 +2730,147 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                 })}
                             </tbody>
                         </table>
+                        </div>
+                        
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (() => {
+                            const getPageNumbers = () => {
+                                const pages = [];
+                                
+                                if (totalPages <= 6) {
+                                    // Show all pages if 6 or fewer
+                                    for (let i = 1; i <= totalPages; i++) {
+                                        pages.push(i);
+                                    }
+                                    return pages;
+                                }
+                                
+                                // Always show first 3 pages
+                                pages.push(1, 2, 3);
+                                
+                                const lastThree = [totalPages - 2, totalPages - 1, totalPages];
+                                const lastThreeStart = totalPages - 2;
+                                
+                                // If current page is in first 3 or overlaps with last 3
+                                if (currentPage <= 3) {
+                                    // Show: 1, 2, 3, 4, 5, ..., last 3
+                                    if (4 < lastThreeStart) {
+                                        pages.push(4, 5);
+                                        pages.push('ellipsis');
+                                    }
+                                } else if (currentPage >= lastThreeStart) {
+                                    // Show: 1, 2, 3, ..., last 3
+                                    if (3 < lastThreeStart - 1) {
+                                        pages.push('ellipsis');
+                                    }
+                                } else {
+                                    // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
+                                    const showBefore = currentPage - 1;
+                                    const showAfter = currentPage + 1;
+                                    
+                                    // Check if we need ellipsis before current page
+                                    if (showBefore > 4) {
+                                        pages.push('ellipsis');
+                                        pages.push(showBefore);
+                                    } else if (showBefore > 3) {
+                                        pages.push(showBefore);
+                                    }
+                                    
+                                    pages.push(currentPage);
+                                    
+                                    // Check if we need ellipsis after current page
+                                    if (showAfter < lastThreeStart - 1) {
+                                        pages.push(showAfter);
+                                        if (showAfter < lastThreeStart - 2) {
+                                            pages.push('ellipsis');
+                                        }
+                                    }
+                                }
+                                
+                                // Always show last 3 pages (avoid duplicates)
+                                lastThree.forEach(page => {
+                                    if (!pages.includes(page)) {
+                                        pages.push(page);
+                                    }
+                                });
+                                
+                                // Clean up and ensure proper order
+                                const cleaned = [];
+                                let prevNum = 0;
+                                
+                                for (let i = 0; i < pages.length; i++) {
+                                    const item = pages[i];
+                                    if (item === 'ellipsis') {
+                                        if (cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                            cleaned.push('ellipsis');
+                                        }
+                                    } else if (typeof item === 'number') {
+                                        if (item > prevNum) {
+                                            if (item > prevNum + 1 && prevNum > 0 && cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                                cleaned.push('ellipsis');
+                                            }
+                                            cleaned.push(item);
+                                            prevNum = item;
+                                        }
+                                    }
+                                }
+                                
+                                return cleaned;
+                            };
+                            
+                            const pageNumbers = getPageNumbers();
+                            
+                            return (
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
+                                    <div className="text-xs text-slate-600 font-medium">
+                                        Showing <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredReports.length)}</span> of <span className="font-semibold text-slate-800">{filteredReports.length}</span> reports
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(currentPage - 1)}
+                                            disabled={currentPage === 1}
+                                            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Previous
+                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            {pageNumbers.map((page, idx) => {
+                                                if (page === 'ellipsis') {
+                                                    return (
+                                                        <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-slate-600">
+                                                            ...
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <button
+                                                        key={page}
+                                                        type="button"
+                                                        onClick={() => handlePageChange(page)}
+                                                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                                            currentPage === page
+                                                                ? "bg-blue-600 text-white shadow-sm"
+                                                                : "text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400"
+                                                        }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(currentPage + 1)}
+                                            disabled={currentPage === totalPages}
+                                            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
             </Section>
@@ -2790,23 +3041,25 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                 type="checkbox"
                                 checked={formData.has_other_users}
                                 onChange={(e) => handleFieldChange("has_other_users", e.target.checked)}
-                                className="h-4 w-4 text-blue-900 border-blue-900/30"
+                                className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                             />
-                            <span className="text-[11px] text-blue-900/70">Has other users</span>
+                            <span className="text-xs text-slate-700 font-medium">Has other users</span>
                         </div>
                         {formData.has_other_users && (
                             <div className="space-y-2">
                                 {reportUsers.map((userName, idx) => (
-                                    <div key={`user-${idx}`} className="flex items-center gap-2">
-                                        <InputField
-                                            label={`User ${idx + 1}`}
-                                            value={userName}
-                                            onChange={(e) => handleReportUserChange(idx, e.target.value)}
-                                        />
+                                    <div key={`user-${idx}`} className="flex items-end gap-2">
+                                        <div className="flex-1">
+                                            <InputField
+                                                label={`User ${idx + 1}`}
+                                                value={userName}
+                                                onChange={(e) => handleReportUserChange(idx, e.target.value)}
+                                            />
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={() => handleRemoveReportUser(idx)}
-                                            className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                                            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                                         >
                                             Remove
                                         </button>
@@ -2815,7 +3068,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                 <button
                                     type="button"
                                     onClick={handleAddReportUser}
-                                    className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                                    className="rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
                                 >
                                     Add user
                                 </button>
@@ -2841,7 +3094,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                     <button
                                         type="button"
                                         onClick={() => handleRemoveValuer(idx)}
-                                        className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 h-8"
+                                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                                     >
                                         Remove
                                     </button>
@@ -2850,18 +3103,18 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             <button
                                 type="button"
                                 onClick={handleAddValuer}
-                                className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                                className="rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
                             >
                                 Add valuer
                             </button>
                         </div>
                     </Section>
 
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-1">
                         <button
                             type="button"
                             onClick={closeReportEdit}
-                            className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                         >
                             Cancel
                         </button>
@@ -2869,8 +3122,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             type="button"
                             onClick={handleSaveReportEdit}
                             disabled={updatingReport}
-                            className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${
-                                updatingReport ? "bg-blue-900/40" : "bg-blue-900 hover:bg-blue-800"
+                            className={`rounded-md px-4 py-2 text-xs font-semibold text-white transition-all ${
+                                updatingReport ? "bg-blue-500/50 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 shadow-sm hover:shadow-md"
                                 }`}
                         >
                             {updatingReport ? "Saving..." : "Save changes"}
@@ -2885,7 +3138,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 title="Edit asset"
                 maxWidth="max-w-3xl"
             >
-                <div className="space-y-3">
+                <div className="space-y-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <InputField
                             label="Asset name"
@@ -2929,11 +3182,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             }
                         />
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-1">
                         <button
                             type="button"
                             onClick={closeAssetEdit}
-                            className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                         >
                             Cancel
                         </button>
@@ -2941,8 +3194,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             type="button"
                             onClick={handleSaveAssetEdit}
                             disabled={assetEditBusy}
-                            className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${
-                                assetEditBusy ? "bg-blue-900/40" : "bg-blue-900 hover:bg-blue-800"
+                            className={`rounded-md px-4 py-2 text-xs font-semibold text-white transition-all ${
+                                assetEditBusy ? "bg-blue-500/50 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 shadow-sm hover:shadow-md"
                                 }`}
                         >
                             {assetEditBusy ? "Saving..." : "Save"}

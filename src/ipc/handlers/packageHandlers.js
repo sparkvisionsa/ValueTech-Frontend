@@ -61,7 +61,17 @@ const setElectronCookieForBaseUrl = async (baseUrl, cookieObj) => {
 };
 
 const packageHandlers = {
-  async handleApiRequest(event, { method, url, data, headers = {} }) {
+  async handleApiRequest(event, requestData) {
+    // Extract parameters from requestData object
+    if (!requestData || typeof requestData !== 'object') {
+      throw new Error('Invalid request data: expected object with method, url, data, and headers');
+    }
+
+    const { method, url, data = {}, headers = {} } = requestData;
+
+    if (!method || !url) {
+      throw new Error('Method and URL are required for API request');
+    }
     // Try multiple backend candidates: env var first, then local, then deployed
     const candidates = [];
 

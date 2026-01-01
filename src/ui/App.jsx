@@ -31,11 +31,10 @@ import Statics from './screens/Statics';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
-import ManualMultiReport from './screens/ManualMultiReport';
-import DownloadCertificate from './screens/DownloadCertificate';
 import { RamProvider } from './context/RAMContext';
 import ValuationSystem from './screens/ValuationSystem';
 import WordCopy from './screens/WordCopy';
+import HarajData from './screens/HarajData';
 import Apps from './screens/Apps';
 import { ValueNavProvider } from './context/ValueNavContext';
 import ComingSoon from './screens/ComingSoon';
@@ -144,8 +143,6 @@ const AppContent = () => {
             case 'upload-report-elrajhi':
                 return <ElRajhiUploadReport onViewChange={handleViewChange} />;
 
-            case 'download-certificate':
-                return <DownloadCertificate />;
 
             case 'duplicate-report':
                 return <DuplicateReport onViewChange={handleViewChange} />;
@@ -153,14 +150,16 @@ const AppContent = () => {
             case 'multi-excel-upload':
                 return <MultiExcelUpload onViewChange={handleViewChange} />;
 
-            case 'manual-multi-report':
-                return <ManualMultiReport />;
 
             case 'valuation-system':
                 return <ValuationSystem />;
 
             case 'word-copy':
                 return <WordCopy />;
+
+            case 'haraj':
+            case 'haraj-data':
+                return <HarajData />;
 
             case 'coming-soon':
                 return <ComingSoon />;

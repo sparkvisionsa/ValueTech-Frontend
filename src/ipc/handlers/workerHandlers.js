@@ -1,5 +1,10 @@
 ﻿const pythonAPI = require('../../services/python/PythonAPI');
-const { dialog } = require('electron');
+const { dialog, shell, BrowserWindow } = require('electron');
+const path = require('path');
+const https = require('https');
+const http = require('http');
+const fs = require('fs');
+const { app } = require('electron');
 
 const workerHandlers = {
     async handlePing() {
@@ -149,7 +154,7 @@ const workerHandlers = {
         }
     },
 
-    async readFIle(event, filePath) {
+    async readFile(event, filePath) {
         try {
             const fs = require('fs').promises;
             const buffer = await fs.readFile(filePath);
@@ -165,6 +170,163 @@ const workerHandlers = {
                 success: false,
                 error: error.message
             };
+        }
+    },
+
+    async openExternal(event, url) {
+        try {
+            if (!url || typeof url !== 'string') {
+                throw new Error('Invalid URL provided');
+            }
+            await shell.openExternal(url);
+            return { status: 'SUCCESS' };
+        } catch (error) {
+            console.error('[MAIN] Open external error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
+
+    async downloadImage(event, { url, filename }) {
+        try {
+            if (!url || typeof url !== 'string') {
+                throw new Error('Invalid URL provided');
+            }
+
+            // Get download path
+            const { canceled, filePath } = await dialog.showSaveDialog({
+                title: 'Save Image',
+                defaultPath: filename || `haraj-image-${Date.now()}.jpg`,
+                filters: [
+                    { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ]
+            });
+
+            if (canceled || !filePath) {
+                return { status: 'CANCELED' };
+            }
+
+            // Download the image
+            return new Promise((resolve, reject) => {
+                const protocol = url.startsWith('https:') ? https : http;
+                const file = fs.createWriteStream(filePath);
+
+                protocol.get(url, (response) => {
+                    if (response.statusCode !== 200) {
+                        file.close();
+                        fs.unlinkSync(filePath);
+                        reject(new Error(`Failed to download: ${response.statusCode}`));
+                        return;
+                    }
+
+                    response.pipe(file);
+
+                    file.on('finish', () => {
+                        file.close();
+                        resolve({ status: 'SUCCESS', filePath });
+                    });
+
+                    file.on('error', (err) => {
+                        file.close();
+                        if (fs.existsSync(filePath)) {
+                            fs.unlinkSync(filePath);
+                        }
+                        reject(err);
+                    });
+                }).on('error', (err) => {
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                    reject(err);
+                });
+            });
+        } catch (error) {
+            console.error('[MAIN] Download image error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
+
+    async showImageWindow(event, url) {
+        try {
+            // Handle both string URLs and objects
+            let imageUrl = url;
+            if (typeof url === 'object' && url !== null) {
+                imageUrl = url.url || url.src || url.link || url.image || url.imageUrl || '';
+            } else if (typeof url !== 'string') {
+                imageUrl = String(url);
+            }
+
+            if (!imageUrl || typeof imageUrl !== 'string' || imageUrl.trim() === '') {
+                throw new Error('Invalid URL provided');
+            }
+
+            // Ensure URL is properly formatted
+            imageUrl = imageUrl.trim();
+            if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+                throw new Error('URL must start with http:// or https://');
+            }
+
+            // Create a simple HTML page to display the image
+            const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Image Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #000;
+            overflow: hidden;
+        }
+        img {
+            max-width: 100%;
+            max-height: 100vh;
+            object-fit: contain;
+        }
+        .error {
+            color: white;
+            text-align: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <img src="${imageUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" alt="Image" 
+         onerror="this.style.display='none'; document.body.innerHTML='<div class=\\'error\\'><h2>Failed to load image</h2><p>URL: ${imageUrl.substring(0, 100)}...</p></div>'">
+</body>
+</html>`;
+
+            const imageWindow = new BrowserWindow({
+                width: 1200,
+                height: 800,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    webSecurity: false // Allow loading external images
+                },
+                title: 'Image Viewer'
+            });
+
+            imageWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+            imageWindow.on('closed', () => {
+                // Window closed
+            });
+
+            return { status: 'SUCCESS' };
+        } catch (error) {
+            console.error('[MAIN] Show image window error:', error);
+            return { status: 'ERROR', error: error.message };
         }
     }
 };

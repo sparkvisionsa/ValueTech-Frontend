@@ -460,7 +460,14 @@ const Layout = ({ children, currentView, onViewChange }) => {
         }
         return t('layout.header.defaultTitle');
     })();
-    const groupTabs = resolvedGroup?.tabs || [];
+    const groupTabs = (() => {
+        const tabs = resolvedGroup?.tabs || [];
+        // For evaluationSources, only show Haraj Data tab
+        if (resolvedGroupId === 'evaluationSources') {
+            return tabs.filter(tab => tab.id === 'haraj');
+        }
+        return tabs;
+    })();
     const isValueView = currentView === 'apps' || isValueSystemView(currentView);
     const showHeaderTabs = isValueView && groupTabs.length > 0;
     const tabLabel = currentTabInfo?.tab?.id
@@ -624,14 +631,14 @@ const Layout = ({ children, currentView, onViewChange }) => {
     };
 
     return (
-        <div className="flex h-screen bg-transparent">
+        <div className="flex h-screen bg-transparent overflow-x-hidden max-w-full">
             {/* Sidebar */}
             <Sidebar currentView={currentView} onViewChange={onViewChange} />
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden max-w-full">
                 {/* Header */}
-                <header className="relative overflow-hidden border-b border-slate-800/80 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 shadow-[0_12px_26px_rgba(2,6,23,0.65)]">
+                <header className="relative overflow-hidden border-b border-slate-800/80 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 shadow-[0_12px_26px_rgba(2,6,23,0.65)] max-w-full">
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/5 to-transparent" />
                     <div className="pointer-events-none absolute -left-10 top-6 h-28 w-28 rounded-full bg-cyan-500/20 blur-2xl float-slow" />
                     <div className="pointer-events-none absolute -right-12 top-6 h-28 w-28 rounded-full bg-blue-500/15 blur-2xl float-slower" />
@@ -740,7 +747,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-auto px-6 py-5 bg-transparent relative">
+                <main className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 bg-transparent relative max-w-full">
                     <div className="pointer-events-none absolute inset-0 z-0">
                         <div className="absolute -top-20 left-1/3 h-48 w-48 rounded-full bg-cyan-200/30 blur-3xl float-slow" />
                         <div className="absolute top-32 right-[-80px] h-56 w-56 rounded-full bg-emerald-200/20 blur-3xl float-slower" />

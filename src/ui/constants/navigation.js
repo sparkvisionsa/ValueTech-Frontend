@@ -15,6 +15,11 @@ const valueSystemGroups = {
                 id: 'valuation-system',
                 label: 'Valuation System',
                 description: 'Create valuation folders, calculations, and report files from the valuation system.'
+            },
+            {
+                id: 'haraj',
+                label: 'Haraj Data',
+                description: 'Access and manage Haraj scraped data with advanced filtering and professional table display.'
             }
         ]
     },
@@ -28,11 +33,6 @@ const valueSystemGroups = {
                 description: 'Upload El Rajhi reports, validate data, and process batches.'
             },
             {
-                id: 'download-certificate',
-                label: 'Download certificate with ID',
-                description: 'Download a registration certificate by report ID.'
-            },
-            {
                 id: 'duplicate-report',
                 label: 'Upload Manual Report',
                 description: 'Fill report info, upload Excel assets, and send to Taqeem.'
@@ -41,11 +41,6 @@ const valueSystemGroups = {
                 id: 'multi-excel-upload',
                 label: 'Multi-Excel Upload',
                 description: 'Upload multiple Excel files and create reports in bulk.'
-            },
-            {
-                id: 'manual-multi-report',
-                label: 'Manual Multi-Report Upload',
-                description: 'Upload multiple reports manually for bulk processing.'
             },
             {
                 id: 'upload-assets',
@@ -142,10 +137,8 @@ const valueSystemCards = [
 const viewTitles = {
     apps: 'Apps',
     'upload-report-elrajhi': 'Upload Report (El Rajhi)',
-    'download-certificate': 'Download certificate with ID',
     'duplicate-report': 'Upload Manual Report',
     'multi-excel-upload': 'Multi-Excel Upload',
-    'manual-multi-report': 'Manual Multi-Report Upload',
     'macro-edit': 'Edit Macro',
     'grab-macro-ids': 'Grab Macro IDs',
     'common-fields': 'Add Common Fields',
@@ -162,6 +155,8 @@ const viewTitles = {
     'admin-packages': 'Packages',
     'valuation-system': 'Valuation System',
     'word-copy': 'Word Copy',
+    'haraj': 'Haraj',
+    'haraj-data': 'Haraj Data',
     'delete-report': 'Delete Report',
     'system-status': 'System Operating Status',
     'system-updates': 'System Updates',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users, ShieldCheck, Building2 } from 'lucide-react';
+import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users, ShieldCheck, Building2, Database } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useSession } from '../context/SessionContext';
@@ -252,6 +252,61 @@ const Sidebar = ({ currentView, onViewChange }) => {
         );
     };
 
+    const renderEvaluationSourcesLinks = () => {
+        if (selectedCard !== 'evaluation-sources') return null;
+        const evaluationLinks = [
+            { id: 'haraj', label: 'Haraj Data', icon: Database }
+        ];
+        return (
+            <div
+                className="rounded-lg border border-emerald-400/30 bg-gradient-to-br from-emerald-950/35 via-slate-950/60 to-slate-900/70 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(52,211,153,0.08)] sidebar-animate"
+                style={{ animationDelay: '240ms' }}
+            >
+                <div className="px-2 pb-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-200">
+                    {t('sidebar.evaluationSources.title', { defaultValue: 'Evaluation Sources' })}
+                </div>
+                <ul className="space-y-1">
+                    {evaluationLinks.map((item, index) => {
+                        const Icon = item.icon;
+                        const blocked = isFeatureBlocked(item.id);
+                        const isActive = currentView === item.id || currentView === 'haraj-data';
+                        return (
+                            <li
+                                key={item.id}
+                                className="sidebar-animate"
+                                style={{ animationDelay: `${280 + index * 35}ms` }}
+                            >
+                                <button
+                                    onClick={() => {
+                                        if (blocked) return;
+                                        setActiveGroup('evaluationSources');
+                                        delayViewChange('haraj');
+                                    }}
+                                    disabled={blocked}
+                                    className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
+                                        isActive
+                                            ? 'bg-gradient-to-r from-emerald-500/90 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)]'
+                                            : 'bg-slate-900/40 text-slate-200 hover:bg-slate-800/70'
+                                    } ${blocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    <span
+                                        className={`absolute left-1 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full ${
+                                            isActive ? 'bg-emerald-200' : 'bg-transparent group-hover:bg-emerald-300/50'
+                                        }`}
+                                    />
+                                    <Icon className="w-3.5 h-3.5 opacity-90" />
+                                    <span className="font-medium">
+                                        {t(`navigation.tabs.${item.id}.label`, { defaultValue: item.label })}
+                                    </span>
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </div>
+        );
+    };
+
     const renderAdminLinks = () => {
         if (!isAdmin || selectedCard !== 'admin-console') return null;
         return (
@@ -456,6 +511,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     {renderCompanyLinks()}
                     {renderAdminLinks()}
                     {renderMainLinks()}
+                    {renderEvaluationSourcesLinks()}
                 </nav>
 
                 {renderDashboardLinks()}
