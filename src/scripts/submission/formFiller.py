@@ -4,16 +4,42 @@ from datetime import datetime
 
 async def fill_valuers(page, valuers):
     try:
+        # --- Step 1: attempt to create rows normally ---
         if len(valuers) > 1:
             for _ in range(len(valuers) - 1):
                 try:
+                    await asyncio.sleep(0.1)
                     add_btn = await wait_for_element(page, "#duplicateValuer", timeout=30)
+                    await asyncio.sleep(0.1)
                 except Exception:
                     add_btn = None
+
                 if add_btn:
                     await add_btn.click()
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.1)
 
+        # --- Step 2: verify number of created selectors ---
+        async def count_rows():
+            elements = await page.query_selector_all("[name^='valuer'][name$='[id]']")
+            return len(elements)
+
+        expected = len(valuers)
+        current = await count_rows()
+
+        # safety cap to avoid infinite loop
+        retries = 0
+        while current < expected and retries < 10:
+            try:
+                add_btn = await wait_for_element(page, "#duplicateValuer", timeout=10)
+                await add_btn.click()
+                await asyncio.sleep(0.5)
+            except Exception:
+                break
+
+            current = await count_rows()
+            retries += 1
+
+        # --- Step 3: fill each row ---
         for idx, valuer in enumerate(valuers):
             name_sel = f"[name='valuer[{idx}][id]']"
             contrib_sel = f"[name='valuer[{idx}][contribution]']"
@@ -36,8 +62,10 @@ async def fill_valuers(page, valuers):
                     if val.lower() in text.lower():
                         await opt.select_option()
                         break
+
     except Exception as e:
         print(f"[WARNING] fill_valuers failed: {e}", file=sys.stderr)
+
 
 
 _location_cache = {}

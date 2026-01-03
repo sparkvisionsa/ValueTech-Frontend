@@ -1392,7 +1392,6 @@ async def pause_batch(batch_id):
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
 
-
 async def resume_batch(batch_id):
     """Resume ElRajhi batch processing"""
     try:
@@ -1416,7 +1415,6 @@ async def resume_batch(batch_id):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
-
 
 async def stop_batch(batch_id):
     """Stop ElRajhi batch processing"""
