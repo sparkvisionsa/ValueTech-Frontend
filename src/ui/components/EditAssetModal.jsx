@@ -6,18 +6,16 @@ export default function EditAssetModal({
     onClose,
     asset,
     reportId,
+    onAssetUpdate
 }) {
     const [form, setForm] = useState({});
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    // preload asset values when opened
     useEffect(() => {
         if (open && asset) {
             setForm({
                 asset_name: asset.asset_name || "",
-                model: asset.model || "",
-                year_made: asset.year_made || "",
                 final_value: asset.final_value || "",
                 pg_no: asset.pg_no || "",
                 inspection_date: asset.inspection_date || "",
@@ -47,13 +45,15 @@ export default function EditAssetModal({
         try {
             await window.electronAPI.apiRequest(
                 "PATCH",
-                `/api/reports/${reportId}/assets/${asset.internal_uid}`,
+                `/api/report/${reportId}/assets/${asset.internal_uid}`,
                 form
             );
 
+            if (onAssetUpdate) {
+                onAssetUpdate();
+            }
 
             onClose();
-
         } catch (err) {
             console.error("Save failed:", err);
             setError("Failed to update asset. Please try again.");
@@ -75,7 +75,6 @@ export default function EditAssetModal({
                 </div>
 
                 <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-
                     {error && (
                         <div className="rounded-md bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
                             {error}
@@ -93,28 +92,6 @@ export default function EditAssetModal({
                         />
                     </div>
 
-                    {/* Serial */}
-                    <div>
-                        <label className="text-sm font-medium">Serial No</label>
-                        <input
-                            name="serial_no"
-                            value={form.serial_no}
-                            onChange={handleChange}
-                            className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                    </div>
-
-                    {/* Model */}
-                    <div>
-                        <label className="text-sm font-medium">Model</label>
-                        <input
-                            name="model"
-                            value={form.model}
-                            onChange={handleChange}
-                            className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                    </div>
-
                     {/* Final value */}
                     <div>
                         <label className="text-sm font-medium">Final Value (whole number)</label>
@@ -126,12 +103,24 @@ export default function EditAssetModal({
                         />
                     </div>
 
-                    {/* Year */}
+                    {/* Inspection Date */}
                     <div>
-                        <label className="text-sm font-medium">Year Made</label>
+                        <label className="text-sm font-medium">Inspection Date</label>
                         <input
-                            name="year_made"
-                            value={form.year_made}
+                            type="date"
+                            name="inspection_date"
+                            value={form.inspection_date}
+                            onChange={handleChange}
+                            className="mt-1 w-full rounded-lg border px-3 py-2"
+                        />
+                    </div>
+
+                    {/* Owner Name */}
+                    <div>
+                        <label className="text-sm font-medium">Owner Name</label>
+                        <input
+                            name="owner_name"
+                            value={form.owner_name}
                             onChange={handleChange}
                             className="mt-1 w-full rounded-lg border px-3 py-2"
                         />
@@ -159,7 +148,6 @@ export default function EditAssetModal({
                             />
                         </div>
                     </div>
-
                 </div>
 
                 <div className="border-t px-5 py-4 flex justify-end gap-3">

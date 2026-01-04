@@ -9,18 +9,16 @@ import {
     RefreshCcw,
     CheckCheck,
     Filter,
+    Clock,
     ChevronLeft,
     ChevronRight as ChevronRightIcon,
     Loader2,
     AlertTriangle,
     CheckCircle2,
-    Edit2,
-    Eye,
     X,
     MoreVertical,
     Send
 } from "lucide-react";
-import { getAllReports } from "../../api/report";
 import { useRam } from "../context/RAMContext";
 import { useSession } from "../context/SessionContext";
 import EditAssetModal from "./EditAssetModal";
@@ -250,6 +248,9 @@ const ReportsTable = () => {
                 } else if (statusFilter === "pending") {
                     return status.toLowerCase() !== "completed";
                 }
+                else if (statusFilter === "sent") {
+                    return status.toLowerCase() === "sent";
+                }
                 return true;
             });
         }
@@ -322,6 +323,15 @@ const ReportsTable = () => {
             return value;
         }
     };
+    const capitalizeStatus = (value = "") => {
+        return value
+            .toString()
+            .replace(/_/g, " ")                 // handle snake_case (IN_PROGRESS → IN PROGRESS)
+            .trim()
+            .toLowerCase()
+            .replace(/\b\w/g, char => char.toUpperCase()); // capitalize each word
+    };
+
 
     // Get asset data for a report
     const getAssetData = (report) => {
@@ -330,38 +340,63 @@ const ReportsTable = () => {
 
     // Calculate report status based on submitState and other fields
     const getReportStatus = (report) => {
-        // If report has status field, use it
-        if (report.status) return report.status;
+        // Priority 1
+        if (report.report_status) {
+            return capitalizeStatus(report.report_status);
+        }
 
-        // Otherwise determine from asset data
+        // Priority 2
+        if (report.status) {
+            return capitalizeStatus(report.status);
+        }
+
+        // Priority 3
         const assetData = getAssetData(report);
-        if (assetData.length === 0) return "Draft";
+        if (assetData.length === 0) return capitalizeStatus("draft");
 
         const allCompleted = assetData.every(asset => asset.submitState === 1);
         const anyCompleted = assetData.some(asset => asset.submitState === 1);
 
-        if (allCompleted) return "Completed";
-        if (anyCompleted) return "In Progress";
-        return "Pending";
+        if (allCompleted) return capitalizeStatus("completed");
+        if (anyCompleted) return capitalizeStatus("in progress");
+        return capitalizeStatus("pending");
     };
+
 
     // Get status color
     const getStatusColor = (status) => {
-        const statusLower = status.toLowerCase();
-        if (statusLower === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
-        if (statusLower.includes('progress')) return 'bg-blue-50 text-blue-700 border-blue-100';
-        if (statusLower === 'pending' || statusLower === 'draft') return 'bg-amber-50 text-amber-700 border-amber-100';
+        const statusUpper = status.toUpperCase();
+
+        // New statuses
+        if (statusUpper === 'CONFIRMED') return 'bg-green-50 text-green-700 border-green-200';
+        if (statusUpper === 'SENT') return 'bg-purple-50 text-purple-700 border-purple-200';
+
+        // Existing statuses
+        if (statusUpper === 'COMPLETED' || statusUpper === 'COMPLETE') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+        if (statusUpper.includes('PROGRESS')) return 'bg-blue-50 text-blue-700 border-blue-100';
+        if (statusUpper === 'PENDING' || statusUpper === 'DRAFT') return 'bg-amber-50 text-amber-700 border-amber-100';
+        if (statusUpper === 'INCOMPLETE') return 'bg-orange-50 text-orange-700 border-orange-100';
+
         return 'bg-gray-50 text-gray-700 border-gray-100';
     };
 
     // Get status icon
     const getStatusIcon = (status) => {
-        const statusLower = status.toLowerCase();
-        if (statusLower === 'completed') return <CheckCircle2 className="w-3 h-3" />;
-        if (statusLower.includes('progress')) return <Loader2 className="w-3 h-3" />;
-        if (statusLower === 'pending' || statusLower === 'draft') return <AlertTriangle className="w-3 h-3" />;
+        const statusUpper = status.toUpperCase();
+
+        // New statuses
+        if (statusUpper === 'CONFIRMED') return <CheckCircle2 className="w-3 h-3 fill-current" />;
+        if (statusUpper === 'SENT') return <Send className="w-3 h-3" />;
+
+        // Existing statuses
+        if (statusUpper === 'COMPLETED' || statusUpper === 'COMPLETE') return <CheckCircle2 className="w-3 h-3" />;
+        if (statusUpper.includes('PROGRESS')) return <Loader2 className="w-3 h-3" />;
+        if (statusUpper === 'PENDING' || statusUpper === 'DRAFT') return <AlertTriangle className="w-3 h-3" />;
+        if (statusUpper === 'INCOMPLETE') return <Clock className="w-3 h-3" />;
+
         return <FileText className="w-3 h-3" />;
     };
+
 
     // Clear search
     const clearSearch = () => {
@@ -447,6 +482,12 @@ const ReportsTable = () => {
                                             className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${statusFilter === "pending" ? "bg-white shadow-sm text-amber-600" : "text-gray-600 hover:text-gray-900"}`}
                                         >
                                             Pending
+                                        </button>
+                                        <button
+                                            onClick={() => setStatusFilter("sent")}
+                                            className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${statusFilter === "sent" ? "bg-white shadow-sm text-amber-600" : "text-gray-600 hover:text-gray-900"}`}
+                                        >
+                                            Sent
                                         </button>
                                     </div>
                                 </div>
@@ -702,15 +743,7 @@ const ReportsTable = () => {
                                                                                     >
                                                                                         Pending
                                                                                     </button>
-                                                                                    <button
-                                                                                        onClick={() => setAssetSubmitFilter("deleted")}
-                                                                                        className={`px-3 py-1 text-xs rounded-md ${assetSubmitFilter === "deleted"
-                                                                                            ? "bg-white shadow text-red-700"
-                                                                                            : "text-gray-600 hover:text-gray-900"
-                                                                                            }`}
-                                                                                    >
-                                                                                        Deleted
-                                                                                    </button>
+
                                                                                 </div>
                                                                             </div>
 
@@ -962,6 +995,7 @@ const ReportsTable = () => {
                 onClose={() => setEditModalOpen(false)}
                 asset={selectedAsset}
                 reportId={selectedReportId}
+                onAssetUpdate={fetchAllReports}
             />
 
         </div>
