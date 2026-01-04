@@ -13,6 +13,58 @@ MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
 db = client["test"]
 
+# Status detection markers (similar to ElRajhi checker)
+SENT_BUTTON_MARKER = 'id="reject"'
+CONFIRMED_BUTTON_TEXT = "شهادة التسجيل"
+
+async def detect_report_status(page):
+    """
+    Detect the overall report status by checking for specific markers.
+    Returns: dict with status info
+    """
+    try:
+        # Check for delete button (indicates COMPLETE)
+        delete_btn = await wait_for_element(page, "#delete_report", timeout=5)
+        
+        # Get page HTML to check for SENT/CONFIRMED markers
+        try:
+            html = await page.get_content()
+        except Exception:
+            html = ""
+        
+        html_lower = html.lower() if isinstance(html, str) else ""
+        
+        # Check for SENT marker (reject button)
+        has_sent_marker = SENT_BUTTON_MARKER in html_lower or 'name="reject"' in html_lower
+        
+        # Check for CONFIRMED marker (certificate button)
+        has_confirmed_marker = isinstance(html, str) and CONFIRMED_BUTTON_TEXT in html
+        
+        # Determine status priority: CONFIRMED > SENT > COMPLETE > INCOMPLETE
+        if has_confirmed_marker:
+            status = "CONFIRMED"
+        elif has_sent_marker:
+            status = "SENT"
+        elif delete_btn:
+            status = "COMPLETE"
+        else:
+            status = "INCOMPLETE"
+        
+        return {
+            "status": status,
+            "has_delete_button": bool(delete_btn),
+            "has_sent_marker": has_sent_marker,
+            "has_confirmed_marker": has_confirmed_marker
+        }
+    except Exception as e:
+        print(f"[STATUS DETECT] Error detecting status: {e}")
+        return {
+            "status": "INCOMPLETE",
+            "has_delete_button": False,
+            "has_sent_marker": False,
+            "has_confirmed_marker": False
+        }
+
 async def check_incomplete_macros(browser, report_id, browsers_num=3):
     try:
         # First, fetch report to map macro IDs
@@ -24,16 +76,35 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
         main_page = await browser.get(base_url)
         await asyncio.sleep(1)
 
-        # Check for delete button first
-        delete_btn = await wait_for_element(main_page, "#delete_report", timeout=5)
-        if delete_btn:
-            print("[INFO] Delete button exists, assuming all macros complete.")
+        # Enhanced status detection
+        status_info = await detect_report_status(main_page)
+        report_status = status_info["status"]
+        
+        print(f"[INFO] Report {report_id} overall status: {report_status}")
+        print(f"[INFO] Status markers - Delete: {status_info['has_delete_button']}, Sent: {status_info['has_sent_marker']}, Confirmed: {status_info['has_confirmed_marker']}")
+        
+        # Update report status in database
+        await db.reports.update_one(
+            {"report_id": report_id},
+            {"$set": {"report_status": report_status}}
+        )
+
+        # If report has delete button OR is SENT/CONFIRMED, mark all assets as complete
+        if status_info['has_delete_button'] or report_status in ["SENT", "CONFIRMED"]:
+            print(f"[INFO] Report is {report_status}, marking all macros as complete.")
             # Mark all assets as complete
             await db.reports.update_one(
                 {"report_id": report_id},
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
-            return {"status": "SUCCESS", "incomplete_ids": [], "macro_count": 0, "message": "All macros complete"}
+            return {
+                "status": "SUCCESS",
+                "incomplete_ids": [],
+                "macro_count": 0,
+                "message": f"All macros complete - Report status: {report_status}",
+                "report_status": report_status,
+                "status_markers": status_info
+            }
 
         # Get total number of pages from pagination
         pagination_links = await main_page.query_selector_all('ul.pagination li a')
@@ -260,7 +331,9 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
             "macro_count": len(incomplete_ids),
             "total_pages_processed": total_pages,
             "tabs_used": len(pages),
-            "total_macros_processed": len(all_processed_macros)
+            "total_macros_processed": len(all_processed_macros),
+            "report_status": report_status,
+            "status_markers": status_info
         }
 
     except Exception as e:
@@ -280,20 +353,38 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         if not report:
             return {"status": "FAILED", "error": f"Report {report_id} not found in reports"}
 
-        # Check for delete button first (same logic as full check)
+        # Enhanced status detection
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
         main_page = await browser.get(base_url)
         await asyncio.sleep(1)
 
-        delete_btn = await wait_for_element(main_page, "#delete_report", timeout=5)
-        if delete_btn:
-            print("[HALF CHECK] Delete button exists, assuming all macros complete.")
+        status_info = await detect_report_status(main_page)
+        report_status = status_info["status"]
+        
+        print(f"[HALF CHECK] Report {report_id} overall status: {report_status}")
+        
+        # Update report status in database
+        await db.reports.update_one(
+            {"report_id": report_id},
+            {"$set": {"report_status": report_status}}
+        )
+
+        # If report has delete button OR is SENT/CONFIRMED, mark all assets as complete
+        if status_info['has_delete_button'] or report_status in ["SENT", "CONFIRMED"]:
+            print(f"[HALF CHECK] Report is {report_status}, marking all macros as complete.")
             # Mark all assets as complete
             await db.reports.update_one(
                 {"report_id": report_id},
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
-            return {"status": "SUCCESS", "incomplete_ids": [], "macro_count": 0, "message": "All macros complete"}
+            return {
+                "status": "SUCCESS",
+                "incomplete_ids": [],
+                "macro_count": 0,
+                "message": f"All macros complete - Report status: {report_status}",
+                "report_status": report_status,
+                "status_markers": status_info
+            }
 
         # Collect incomplete macro IDs and their page numbers
         incomplete_macro_ids = set()
@@ -318,7 +409,7 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[HALF CHECK] Found {len(incomplete_macro_ids)} incomplete macros in DB: {sorted(list(incomplete_macro_ids))[:10]}...")
         print(f"[HALF CHECK] Found {len(incomplete_page_numbers)} unique pages with incomplete macros: {sorted(incomplete_page_numbers)}")
         
-        # If no incomplete macros in DB, return early with same format as full check
+        # If no incomplete macros in DB, return early
         if not incomplete_macro_ids:
             return {
                 "status": "SUCCESS", 
@@ -327,10 +418,12 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                 "total_pages_processed": 0,
                 "tabs_used": 1,
                 "total_macros_processed": 0,
-                "message": "No incomplete macros found in database"
+                "message": "No incomplete macros found in database",
+                "report_status": report_status,
+                "status_markers": status_info
             }
 
-        # Get total number of pages from pagination (same as full check)
+        # Get total number of pages from pagination
         pagination_links = await main_page.query_selector_all('ul.pagination li a')
         page_numbers = []
 
@@ -342,7 +435,7 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         total_pages = max(page_numbers) if page_numbers else 1
         print(f"[HALF CHECK] Total pages available: {total_pages}, will process {len(incomplete_page_numbers)} pages with incomplete macros")
 
-        # Only process pages that contain incomplete macros, but ensure they exist in pagination
+        # Only process pages that contain incomplete macros
         target_pages = [p for p in sorted(incomplete_page_numbers) if p <= total_pages]
         
         # If no valid target pages, return
@@ -355,16 +448,18 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                 "total_pages_processed": 0,
                 "tabs_used": 1,
                 "total_macros_processed": 0,
-                "message": "No valid pages with incomplete macros found"
+                "message": "No valid pages with incomplete macros found",
+                "report_status": report_status,
+                "status_markers": status_info
             }
 
         print(f"[HALF CHECK] Will process {len(target_pages)} pages: {target_pages} with {browsers_num} tabs")
 
-        # Create pages for parallel processing (same logic as full check)
+        # Create pages for parallel processing
         pages_needed = min(browsers_num, len(target_pages))
         pages = [main_page] + [await browser.get("about:blank", new_tab=True) for _ in range(pages_needed - 1)]
 
-        # Use the same balanced distribution function as full check
+        # Use balanced distribution
         def get_balanced_page_distribution(total_pages, num_tabs):
             if total_pages <= 0 or num_tabs <= 0:
                 return [[] for _ in range(num_tabs)]
@@ -387,10 +482,9 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
             
             return distribution
 
-        # Distribute target pages among tabs using the same balanced algorithm
         page_chunks = get_balanced_page_distribution(len(target_pages), len(pages))
         
-        # Map the distribution indices back to actual page numbers
+        # Map distribution indices to actual page numbers
         actual_page_chunks = []
         current_index = 0
         for chunk in page_chunks:
@@ -407,15 +501,12 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         incomplete_ids = []
         incomplete_ids_lock = asyncio.Lock()
         
-        # Track all processed macros
         all_processed_macros = set()
         processed_macros_lock = asyncio.Lock()
 
-        # Process ID for pause/resume control
         process_id = f"half-check-{report_id}"
         process_manager = get_process_manager()
         
-        # Create process state
         process_state = create_process(
             process_id=process_id,
             process_type="half-check",
@@ -437,33 +528,27 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                 print(f"[HALF-TAB-{tab_id}] Processing page {page_num}")
                 
                 try:
-                    # Check pause/stop state
                     action = await check_and_wait(process_id)
                     if action == "stop":
                         print(f"[HALF-TAB-{tab_id}] Process stopped by user request")
                         break
                     
-                    # Navigate to the specific page
                     page_url = f"{base_url}?page={page_num}" if page_num > 1 else base_url
                     await page.get(page_url)
                     await asyncio.sleep(2)
                     
-                    # Update progress
                     await update_progress(
                         process_id,
                         completed=page_num_idx + 1,
                         emit=True
                     )
                     
-                    # Inner loop for table sub-pages (internal pagination) - same as full check
                     while True:
-                        # Check pause/stop state
                         action = await check_and_wait(process_id)
                         if action == "stop":
                             print(f"[HALF-TAB-{tab_id}] Process stopped by user request")
                             break
                         
-                        # Wait for table to load
                         table_ready = await wait_for_table_rows(page, timeout=100)
                         if not table_ready:
                             print(f"[HALF-TAB-{tab_id}] Timeout waiting for table rows on page {page_num}")
@@ -478,7 +563,6 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                         
                         for i in range(len(macro_cells)):
                             try:
-                                # Check pause/stop state
                                 action = await check_and_wait(process_id)
                                 if action == "stop":
                                     print(f"[HALF-TAB-{tab_id}] Process stopped by user request")
@@ -498,7 +582,7 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                     
                                 macro_id = int(macro_id_text.strip())
                                 
-                                # Only process macros that are marked as incomplete in DB
+                                # Only process incomplete macros
                                 if macro_id not in incomplete_macro_ids:
                                     local_skipped += 1
                                     continue
@@ -506,19 +590,17 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                 local_processed.add(macro_id)
                                 submit_state = 0 if "غير مكتملة" in status_text else 1
 
-                                # Update database - same logic as full check
                                 update_result = await db.reports.update_one(
                                     {"report_id": report_id, "asset_data.id": str(macro_id)},
                                     {"$set": {"asset_data.$.submitState": submit_state}}
                                 )
 
-                                # If no document was matched, try to update using array index
                                 if update_result.matched_count == 0:
                                     report_after = await db.reports.find_one({"report_id": report_id})
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
-                                            if asset.get("id") == str(macro_id):  # DB stores as string
+                                            if asset.get("id") == str(macro_id):
                                                 await db.reports.update_one(
                                                     {"report_id": report_id},
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
@@ -546,7 +628,6 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                         
                         print(f"[HALF-TAB-{tab_id}] Page {page_num}: Processed {processed_count} target macros, {incomplete_count} still incomplete, skipped {local_skipped} non-target macros")
                     
-                        # Check for next button - same as full check
                         next_btn = await wait_for_element(page, "#m-table_next", timeout=5)
                         if next_btn:
                             attributes = next_btn.attrs
@@ -557,7 +638,6 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                 await asyncio.sleep(2)
                                 continue
                         
-                        # No more sub-pages, break inner loop
                         print(f"[HALF-TAB-{tab_id}] No more sub-pages on page {page_num}")
                         break
                         
@@ -573,24 +653,19 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                 
             print(f"[HALF-TAB-{tab_id}] Completed processing, found {len(local_incomplete)} still incomplete, processed {len(local_processed)} target macros, skipped {local_skipped} non-target macros")
 
-        # Process pages in parallel - same as full check
         tasks = []
         for i, (page, chunk) in enumerate(zip(pages, actual_page_chunks)):
-            if chunk:  # Only create tasks for tabs that have pages to process
+            if chunk:
                 tasks.append(process_pages_chunk(page, chunk, i))
 
-        # Process pages in parallel
         await asyncio.gather(*tasks)
 
-        # Close extra tabs - same as full check
         for p in pages[1:]:
             await p.close()
 
-        # Check if we found all incomplete macros
         missing_macros = incomplete_macro_ids - all_processed_macros
         if missing_macros:
             print(f"[HALF CHECK] WARNING: {len(missing_macros)} incomplete macros not found on their expected pages: {sorted(list(missing_macros))}")
-            # Mark missing macros as complete since we couldn't find them
             for macro_id in missing_macros:
                 await db.reports.update_one(
                     {"report_id": report_id, "asset_data.id": str(macro_id)},
@@ -598,10 +673,8 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                 )
                 print(f"[HALF CHECK] Marked missing macro {macro_id} as complete")
 
-        # Clear process state
         clear_process(process_id)
 
-        # Return same format as full check
         return {
             "status": "SUCCESS",
             "incomplete_ids": incomplete_ids,
@@ -609,13 +682,14 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
             "total_pages_processed": len(target_pages),
             "tabs_used": len(pages),
             "total_macros_processed": len(all_processed_macros),
-            "missing_macros_found": len(missing_macros) if missing_macros else 0
+            "missing_macros_found": len(missing_macros) if missing_macros else 0,
+            "report_status": report_status,
+            "status_markers": status_info
         }
 
     except Exception as e:
         tb = traceback.format_exc()
         print("[HALF CHECK] Error:", tb)
-        # Clear process state on error
         if 'process_id' in locals():
             clear_process(process_id)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
@@ -626,7 +700,6 @@ async def RunCheckMacroStatus(browser, report_id, tabs_num=3):
     return result
 
 async def RunHalfCheckMacroStatus(browser, report_id, tabs_num=3):
-    """Optimized half check - only processes pages with incomplete macros"""
     result = await half_check_incomplete_macros(browser, report_id, tabs_num)
     return result
 
