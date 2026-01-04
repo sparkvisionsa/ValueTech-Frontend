@@ -17,7 +17,7 @@ const DeleteReport = () => {
     const [reportId, setReportId] = useState("");
     
 
-// ✅ Add this state near your other useState hooks
+
 const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
     // Error state
@@ -936,14 +936,14 @@ const handleDeleteReport = async () => {
 
                             {/* Action Buttons - Only show if no operation is running */}
                             {!deleteReportStatus && !deleteAssetsStatus && (
-                                <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                                    <button
+                                <div className=" hidden flex-col sm:flex-row gap-3 pt-4">
+                                    {/* <button
                                         onClick={handleDeleteReportAssets}
                                         className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
                                     >
                                         <Package className="w-4 h-4" />
                                         Delete Only Assets
-                                    </button>
+                                    </button> */}
                                     
                                 </div>
                             )}

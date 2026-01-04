@@ -95,7 +95,8 @@ const valueSystemGroups = {
         id: 'deleteReport',
         title: 'Delete Report',
         tabs: [
-            { id: 'delete-report', label: 'Delete Report', description: 'Delete reports and related assets safely.' }
+            { id: 'delete-report', label: 'Delete Report', description: 'Delete reports and related assets safely.' },
+             { id: 'delete-assets', label: 'Delete Assets', description: 'Delete assets safely.' }
         ]
     },
     adminConsole: {
