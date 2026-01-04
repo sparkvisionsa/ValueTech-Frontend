@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { useRam } from "../context/RAMContext";
 import usePersistentState from "../hooks/usePersistentState";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import {
@@ -222,6 +223,8 @@ const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB in bytes
 const SubmitReportsQuickly = ({ onViewChange }) => {
     const { token } = useSession();
     const { taqeemStatus } = useNavStatus();
+    const { ramInfo } = useRam();
+    const recommendedTabs = ramInfo?.recommendedTabs || 3;
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
@@ -629,11 +632,11 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     const resolveTabsForAssets = useCallback(
         (assetCount) => {
-            const fallbackTabs = 3; // Default tabs
+            const fallbackTabs = Math.max(1, Number(recommendedTabs) || 3);
             if (!assetCount || assetCount < 1) return fallbackTabs;
             return Math.max(1, Math.min(fallbackTabs, assetCount));
         },
-        []
+        [recommendedTabs]
     );
 
     const submitToTaqeem = useCallback(
@@ -645,10 +648,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 return;
             }
 
-            // Find the report to get asset count
-            const report = reports.find(r => getReportRecordId(r) === recordId);
-            const assetCount = report?.asset_data?.length || 0;
-            const resolvedTabs = tabsNum || resolveTabsForAssets(assetCount);
+            // Use global recommendedTabs if tabsNum not provided, otherwise use the provided value
+            const resolvedTabs = tabsNum || Math.max(1, Number(recommendedTabs) || 3);
 
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
@@ -681,7 +682,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
             }
         },
-        [isTaqeemLoggedIn, loadReports, onViewChange, token, reports, resolveTabsForAssets]
+        [isTaqeemLoggedIn, loadReports, onViewChange, token, recommendedTabs]
     );
 
     const handleDeleteReport = async (recordId) => {
@@ -759,27 +760,28 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             return;
         }
 
-        if (bulkAction === "upload-submit") {
-            for (const id of selectedIds) {
+        if (bulkAction === "upload-submit" || bulkAction === "retry-submit") {
+            // Process reports sequentially with 5-second delay between browsers
+            for (let i = 0; i < selectedIds.length; i++) {
+                const id = selectedIds[i];
                 const report = reports.find(r => getReportRecordId(r) === id);
                 const assetCount = report?.asset_data?.length || 0;
-                const tabsNum = resolveTabsForAssets(assetCount);
+                
+                // Use global recommendedTabs for each browser
+                const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
+                
+                // Add delay before opening each browser (except the first one)
+                if (i > 0) {
+                    setSuccess(`Opening browser ${i + 1} of ${selectedIds.length} in 5 seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+                }
+                
+                setSuccess(`Submitting report ${i + 1} of ${selectedIds.length}...`);
                 await submitToTaqeem(id, tabsNum);
             }
             setSelectedReportIds([]);
             setBulkAction("");
-            return;
-        }
-
-        if (bulkAction === "retry-submit") {
-            for (const id of selectedIds) {
-                const report = reports.find(r => getReportRecordId(r) === id);
-                const assetCount = report?.asset_data?.length || 0;
-                const tabsNum = resolveTabsForAssets(assetCount);
-                await submitToTaqeem(id, tabsNum);
-            }
-            setSelectedReportIds([]);
-            setBulkAction("");
+            setSuccess(`All ${selectedIds.length} report(s) submitted successfully.`);
             return;
         }
     };
@@ -789,8 +791,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (!recordId) return;
 
         if (action === "retry") {
-            const assetCount = report?.asset_data?.length || 0;
-            const tabsNum = resolveTabsForAssets(assetCount);
+            // Use global recommendedTabs for retry
+            const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
             submitToTaqeem(recordId, tabsNum);
         } else if (action === "delete") {
             handleDeleteReport(recordId);
