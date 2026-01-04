@@ -15,6 +15,10 @@ import {
 const DeleteReport = () => {
     // Report ID state
     const [reportId, setReportId] = useState("");
+    
+
+// ✅ Add this state near your other useState hooks
+const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
     // Error state
     const [error, setError] = useState("");
@@ -34,63 +38,104 @@ const DeleteReport = () => {
     const [operationResult, setOperationResult] = useState(null);
 
 
-    // Handle report validation in Taqeem
-    const handleCheckReportInTaqeem = async () => {
-        if (!reportId.trim()) {
-            setError("Please enter a report ID");
-            return;
-        }
 
-        setIsCheckingReport(true);
-        setError("");
-        setReportExists(null);
-        setStatusChangeResult(null);
-        setOperationResult(null);
 
-        try {
-            const result = await window.electronAPI.validateReport(reportId);
-            console.log("Full API response:", result);
+const parseReportIds = (input) => {
+  return [...new Set(
+    (input || "")
+      .split(" ")
+      .map(s => s.trim())
+      .filter(Boolean)
+  )];
+};
 
-            // Check the status from the Python backend response
-            if (result?.status === 'NOT_FOUND') {
-                setReportExists(false);
-                setError("Report with this ID does not exist. Please check the ID and try again.");
-            } else if (result?.status === 'SUCCESS') {
-                setReportExists(true);
-                setError("");
-            } else if (result?.status === 'MACROS_EXIST') {
-                setReportExists(false);
-                setError(`Report exists with ${result?.assetsExact || result?.microsCount || 'unknown'} macros. Please use a different report ID.`);
-            } else if (result?.status === 'FAILED') {
-                setReportExists(false);
-                setError(result?.error || "Failed to check report ID");
-            } else {
-                // Handle unexpected status values
-                setReportExists(false);
-                setError("Unexpected response from server. Please try again.");
-            }
-        } catch (err) {
-            console.error("Error checking report:", err);
+const runWithConcurrency = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let idx = 0;
 
-            // Handle different error scenarios
-            if (err?.response?.status === 400) {
-                setReportExists(false);
-                setError("Invalid request. Please check the report ID and try again.");
-            } else if (err?.response?.status === 401) {
-                setReportExists(false);
-                setError("Please log in to check report ID.");
-            } else if (err?.response?.status === 504) {
-                setReportExists(false);
-                setError("Request timeout. Please try again.");
-            } else {
-                setReportExists(false);
-                setError(err.message || "Error checking report ID. Please try again.");
-            }
-        } finally {
-            setIsCheckingReport(false);
-        }
-    };
+  const runners = Array.from({ length: Math.max(1, limit) }, async () => {
+    while (true) {
+      const current = idx++;
+      if (current >= items.length) break;
 
+      try {
+        results[current] = await worker(items[current], current);
+      } catch (e) {
+        results[current] = { ok: false, error: String(e) };
+      }
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+};
+
+
+
+  // ✅ Replace your handleCheckReportInTaqeem with this version
+const handleCheckReportInTaqeem = async () => {
+  const ids = parseReportIds(reportId); // reportId is the input string: "1215 5888 6965"
+  if (!ids.length) {
+    setError("At least one Report ID is required");
+    return;
+  }
+
+  setIsCheckingReport(true);
+  setError("");
+  setReportExists(null);
+  setStatusChangeResult(null);
+  setOperationResult(null);
+  setReportSummaryRow([]); // Reset to array
+
+  const concurrency = 3; // Adjust for multiple reports
+
+  try {
+    const results = await runWithConcurrency(ids, concurrency, async (id) => {
+      try {
+        const result = await window.electronAPI.validateReport(id);
+        console.log(`Full API response for ${id}:`, result);
+
+        // Create table row
+        const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+        return {
+          reportId: result?.reportId || id,
+          totalAssets,
+          reportStatus: result?.reportStatus ?? "Unknown",
+          presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
+          exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED"
+        };
+      } catch (err) {
+        console.error(`Error checking report ${id}:`, err);
+        return {
+          reportId: id,
+          totalAssets: 0,
+          reportStatus: "Error",
+          presentOrNot: "Error",
+          exists: false
+        };
+      }
+    });
+
+    setReportSummaryRow(results);
+
+    // Determine overall existence (optional)
+    const allExist = results.every(r => r.exists);
+    setReportExists(allExist);
+
+    if (!allExist) {
+      setError("Some reports do not exist or failed to check.");
+    } else {
+      setError("");
+    }
+  } catch (err) {
+    console.error("Error checking reports:", err);
+    setReportExists(false);
+    setError(err.message || "Error checking reports. Please try again.");
+  } finally {
+    setIsCheckingReport(false);
+  }
+};
     // Handle report deletion - fire and forget
     // const handleDeleteReport = async () => {
     //     if (!reportId.trim()) {
@@ -127,35 +172,7 @@ const DeleteReport = () => {
 
 
 
-const parseReportIds = (input) => {
-  return [...new Set(
-    (input || "")
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean)
-  )];
-};
 
-const runWithConcurrency = async (items, limit, worker) => {
-  const results = new Array(items.length);
-  let idx = 0;
-
-  const runners = Array.from({ length: Math.max(1, limit) }, async () => {
-    while (true) {
-      const current = idx++;
-      if (current >= items.length) break;
-
-      try {
-        results[current] = await worker(items[current], current);
-      } catch (e) {
-        results[current] = { ok: false, error: String(e) };
-      }
-    }
-  });
-
-  await Promise.all(runners);
-  return results;
-};
 
 const handleDeleteReport = async () => {
   const ids = parseReportIds(reportId); // reportId is the input string: "1215, 5888, ,6965"
@@ -699,34 +716,23 @@ const handleDeleteReport = async () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 py-8">
-            <div className="max-w-2xl mx-auto px-4">
-                {/* Header */}
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-800 mb-2">🗑️ Delete Report</h1>
-                    <p className="text-gray-600">Permanently delete a report and all its associated data</p>
-                </div>
+        <div className="max-h-screen bg-gradient-to-br from-red-50 to-orange-100 py-8">
+            <div className="max-w-full mx-auto px-4">
+           
 
                 {/* Main Content Area */}
                 <div className="bg-white rounded-2xl shadow-lg p-6">
                     {/* Main Form */}
                     <div className="space-y-6">
-                        <div className="text-center mb-6">
-                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <Trash2 className="w-6 h-6 text-red-600" />
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-800 mb-2">Delete Report</h2>
-                            <p className="text-gray-600">Enter the report ID to delete it permanently</p>
-                        </div>
-
+                       
                         <div className="space-y-6">
                             {/* Report ID Input */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Report ID *
+                                    Report IDs *
                                 </label>
                                 <div className="flex gap-3 mb-3">
-                                    <input
+                                    <textarea
                                         type="text"
                                         value={reportId}
                                         onChange={(e) => {
@@ -739,44 +745,107 @@ const handleDeleteReport = async () => {
                                             setDeleteReportStatus(null);
                                             setDeleteAssetsStatus(null);
                                             setOperationResult(null);
+                                            setReportSummaryRow([]);
                                         }}
-                                        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
-                                        placeholder="Enter report ID to delete"
+                                        className="flex-1 w-56 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                        placeholder="Enter Report IDs (space separated)"
                                     />
-                                    <button
-                                        onClick={handleCheckReportInTaqeem}
-                                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-2 transition-colors whitespace-nowrap"
+                                    
+
+                                        <button
+                                        onClick={handleDeleteReport}
+                                        className=" px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors mt-2 mb-2"
                                     >
-                                        <Search className="w-4 h-4" />
+                                        <Trash2 className="w-3 h-3" />
+                                        Delete Report
+                                    </button>
+
+                                     <button
+                                    onClick={handleChangeReportStatus}
+                                    className=" px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors mt-2 mb-2"
+                                >
+                                    <PlayCircle className="w-3 h-3" />
+                                    Change Status
+                                </button>
+
+                                   <button
+                                        onClick={handleCheckReportInTaqeem}
+                                        className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center gap-2 transition-colors whitespace-nowrap mt-2 mb-2"
+                                    >
+                                        <Search className="w-3 h-3" />
                                         Check Report
                                     </button>
+                                   
+
+                                    
+
+
+                                 
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Enter the report ID you want to permanently delete
+                                    Enter the report IDs you wish to check. Separate multiple IDs with spaces.
                                 </p>
 
                                 {/* Report Validation Status */}
-                                {reportExists === true && (
-                                    <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle className="w-4 h-4 text-green-500" />
-                                            <span className="text-green-700 text-sm font-medium">
-                                                Report verified successfully
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
+                              
 
-                                {reportExists === false && (
-                                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
-                                        <div className="flex items-center gap-2">
-                                            <FileText className="w-4 h-4 text-red-500" />
-                                            <span className="text-red-700 text-sm">
-                                                Report not found or invalid
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
+                              {/* ✅ Replace your current “Report Validation Status” blocks with this table UI */}
+
+{reportSummaryRow.length > 0 && (
+  <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">
+      Report Summary
+    </div>
+
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="bg-white border-b">
+          <tr>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Report Status</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Present / Not</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {reportSummaryRow.map((row, index) => (
+            <tr key={index} className="border-b">
+              <td className="px-4 py-2 text-gray-800">{row.reportId}</td>
+              <td className="px-4 py-2 text-gray-800">{row.totalAssets}</td>
+              <td className="px-4 py-2 text-gray-800">{row.reportStatus}</td>
+              <td className="px-4 py-2">
+                <span
+                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    row.presentOrNot === "Present"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {row.presentOrNot}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Optional: small status note below the table */}
+    <div
+      className={`px-4 py-2 text-xs ${
+        reportExists === true ? "text-green-700" : "text-red-700"
+      }`}
+    >
+      {reportExists === true
+        ? "All reports verified successfully."
+        : reportExists === false
+        ? "Some reports not found or invalid."
+        : ""}
+    </div>
+  </div>
+)}
+
                             </div>
 
                             {/* Operation Status Section */}
@@ -784,21 +853,21 @@ const handleDeleteReport = async () => {
 
                             {/* Status Change Section - ALWAYS VISIBLE */}
                             <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                {/* <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                                     <PlayCircle className="w-5 h-5 text-blue-500" />
                                     Change Report Status
                                 </h3>
                                 <p className="text-sm text-gray-600 mb-3">
                                     Change the report status before deletion if needed.
-                                </p>
+                                </p> */}
 
-                                <button
+                                {/* <button
                                     onClick={handleChangeReportStatus}
                                     className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
                                 >
                                     <PlayCircle className="w-4 h-4" />
                                     Change Report Status
-                                </button>
+                                </button> */}
 
                                 {/* Status Change Result */}
                                 {renderStatusChangeResult()}
@@ -875,13 +944,7 @@ const handleDeleteReport = async () => {
                                         <Package className="w-4 h-4" />
                                         Delete Only Assets
                                     </button>
-                                    <button
-                                        onClick={handleDeleteReport}
-                                        className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        Delete Report
-                                    </button>
+                                    
                                 </div>
                             )}
                         </div>

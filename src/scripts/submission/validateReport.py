@@ -1,7 +1,109 @@
 import asyncio, sys, traceback, json
+import re
+from html import unescape
 
 from scripts.core.browser import check_browser_status, new_window
 from scripts.core.utils import wait_for_table_rows
+
+
+
+
+async def wait_for_report_info_html(page, timeout_seconds=10):
+    """
+    Repeatedly fetch page HTML until we see key report info text (e.g. 'حالة التقرير').
+    This avoids DOM/iframe issues and handles late-loaded content.
+    """
+    steps = int(timeout_seconds / 0.5)
+    last_html = ""
+    for _ in range(max(1, steps)):
+        try:
+            last_html = await page.get_content()
+        except Exception:
+            pass
+
+        if last_html and ("حالة التقرير" in last_html or "معلومات التقرير" in last_html):
+            return last_html
+
+        await asyncio.sleep(0.5)
+
+    return last_html
+
+
+def _clean_text(s: str) -> str:
+    s = unescape(s or "")
+    s = re.sub(r"<br\s*/?>", " ", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", " ", s)          # strip tags
+    s = re.sub(r"\s+", " ", s).strip()      # normalize whitespace
+    return s
+
+
+def extract_report_info_from_html(html: str) -> dict:
+    """
+    Extract key/value pairs from the 'accordion-body pt-0 bg-white' block.
+    Returns:
+      {
+        "info": {label: value, ...},
+        "reportStatusLabel": "...",
+        "reportStatus": "..."
+      }
+    """
+    if not html:
+        return {"info": {}, "reportStatusLabel": None, "reportStatus": None}
+
+    # isolate accordion-body block (more flexible regex)
+    m = re.search(
+        r'(<div[^>]*class="[^"]*accordion-body[^"]*"[^>]*>.*?</div>)',
+        html,
+        flags=re.S | re.I
+    )
+    block = m.group(1) if m else html  # fallback to full html if not found
+
+    info = {}
+
+    # extract rows: <span>label</span> then <b>value</b>
+    for span_txt, b_txt in re.findall(
+        r"<span[^>]*>(.*?)</span>\s*<b[^>]*>(.*?)</b>",
+        block,
+        flags=re.S | re.I
+    ):
+        label = _clean_text(span_txt)
+        value = _clean_text(b_txt)
+        if label:
+            info[label] = value or None
+
+    # extract link rows: <span>label</span> ... <a href="...">
+    for span_txt, href in re.findall(
+        r"<span[^>]*>(.*?)</span>.*?<a[^>]*href=[\"']([^\"']+)[\"']",
+        block,
+        flags=re.S | re.I
+    ):
+        label = _clean_text(span_txt)
+        if label and label not in info:
+            info[label] = href.strip()
+
+    # If no info extracted, try a broader search in the entire HTML
+    if not info:
+        # Look for any span followed by b or strong
+        for span_txt, b_txt in re.findall(
+            r"<span[^>]*>(.*?)</span>\s*(?:<b[^>]*>|<strong[^>]*>)(.*?)(?:</b>|</strong>)",
+            html,
+            flags=re.S | re.I
+        ):
+            label = _clean_text(span_txt)
+            value = _clean_text(b_txt)
+            if label:
+                info[label] = value or None
+
+    # report status
+    status_label = None
+    status_value = None
+    for k, v in info.items():
+        if "حالة التقرير" in k:
+            status_label = k
+            status_value = v
+            break
+
+    return {"info": info, "reportStatusLabel": status_label, "reportStatus": status_value}
 
 
 async def validate_report(cmd):
@@ -46,7 +148,16 @@ async def validate_report(cmd):
         page = await new_window(url)
         await asyncio.sleep(3)
 
-        html = await page.get_content()
+        html = await wait_for_report_info_html(page, timeout_seconds=10)
+
+        print(json.dumps({
+    "event": "html_contains_report_info",
+    "hasStatusText": ("حالة التقرير" in (html or "")),
+    "hasAccordionText": ("معلومات التقرير" in (html or "")),
+    "htmlLength": len(html or "")
+        }), file=sys.stderr)
+
+
 
         error_text_1 = "ليس لديك صلاحية للتواجد هنا !"
         error_text_2 = "هذه الصفحة غير موجودة!"
@@ -59,6 +170,19 @@ async def validate_report(cmd):
                 "exists": False,
                 "url": url
             }
+
+        # --- Extract full report info + report status from raw HTML (most reliable) ---
+        extracted = extract_report_info_from_html(html)
+        report_info = extracted.get("info") or {}
+        report_status_label = extracted.get("reportStatusLabel")
+        report_status = extracted.get("reportStatus")
+
+        print(json.dumps({
+            "event": "report_info_extracted",
+            "reportStatusLabel": report_status_label,
+            "reportStatus": report_status,
+            "keysCount": len(report_info)
+        }), file=sys.stderr)
 
         # Report exists – check macros table
         macros_table = await wait_for_table_rows(page, timeout=5)
@@ -74,35 +198,48 @@ async def validate_report(cmd):
             last_page_ids = []
 
             try:
-                last_page_num = await page.evaluate("""
+                # --- Always count current page first (covers single-page reports) ---
+                first_page_ids = await page.evaluate(r"""
                     (() => {
-                        const isDisabled = (li) => {
-                            if (!li) return true;
-                            if (li.classList.contains('disabled')) return true;
-                            if (li.getAttribute('aria-disabled') === 'true') return true;
-                            const a = li.querySelector('a,button');
-                            if (a && (a.getAttribute('aria-disabled') === 'true' || a.classList.contains('disabled'))) return true;
-                            return false;
-                        };
+                        const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
+                        const ids = [];
+                        for (const tr of rows) {
+                            const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
+                            if (!a) continue;
+                            const href = a.getAttribute('href') || '';
+                            const m = href.match(/\/macro\/(\d+)\//);
+                            if (m) ids.push(parseInt(m[1], 10));
+                            else {
+                                const txt = (a.textContent || '').trim();
+                                if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
+                            }
+                        }
+                        return ids;
+                    })()
+                """)
+                first_count = len(first_page_ids) if isinstance(first_page_ids, list) else 0
 
+                # --- Detect last page number; if no pagination => 1 page ---
+                last_page_num = await page.evaluate(r"""
+                    (() => {
                         const selectors = ['nav ul', '.dataTables_paginate ul', 'ul.pagination'];
                         let ul = null;
                         for (const sel of selectors) {
                             const el = document.querySelector(sel);
                             if (el && el.querySelectorAll('li').length > 0) { ul = el; break; }
                         }
-                        if (!ul) return null;
+
+                        // No pagination UI => single page
+                        if (!ul) return 1;
 
                         const lis = Array.from(ul.querySelectorAll('li'));
-                        const numericLis = lis.filter(li => {
-                            const txt = li.textContent.trim();
-                            return /^\\d+$/.test(txt) && !isDisabled(li);
-                        });
-                        if (numericLis.length === 0) return null;
+                        const numericLis = lis.filter(li => /^\d+$/.test(li.textContent.trim()));
+                        if (numericLis.length === 0) return 1;
 
                         const lastLi = numericLis[numericLis.length - 1];
-                        const pageNum = parseInt(lastLi.textContent.trim(), 10);
+                        const pageNum = parseInt(lastLi.textContent.trim(), 10) || 1;
 
+                        // Click last page (ok if it's already active)
                         const clickable = lastLi.querySelector('a,button') || lastLi;
                         try { clickable.click(); } catch (_) {}
 
@@ -110,15 +247,23 @@ async def validate_report(cmd):
                     })()
                 """)
 
-                if isinstance(last_page_num, (int, float)) and last_page_num >= 1:
-                    await asyncio.sleep(1)
+                last_page_num = int(last_page_num or 1)
 
+                # --- If single page, exact assets = number of rows on current page ---
+                if last_page_num <= 1:
+                    assets_exact = first_count
+                    total_micros = first_count
+                    last_page_ids = first_page_ids
+
+                else:
+                    # --- Multi-page: wait for last page rows then collect IDs on last page ---
+                    await asyncio.sleep(1)
                     try:
                         await wait_for_table_rows(page, timeout=3)
                     except Exception:
                         pass
 
-                    last_page_ids = await page.evaluate("""
+                    last_page_ids = await page.evaluate(r"""
                         (() => {
                             const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
                             const ids = [];
@@ -126,51 +271,29 @@ async def validate_report(cmd):
                                 const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
                                 if (!a) continue;
                                 const href = a.getAttribute('href') || '';
-                                const m = href.match(/\\/macro\\/(\\d+)\\//);
+                                const m = href.match(/\/macro\/(\d+)\//);
                                 if (m) ids.push(parseInt(m[1], 10));
                                 else {
                                     const txt = (a.textContent || '').trim();
-                                    if (/^\\d+$/.test(txt)) ids.append(parseInt(txt, 10));
+                                    if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
                                 }
                             }
                             return ids;
                         })()
                     """)
 
-                    try:
-                        next_state = await page.evaluate("""
-                            (() => {
-                                const next = document.querySelector('#m-table_next, a.paginate_button.next[aria-controls="m-table"]');
-                                if (!next) return { exists: false, disabled: null };
-                                const disabled = next.classList.contains('disabled') || next.getAttribute('aria-disabled') === 'true';
-                                if (!disabled) { try { next.click(); } catch(_) {} }
-                                return { exists: true, disabled };
-                            })()
-                        """)
-                        print(json.dumps({
-                            "event": "next_button_status",
-                            "state": next_state
-                        }), file=sys.stderr)
-                    except Exception:
-                        pass
-
                     count_on_last = len(last_page_ids) if isinstance(last_page_ids, list) else 0
 
-                    assets_exact = int((int(last_page_num) - 1) * 15 + count_on_last)
+                    # Keep your original assumption: 15 rows per page
+                    assets_exact = int((last_page_num - 1) * 15 + count_on_last)
                     total_micros = int(last_page_num) * 15
 
-                    print(json.dumps({
-                        "event": "assets_computed",
-                        "page": int(last_page_num),
-                        "countLastPage": count_on_last,
-                        "assetsExact": assets_exact
-                    }), file=sys.stderr)
-
-                else:
-                    print(json.dumps({
-                        "event": "last_page_not_found",
-                        "value": last_page_num
-                    }), file=sys.stderr)
+                print(json.dumps({
+                    "event": "assets_computed",
+                    "page": last_page_num,
+                    "countLastPage": len(last_page_ids) if isinstance(last_page_ids, list) else None,
+                    "assetsExact": assets_exact
+                }), file=sys.stderr)
 
             except Exception as e:
                 print(json.dumps({
@@ -181,7 +304,7 @@ async def validate_report(cmd):
             return {
                 "status": "MACROS_EXIST",
                 "message": (
-                    "Only works with empty reports — "
+                    "Report has macros — "
                     f"last page #{int(last_page_num) if last_page_num else 'unknown'}, "
                     f"ids on last page: {len(last_page_ids) if isinstance(last_page_ids, list) else 'unknown'}, "
                     f"exact assets: {assets_exact if assets_exact is not None else 'unknown'}"
@@ -189,6 +312,9 @@ async def validate_report(cmd):
                 "reportId": report_id,
                 "exists": True,
                 "url": url,
+                "reportStatus": report_status,
+                "reportStatusLabel": report_status_label,
+                "reportInfo": report_info,
                 "hasMacros": True,
                 "microsCount": total_micros,
                 "assetsExact": assets_exact,
@@ -202,6 +328,9 @@ async def validate_report(cmd):
 
         return {
             "status": "SUCCESS",
+            "reportStatus": report_status,
+            "reportStatusLabel": report_status_label,
+            "reportInfo": report_info,
             "message": "Report appears to exist and is accessible",
             "reportId": report_id,
             "exists": True,
@@ -230,11 +359,9 @@ async def validate_report(cmd):
             await page.close()
 
 
-
-
 async def check_report_existence(page, report_id=None):
     ERROR_TEXT_NOT_ALLOWED = "ليس لديك صلاحية للتواجد هنا !"
-    ERROR_TEXT_NOT_FOUND   = "هذه الصفحة غير موجودة!"
+    ERROR_TEXT_NOT_FOUND = "هذه الصفحة غير موجودة!"
 
     if report_id:
         url = f"https://qima.taqeem.sa/report/{report_id}"
