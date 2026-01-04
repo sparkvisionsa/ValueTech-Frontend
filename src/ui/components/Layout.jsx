@@ -552,76 +552,69 @@ const Layout = ({ children, currentView, onViewChange }) => {
         if (!breadcrumbs || breadcrumbs.length === 0) return null;
         return (
             <div className="mb-5">
-                <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/80 px-4 py-4 shadow-sm sm:px-5">
-                    <div className="pointer-events-none absolute -top-16 right-12 h-28 w-28 rounded-full bg-cyan-200/40 blur-3xl" />
-                    <div className="pointer-events-none absolute bottom-0 left-8 h-24 w-24 rounded-full bg-emerald-200/35 blur-3xl" />
-                    <div className="relative flex flex-col gap-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 text-compact">
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/50 to-white px-5 py-5 shadow-lg backdrop-blur-sm">
+                    {/* Decorative background blobs */}
+                    <div className="pointer-events-none absolute -top-20 right-8 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-300/30 to-teal-300/20 blur-3xl animate-pulse" />
+                    <div className="pointer-events-none absolute -bottom-16 left-6 h-36 w-36 rounded-full bg-gradient-to-br from-blue-300/25 to-cyan-300/15 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+                    <div className="pointer-events-none absolute top-1/2 right-1/4 h-24 w-24 rounded-full bg-gradient-to-br from-purple-200/20 to-pink-200/15 blur-2xl" />
+                    
+                    <div className="relative flex flex-col gap-3">
+                        {/* First Row: Breadcrumb Path */}
+                        <div className="flex flex-wrap items-center gap-1.5 px-1">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                                 {breadcrumbs.map((item, idx) => {
                                     const isLast = idx === breadcrumbs.length - 1;
                                     return (
                                         <React.Fragment key={item.key + idx}>
                                             <button
                                                 onClick={() => handleBreadcrumbClick(item)}
-                                                className={`px-1.5 py-0.5 text-[10px] font-semibold ${isLast
-                                                    ? 'text-slate-900'
-                                                    : 'text-slate-500 hover:text-slate-900'
-                                                    }`}
+                                                className={`inline-flex items-center px-1 py-0.5 font-medium transition-colors ${
+                                                    isLast
+                                                        ? 'text-slate-900'
+                                                        : 'text-slate-500 hover:text-slate-900'
+                                                }`}
                                             >
                                                 {item.label}
                                             </button>
                                             {idx < breadcrumbs.length - 1 && (
-                                                <span className="text-slate-300 text-[11px]">/</span>
+                                                <span className="text-slate-300 text-[11px] mx-0.5">/</span>
                                             )}
                                         </React.Fragment>
                                     );
                                 })}
                             </div>
-                            {showHeaderTabs && (
-                                <div className="flex flex-wrap items-center gap-1.5 justify-end">
-                                    {groupTabs.map((tab) => {
-                                        const isActive = currentView === tab.id;
-                                        const isBlocked = isFeatureBlocked(tab.id);
-                                        const reason = isBlocked ? blockReason(tab.id) : '';
-                                        return (
-                                            <button
-                                                key={tab.id}
-                                                onClick={() => !isBlocked && onViewChange(tab.id)}
-                                                disabled={isBlocked}
-                                                title={isBlocked && reason ? reason : undefined}
-                                                className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold ${isBlocked
-                                                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                    : isActive
-                                                        ? 'border-slate-900 bg-slate-900 text-white shadow-[0_6px_16px_rgba(15,23,42,0.15)]'
-                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-                                                    }`}
-                                            >
-                                                {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
                         </div>
-                        {showHero && (
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                    {heroKicker && (
-                                        <p className="text-[9px] uppercase tracking-[0.25em] text-slate-400">
-                                            {heroKicker}
-                                        </p>
-                                    )}
-                                    <h2 className="font-display text-[18px] font-semibold text-slate-900 leading-tight text-compact">
-                                        {heroTitle}
-                                    </h2>
-                                    {heroSubtitle && (
-                                        <p className="mt-1 text-[11px] text-slate-500 leading-snug">
-                                            {heroSubtitle}
-                                        </p>
-                                    )}
-                                </div>
-                                <HeroArt label={heroArtLabel} theme={heroTheme} Icon={HeroIcon} />
+                        
+                        {/* Second Row: Tabs - Reduced Size */}
+                        {showHeaderTabs && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                {groupTabs.map((tab) => {
+                                    const isActive = currentView === tab.id;
+                                    const isBlocked = isFeatureBlocked(tab.id);
+                                    const reason = isBlocked ? blockReason(tab.id) : '';
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => !isBlocked && onViewChange(tab.id)}
+                                            disabled={isBlocked}
+                                            title={isBlocked && reason ? reason : undefined}
+                                            className={`relative inline-flex items-center justify-center rounded-lg border-2 px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                                                isBlocked
+                                                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                                                    : isActive
+                                                        ? 'border-emerald-500 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-[0_4px_12px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_16px_rgba(16,185,129,0.4)] hover:from-emerald-600 hover:via-teal-600 hover:to-emerald-700'
+                                                        : 'border-slate-300 bg-white text-slate-700 shadow-sm hover:border-emerald-400 hover:bg-gradient-to-r hover:from-emerald-50 hover:via-teal-50 hover:to-emerald-50 hover:text-emerald-700 hover:shadow-md'
+                                            }`}
+                                        >
+                                            {isActive && (
+                                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-yellow-400 border-2 border-white shadow-md animate-pulse" />
+                                            )}
+                                            <span className="relative z-10">
+                                                {t(`navigation.tabs.${tab.id}.label`, { defaultValue: tab.label })}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

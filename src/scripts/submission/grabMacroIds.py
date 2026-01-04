@@ -22,13 +22,34 @@ async def update_report_with_macro_ids(report_id, macro_ids_with_pages, db_name=
     try:
         client = get_motor_client()
         db = client[db_name]
-        collection = db[collection_name]
         
-        # Find the existing report
+        # Try to find the report in the specified collection first
+        collection = db[collection_name]
         existing_report = await collection.find_one({'report_id': report_id})
         
+        # If not found, try other possible collections
         if not existing_report:
-            print(f"[MONGO_DB] ERROR: Report with ID {report_id} not found in database", file=sys.stderr)
+            possible_collections = [
+                'multiapproachreports',
+                'submitreportsquicklies',
+                'submitreportsquickly',
+                'reports',
+                'duplicatereports'
+            ]
+            
+            for coll_name in possible_collections:
+                if coll_name == collection_name:
+                    continue  # Already checked
+                test_collection = db[coll_name]
+                existing_report = await test_collection.find_one({'report_id': report_id})
+                if existing_report:
+                    collection = test_collection
+                    collection_name = coll_name
+                    print(f"[MONGO_DB] Found report {report_id} in collection: {coll_name}", file=sys.stderr)
+                    break
+        
+        if not existing_report:
+            print(f"[MONGO_DB] ERROR: Report with ID {report_id} not found in any collection", file=sys.stderr)
             return False
         
         print(f"[MONGO_DB] Found existing report {report_id}", file=sys.stderr)
@@ -210,13 +231,37 @@ async def get_macro_ids_from_page(page, base_url, page_num, tab_id, process_id=N
 async def update_report_pg_count(report_id, pg_count, db_name='test', collection_name='reports'):
     """
     Update the report document's pg_count field to the given number.
+    Checks multiple collections if the report is not found in the specified collection.
     Returns True on success, False on error.
     """
     client = None
     try:
         client = get_motor_client()
         db = client[db_name]
+        
+        # Try to find the report in the specified collection first
         collection = db[collection_name]
+        existing_report = await collection.find_one({'report_id': report_id})
+        
+        # If not found, try other possible collections
+        if not existing_report:
+            possible_collections = [
+                'multiapproachreports',
+                'submitreportsquicklies',
+                'submitreportsquickly',
+                'reports',
+                'duplicatereports'
+            ]
+            
+            for coll_name in possible_collections:
+                if coll_name == collection_name:
+                    continue  # Already checked
+                test_collection = db[coll_name]
+                existing_report = await test_collection.find_one({'report_id': report_id})
+                if existing_report:
+                    collection = test_collection
+                    print(f"[MONGO_DB] Found report {report_id} in collection: {coll_name} for pg_count update", file=sys.stderr)
+                    break
 
         result = await collection.update_one(
             {'report_id': report_id},

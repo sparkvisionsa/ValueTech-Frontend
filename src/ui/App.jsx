@@ -31,6 +31,7 @@ import Statics from './screens/Statics';
 import ElRajhiUploadReport from './screens/ElRajhiUploadReport';
 import DuplicateReport from './screens/DuplicateReport';
 import MultiExcelUpload from './screens/MultiExcelUpload';
+import SubmitReportsQuickly from './screens/SubmitReportsQuickly';
 import { RamProvider } from './context/RAMContext';
 import ValuationSystem from './screens/ValuationSystem';
 import WordCopy from './screens/WordCopy';
@@ -150,6 +151,8 @@ const AppContent = () => {
             case 'multi-excel-upload':
                 return <MultiExcelUpload onViewChange={handleViewChange} />;
 
+            case 'submit-reports-quickly':
+                return <SubmitReportsQuickly onViewChange={handleViewChange} />;
 
             case 'valuation-system':
                 return <ValuationSystem />;

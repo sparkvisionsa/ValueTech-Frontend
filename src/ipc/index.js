@@ -27,6 +27,7 @@ function registerIpcHandlers() {
         ipcMain.removeHandler('download-image');
         ipcMain.removeHandler('show-image-window');
         ipcMain.removeHandler('read-file');
+        ipcMain.removeHandler('read-template-file');
     } catch (err) {
         // Ignore errors if handlers don't exist
     }
@@ -140,6 +141,7 @@ function registerIpcHandlers() {
         safeHandle('select-folder', workerHandlers.selectFolder, 'workerHandlers.selectFolder');
         safeHandle('read-folder', workerHandlers.readFolder, 'workerHandlers.readFolder');
         safeHandle('read-file', workerHandlers.readFile, 'workerHandlers.readFile');
+        safeHandle('read-template-file', workerHandlers.readTemplateFile, 'workerHandlers.readTemplateFile');
         safeHandle('open-external', workerHandlers.openExternal, 'workerHandlers.openExternal');
         safeHandle('download-image', workerHandlers.downloadImage, 'workerHandlers.downloadImage');
         safeHandle('show-image-window', workerHandlers.showImageWindow, 'workerHandlers.showImageWindow');
@@ -188,6 +190,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('select-folder');
     ipcMain.removeAllListeners('read-folder');
     ipcMain.removeAllListeners('read-file');
+    ipcMain.removeAllListeners('read-template-file');
 
     ipcMain.removeAllListeners('api-request');
 

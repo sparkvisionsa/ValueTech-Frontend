@@ -173,6 +173,55 @@ const workerHandlers = {
         }
     },
 
+    async readTemplateFile(event, fileName = 'multi-excel-template.xlsx') {
+        try {
+            const fs = require('fs').promises;
+            const path = require('path');
+            
+            // Get the app path
+            const appPath = app.getAppPath();
+            
+            // Try different possible locations for the public folder
+            const possiblePaths = [
+                path.join(appPath, 'public', fileName), // Development (not packaged)
+                path.join(appPath, 'dist', 'public', fileName), // Production (packaged)
+                path.join(process.resourcesPath, 'app', 'public', fileName), // Packaged alternative
+                path.join(process.resourcesPath, 'app.asar', 'public', fileName), // Packaged asar
+                path.join(__dirname, '../../public', fileName), // Relative to handlers
+                path.join(__dirname, '../../../public', fileName), // Alternative relative
+            ];
+            
+            let filePath = null;
+            for (const testPath of possiblePaths) {
+                try {
+                    await fs.access(testPath);
+                    filePath = testPath;
+                    break;
+                } catch (e) {
+                    // File doesn't exist at this path, try next
+                    continue;
+                }
+            }
+            
+            if (!filePath) {
+                throw new Error(`Template file ${fileName} not found in any expected location`);
+            }
+            
+            const buffer = await fs.readFile(filePath);
+            return {
+                success: true,
+                data: buffer,
+                arrayBuffer: Array.from(buffer)
+            };
+        } catch (error) {
+            console.error('[MAIN] Read template file error:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    },
+
     async openExternal(event, url) {
         try {
             if (!url || typeof url !== 'string') {

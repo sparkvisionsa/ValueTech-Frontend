@@ -1514,8 +1514,43 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 message: "Downloading Excel template...",
             });
 
-            // File is in public folder, so it's accessible at root path
-            // Try different possible file extensions
+            // Try using Electron API first (for Electron apps)
+            if (window?.electronAPI?.readTemplateFile) {
+                try {
+                    const result = await window.electronAPI.readTemplateFile('multi-excel-template.xlsx');
+                    
+                    if (!result?.success) {
+                        throw new Error(result?.error || "Failed to read template file");
+                    }
+
+                    // Convert array buffer back to Uint8Array
+                    const buffer = new Uint8Array(result.arrayBuffer);
+                    const blob = new Blob([buffer], { 
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                    });
+
+                    // Create download link
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.setAttribute("download", "multi-excel-template.xlsx");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+
+                    setActionStatus({
+                        type: "success",
+                        message: "Excel template downloaded successfully.",
+                    });
+                    return;
+                } catch (electronError) {
+                    console.log("Electron API method failed, trying fetch:", electronError.message);
+                    // Fall through to try fetch method
+                }
+            }
+
+            // Fallback: Try using fetch (for web/development)
             const possibleExtensions = [".xlsx", ".xls", ""];
             let downloadSuccess = false;
             let lastError = null;
@@ -1523,7 +1558,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             for (const ext of possibleExtensions) {
                 try {
                     const fileName = `multi-excel-template${ext}`;
-                    // Files in public folder are served at root path
                     const templatePath = `/multi-excel-template${ext}`;
                     
                     const response = await fetch(templatePath);
@@ -1531,22 +1565,19 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     if (!response.ok) {
                         if (response.status === 404) {
                             lastError = new Error(`File ${fileName} not found`);
-                            continue; // Try next extension
+                            continue;
                         }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
-                    // Get blob data
                     const blob = await response.blob();
                     
-                    // Extract filename from Content-Disposition header or use default
                     const disposition = response.headers.get("content-disposition") || "";
                     const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
                     const filename = match && match[1]
                         ? match[1].replace(/['"]/g, '')
                         : `multi-excel-template${ext || ".xlsx"}`;
 
-                    // Create download link
                     const url = window.URL.createObjectURL(blob);
                     const link = document.createElement("a");
                     link.href = url;
@@ -1564,7 +1595,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     break;
                 } catch (err) {
                     lastError = err;
-                    // Continue to next extension if this one fails
                     console.log(`Failed to download multi-excel-template${ext}:`, err.message);
                 }
             }

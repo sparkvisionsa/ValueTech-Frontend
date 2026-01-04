@@ -1,6 +1,6 @@
 import asyncio, sys, json, traceback, platform
 
-from .browser import closeBrowser, get_browser, check_browser_status
+from .browser import closeBrowser, get_browser, check_browser_status, spawn_new_browser
 
 from scripts.loginFlow.login import startLogin, submitOtp
 from scripts.loginFlow.register import register_user
@@ -624,15 +624,25 @@ async def handle_command(cmd):
         print(json.dumps(result), flush=True)
 
     elif action == "create-report-by-id":
-        browser = await get_browser()
-
-        record_id = cmd.get("recordId") or cmd.get("record_id")
-        tabs_num = int(cmd.get("tabsNum", 3))
-
-        result = await create_new_report(browser, record_id, tabs_num)
-        result["commandId"] = cmd.get("commandId")
-
-        print(json.dumps(result), flush=True)
+        # Spawn a new browser for each report submission (like create-reports-by-batch)
+        new_browser = None
+        
+        try:
+            record_id = cmd.get("recordId") or cmd.get("record_id")
+            tabs_num = int(cmd.get("tabsNum", 3))
+            
+            # Get the existing browser first, then spawn a new one from it
+            browser = await get_browser()
+            new_browser = await spawn_new_browser(browser)
+            
+            result = await create_new_report(new_browser, record_id, tabs_num)
+            result["commandId"] = cmd.get("commandId")
+            
+            print(json.dumps(result), flush=True)
+        finally:
+            # Close the browser after completion
+            if new_browser:
+                await new_browser.stop()
         
     elif action == "close":
         await closeBrowser()

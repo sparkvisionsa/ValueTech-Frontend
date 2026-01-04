@@ -29,11 +29,15 @@ async def navigate_to_existing_report_assets(browser, report_id):
 
     return main_page
 
-async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3):
+async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3, collection_name=None):
     try:
         if not report_id:
             print("[MACRO_ID] No report_id provided", file=sys.stderr)
             return []
+        
+        # Use provided collection_name or default
+        if collection_name is None:
+            collection_name = 'multiapproachreports'
         
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
         main_page = browser.tabs[0]
@@ -52,7 +56,7 @@ async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3):
         
         total_pages = max(page_numbers) if page_numbers else 1
         print(f"[MACRO_ID] Found {total_pages} pages to scan", file=sys.stderr)
-        await update_report_pg_count(report_id, total_pages, collection_name='multiapproachreports')
+        await update_report_pg_count(report_id, total_pages, collection_name=collection_name)
         
         # Create pages for parallel processing
         pages = [main_page] + [
@@ -96,7 +100,11 @@ async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3):
         print(f"[MACRO_ID] ID collection complete. Found {len(all_macro_ids_with_pages)} macro IDs", file=sys.stderr)
         
         if all_macro_ids_with_pages:
-            success = await update_report_with_macro_ids(report_id, all_macro_ids_with_pages, collection_name='multiapproachreports')
+            # Use provided collection_name or try to detect it
+            if collection_name is None:
+                collection_name = 'multiapproachreports'  # Default fallback
+            
+            success = await update_report_with_macro_ids(report_id, all_macro_ids_with_pages, collection_name=collection_name)
             if success:
                 print(f"[MACRO_ID] Successfully updated report in MongoDB", file=sys.stderr)
             else:
@@ -110,10 +118,30 @@ async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3):
         traceback.print_exc()
         return []
 
-async def create_report_for_record(browser, record, tabs_num=3):
+async def find_record_in_collections(record_id_obj, collection_names):
+    """Try to find a record in multiple collections, return (record, collection) or (None, None)"""
+    for coll_name in collection_names:
+        collection = db[coll_name]
+        record = await collection.find_one({"_id": record_id_obj})
+        if record:
+            return record, collection
+    return None, None
+
+async def create_report_for_record(browser, record, tabs_num=3, collection=None):
     try:
         if not record or "_id" not in record:
             return {"status": "FAILED", "error": "Invalid record object (missing _id)"}
+
+        # Determine which collection this record belongs to if not provided
+        if collection is None:
+            collection_names = [
+                "multiapproachreports",
+                "submitreportsquicklies",
+                "submitreportsquickly"
+            ]
+            _, collection = await find_record_in_collections(record["_id"], collection_names)
+            if collection is None:
+                collection = db.multiapproachreports  # Default fallback
 
         try:
             require_selected_company()
@@ -122,7 +150,7 @@ async def create_report_for_record(browser, record, tabs_num=3):
             return {"status": "FAILED", "error": str(ctx_err)}
 
         # Mark start time
-        await db.multiapproachreports.update_one(
+        await collection.update_one(
             {"_id": record["_id"]},
             {"$set": {"startSubmitTime": datetime.now(timezone.utc)}}
         )
@@ -177,7 +205,7 @@ async def create_report_for_record(browser, record, tabs_num=3):
                 })
 
                 # Mark end time even on failure
-                await db.multiapproachreports.update_one(
+                await collection.update_one(
                     {"_id": record["_id"]},
                     {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
                 )
@@ -194,21 +222,29 @@ async def create_report_for_record(browser, record, tabs_num=3):
                         "error": "Could not determine report_id"
                     })
 
-                    await db.multiapproachreports.update_one(
+                    await collection.update_one(
                         {"_id": record["_id"]},
                         {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
                     )
                     return {"status": "FAILED", "results": results}
 
                 # Save report_id on document
-                await db.multiapproachreports.update_one(
+                await collection.update_one(
                     {"_id": record["_id"]},
                     {"$set": {"report_id": form_id}}
                 )
                 record["report_id"] = form_id
 
+                # Determine collection name for macro ID update
+                collection_name_map = {
+                    db.multiapproachreports: 'multiapproachreports',
+                    db.submitreportsquicklies: 'submitreportsquicklies',
+                    db.submitreportsquickly: 'submitreportsquickly'
+                }
+                coll_name = collection_name_map.get(collection, 'multiapproachreports')
+
                 # Get macro IDs
-                macro_ids_result = await get_all_macro_ids_parallel(browser, form_id, tabs_num=tabs_num)
+                macro_ids_result = await get_all_macro_ids_parallel(browser, form_id, tabs_num=tabs_num, collection_name=coll_name)
                 if isinstance(macro_ids_result, dict) and macro_ids_result.get("status") == "FAILED":
                     results.append({
                         "status": "FAILED",
@@ -217,13 +253,29 @@ async def create_report_for_record(browser, record, tabs_num=3):
                         "error": macro_ids_result.get("error")
                     })
 
-                    await db.multiapproachreports.update_one(
+                    await collection.update_one(
                         {"_id": record["_id"]},
                         {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
                     )
                     return {"status": "FAILED", "results": results}
                 
-                record = await db.multiapproachreports.find_one({"report_id": form_id})
+                # Reload record from database to get updated macro IDs
+                # Save the original record ID before reloading
+                original_record_id = record.get("_id") if record else None
+                record = await collection.find_one({"report_id": form_id})
+                if not record:
+                    results.append({
+                        "status": "FAILED",
+                        "step": "macro_ids",
+                        "recordId": str(original_record_id) if original_record_id else form_id,
+                        "error": "Could not reload record after macro ID update"
+                    })
+                    # Try to update using form_id if we have it
+                    await collection.update_one(
+                        {"report_id": form_id},
+                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                    )
+                    return {"status": "FAILED", "results": results}
 
                 # Handle macro edits
                 macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num)
@@ -235,7 +287,7 @@ async def create_report_for_record(browser, record, tabs_num=3):
                         "error": macro_result.get("error")
                     })
 
-                    await db.multiapproachreports.update_one(
+                    await collection.update_one(
                         {"_id": record["_id"]},
                         {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
                     )
@@ -248,7 +300,7 @@ async def create_report_for_record(browser, record, tabs_num=3):
                 })
 
         # Mark successful end time
-        await db.multiapproachreports.update_one(
+        await collection.update_one(
             {"_id": record["_id"]},
             {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
         )
@@ -258,27 +310,62 @@ async def create_report_for_record(browser, record, tabs_num=3):
     except Exception as e:
         tb = traceback.format_exc()
         # Mark end time even on unexpected exception
-        await db.multiapproachreports.update_one(
-            {"_id": record["_id"]},
-            {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
-        )
+        # Determine collection for error handling if not already set
+        if record and "_id" in record:
+            if collection is None:
+                collection_names = [
+                    "multiapproachreports",
+                    "submitreportsquicklies",
+                    "submitreportsquickly"
+                ]
+                _, collection = await find_record_in_collections(record["_id"], collection_names)
+                if collection is None:
+                    collection = db.multiapproachreports  # Default fallback
+            await collection.update_one(
+                {"_id": record["_id"]},
+                {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+            )
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
 async def create_new_report(browser, record_id, tabs_num=3):
     try:
-        if not ObjectId.is_valid(record_id):
-            return {"status": "FAILED", "error": "Invalid record_id"}
+        # Convert record_id to string if needed
+        record_id_str = str(record_id).strip()
+        
+        if not ObjectId.is_valid(record_id_str):
+            return {"status": "FAILED", "error": f"Invalid record_id format: {record_id_str}"}
 
-        record = await db.multiapproachreports.find_one({"_id": ObjectId(record_id)})
+        record_id_obj = ObjectId(record_id_str)
+        
+        # Try to find record in all possible collections
+        # Order: multiapproachreports, submitreportsquicklies (plural - Mongoose default), submitreportsquickly (singular)
+        collection_names = [
+            "multiapproachreports",
+            "submitreportsquicklies",  # Mongoose pluralizes: SubmitReportsQuickly -> submitreportsquicklies
+            "submitreportsquickly"     # Fallback in case custom collection name is used
+        ]
+        
+        record, collection = await find_record_in_collections(record_id_obj, collection_names)
+        
         if not record:
-            return {"status": "FAILED", "error": "Record not found"}
+            # List available collections for debugging
+            try:
+                all_collections = await db.list_collection_names()
+                submit_collections = [c for c in all_collections if 'submit' in c.lower() and 'quick' in c.lower()]
+                error_msg = f"Record not found with id: {record_id_str}. "
+                if submit_collections:
+                    error_msg += f"Available submit collections: {', '.join(submit_collections)}. "
+                error_msg += f"Checked collections: {', '.join(collection_names)}"
+            except:
+                error_msg = f"Record not found with id: {record_id_str}"
+            return {"status": "FAILED", "error": error_msg}
 
-        return await create_report_for_record(browser, record, tabs_num=tabs_num)
+        return await create_report_for_record(browser, record, tabs_num=tabs_num, collection=collection)
 
     except Exception as e:
         return {
             "status": "FAILED",
-            "error": str(e),
+            "error": f"Error finding record: {str(e)}",
             "traceback": traceback.format_exc()
         }
 

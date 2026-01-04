@@ -3391,43 +3391,139 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             <div className="text-xs text-gray-600">
                                 Page {currentPageSafe} of {totalBatchPages}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                    disabled={currentPageSafe <= 1}
-                                    className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
-                                >
-                                    Prev
-                                </button>
-                                <div className="flex items-center gap-1">
-                                    {Array.from({ length: totalBatchPages }, (_, i) => {
-                                        const pageNum = i + 1;
-                                        const isActive = pageNum === currentPageSafe;
-                                        return (
-                                            <button
-                                                key={`page-${pageNum}`}
-                                                type="button"
-                                                onClick={() => setCurrentPage(pageNum)}
-                                                className={`min-w-[34px] px-2 py-1.5 text-xs rounded-md border ${isActive
-                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                    : "bg-white text-gray-700 border-slate-200 hover:bg-slate-100"
-                                                    }`}
-                                            >
-                                                {pageNum}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setCurrentPage((p) => Math.min(totalBatchPages, p + 1))}
-                                    disabled={currentPageSafe >= totalBatchPages}
-                                    className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
-                                >
-                                    Next
-                                </button>
-                            </div>
+                            {totalBatchPages > 1 && (() => {
+                                const getPageNumbers = () => {
+                                    const pages = [];
+                                    
+                                    if (totalBatchPages <= 6) {
+                                        // Show all pages if 6 or fewer
+                                        for (let i = 1; i <= totalBatchPages; i++) {
+                                            pages.push(i);
+                                        }
+                                        return pages;
+                                    }
+                                    
+                                    // Always show first 3 pages
+                                    pages.push(1, 2, 3);
+                                    
+                                    const lastThree = [totalBatchPages - 2, totalBatchPages - 1, totalBatchPages];
+                                    const lastThreeStart = totalBatchPages - 2;
+                                    
+                                    // If current page is in first 3 or overlaps with last 3
+                                    if (currentPageSafe <= 3) {
+                                        // Show: 1, 2, 3, 4, 5, ..., last 3
+                                        if (4 < lastThreeStart) {
+                                            pages.push(4, 5);
+                                            pages.push('ellipsis');
+                                        }
+                                    } else if (currentPageSafe >= lastThreeStart) {
+                                        // Show: 1, 2, 3, ..., last 3
+                                        if (3 < lastThreeStart - 1) {
+                                            pages.push('ellipsis');
+                                        }
+                                    } else {
+                                        // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
+                                        const showBefore = currentPageSafe - 1;
+                                        const showAfter = currentPageSafe + 1;
+                                        
+                                        // Check if we need ellipsis before current page
+                                        if (showBefore > 4) {
+                                            pages.push('ellipsis');
+                                            pages.push(showBefore);
+                                        } else if (showBefore > 3) {
+                                            pages.push(showBefore);
+                                        }
+                                        
+                                        pages.push(currentPageSafe);
+                                        
+                                        // Check if we need ellipsis after current page
+                                        if (showAfter < lastThreeStart - 1) {
+                                            pages.push(showAfter);
+                                            if (showAfter < lastThreeStart - 2) {
+                                                pages.push('ellipsis');
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Always show last 3 pages (avoid duplicates)
+                                    lastThree.forEach(page => {
+                                        if (!pages.includes(page)) {
+                                            pages.push(page);
+                                        }
+                                    });
+                                    
+                                    // Clean up and ensure proper order
+                                    const cleaned = [];
+                                    let prevNum = 0;
+                                    
+                                    for (let i = 0; i < pages.length; i++) {
+                                        const item = pages[i];
+                                        if (item === 'ellipsis') {
+                                            if (cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                                cleaned.push('ellipsis');
+                                            }
+                                        } else if (typeof item === 'number') {
+                                            if (item > prevNum) {
+                                                if (item > prevNum + 1 && prevNum > 0 && cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                                    cleaned.push('ellipsis');
+                                                }
+                                                cleaned.push(item);
+                                                prevNum = item;
+                                            }
+                                        }
+                                    }
+                                    
+                                    return cleaned;
+                                };
+                                
+                                const pageNumbers = getPageNumbers();
+                                
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                            disabled={currentPageSafe <= 1}
+                                            className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
+                                        >
+                                            Prev
+                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            {pageNumbers.map((page, idx) => {
+                                                if (page === 'ellipsis') {
+                                                    return (
+                                                        <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-gray-600">
+                                                            ...
+                                                        </span>
+                                                    );
+                                                }
+                                                const isActive = page === currentPageSafe;
+                                                return (
+                                                    <button
+                                                        key={page}
+                                                        type="button"
+                                                        onClick={() => setCurrentPage(page)}
+                                                        className={`min-w-[34px] px-2 py-1.5 text-xs rounded-md border ${isActive
+                                                            ? "bg-blue-600 text-white border-blue-600"
+                                                            : "bg-white text-gray-700 border-slate-200 hover:bg-slate-100"
+                                                            }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage((p) => Math.min(totalBatchPages, p + 1))}
+                                            disabled={currentPageSafe >= totalBatchPages}
+                                            className="px-3 py-1.5 text-xs rounded-md border border-slate-200 bg-white text-gray-700 disabled:opacity-50"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 ) : (

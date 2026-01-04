@@ -28,14 +28,14 @@ const valueSystemGroups = {
         title: 'Upload Reports',
         tabs: [
             {
-                id: 'upload-report-elrajhi',
-                label: 'Upload Report (El Rajhi)',
-                description: 'Upload El Rajhi reports, validate data, and process batches.'
+                id: 'submit-reports-quickly',
+                label: 'Submit Reports Quickly',
+                description: 'Quickly submit reports with minimal data entry using Excel sheets.'
             },
             {
-                id: 'duplicate-report',
-                label: 'Upload Manual Report',
-                description: 'Fill report info, upload Excel assets, and send to Taqeem.'
+                id: 'upload-assets',
+                label: 'Upload Assets',
+                description: 'Upload asset files and attach them to existing reports.'
             },
             {
                 id: 'multi-excel-upload',
@@ -43,9 +43,14 @@ const valueSystemGroups = {
                 description: 'Upload multiple Excel files and create reports in bulk.'
             },
             {
-                id: 'upload-assets',
-                label: 'Upload Assets',
-                description: 'Upload asset files and attach them to existing reports.'
+                id: 'duplicate-report',
+                label: 'Upload Manual Report',
+                description: 'Fill report info, upload Excel assets, and send to Taqeem.'
+            },
+            {
+                id: 'upload-report-elrajhi',
+                label: 'Upload Report (El Rajhi)',
+                description: 'Upload El Rajhi reports, validate data, and process batches.'
             }
         ]
     },
@@ -139,6 +144,7 @@ const viewTitles = {
     'upload-report-elrajhi': 'Upload Report (El Rajhi)',
     'duplicate-report': 'Upload Manual Report',
     'multi-excel-upload': 'Multi-Excel Upload',
+    'submit-reports-quickly': 'Submit Reports Quickly',
     'macro-edit': 'Edit Macro',
     'grab-macro-ids': 'Grab Macro IDs',
     'common-fields': 'Add Common Fields',

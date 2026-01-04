@@ -185,6 +185,55 @@ const createManualMultiApproachReport = async (payload) => {
     return response.data;
 };
 
+const submitReportsQuicklyUpload = async (validationExcelFiles, validationPdfFiles, skipPdfUpload = false) => {
+    const formData = new FormData();
+    validationExcelFiles.forEach((file) => {
+        formData.append("excels", file);
+    });
+    validationPdfFiles.forEach((file) => {
+        formData.append("pdfs", file);
+    });
+    if (skipPdfUpload) {
+        formData.append("skipPdfUpload", "true");
+    }
+
+    const response = await httpClient.post(
+        "/submit-reports-quickly",
+        formData,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        }
+    );
+    return response.data;
+};
+
+const fetchSubmitReportsQuickly = async () => {
+    const response = await httpClient.get("/submit-reports-quickly");
+    return response.data;
+};
+
+const updateSubmitReportsQuickly = async (reportId, payload) => {
+    const response = await httpClient.patch(`/submit-reports-quickly/${reportId}`, payload);
+    return response.data;
+};
+
+const deleteSubmitReportsQuickly = async (reportId) => {
+    const response = await httpClient.delete(`/submit-reports-quickly/${reportId}`);
+    return response.data;
+};
+
+const updateSubmitReportsQuicklyAsset = async (reportId, assetIndex, payload) => {
+    const response = await httpClient.patch(`/submit-reports-quickly/${reportId}/assets/${assetIndex}`, payload);
+    return response.data;
+};
+
+const deleteSubmitReportsQuicklyAsset = async (reportId, assetIndex) => {
+    const response = await httpClient.delete(`/submit-reports-quickly/${reportId}/assets/${assetIndex}`);
+    return response.data;
+};
+
 
 module.exports = {
     uploadAssetDataToDatabase,
@@ -210,5 +259,11 @@ module.exports = {
     updateMultiApproachReport,
     deleteMultiApproachReport,
     updateMultiApproachAsset,
-    deleteMultiApproachAsset
+    deleteMultiApproachAsset,
+    submitReportsQuicklyUpload,
+    fetchSubmitReportsQuickly,
+    updateSubmitReportsQuickly,
+    deleteSubmitReportsQuickly,
+    updateSubmitReportsQuicklyAsset,
+    deleteSubmitReportsQuicklyAsset
 };

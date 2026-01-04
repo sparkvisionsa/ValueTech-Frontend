@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectFolder: () => safeInvoke('select-folder'),
     readFolder: (folderPath) => safeInvoke('read-folder', folderPath),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+    readTemplateFile: (fileName) => ipcRenderer.invoke('read-template-file', fileName),
 
     // Health
     checkHealth: () => safeInvoke('check-server-health'),

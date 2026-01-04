@@ -60,7 +60,8 @@ const HarajData = () => {
     // Filters
     const [filters, setFilters] = useState({
         city: '',
-        currency: '',
+        manufacturingYear: '',
+        carBrand: '',
         hasPrice: '',
         hasImages: '',
         hasContact: '',
@@ -68,7 +69,8 @@ const HarajData = () => {
     });
 
     const [uniqueCities, setUniqueCities] = useState([]);
-    const [uniqueCurrencies, setUniqueCurrencies] = useState([]);
+    const [uniqueManufacturingYears, setUniqueManufacturingYears] = useState([]);
+    const [uniqueCarBrands, setUniqueCarBrands] = useState([]);
 
     // Load data
     const loadAds = async (page = 1) => {
@@ -84,7 +86,8 @@ const HarajData = () => {
 
             // Add filters to query
             if (filters.city) queryParams.append('city', filters.city);
-            if (filters.currency) queryParams.append('currency', filters.currency);
+            if (filters.manufacturingYear) queryParams.append('manufacturingYear', filters.manufacturingYear);
+            if (filters.carBrand) queryParams.append('carBrand', filters.carBrand);
             if (filters.hasPrice === 'yes') queryParams.append('hasPrice', 'true');
             if (filters.hasPrice === 'no') queryParams.append('hasPrice', 'false');
             if (filters.hasImages === 'yes') queryParams.append('hasImages', 'true');
@@ -149,9 +152,16 @@ const HarajData = () => {
             const response = await window.electronAPI.apiRequest('GET', '/api/ads/all?limit=5000');
             if (response?.items) {
                 const cities = [...new Set(response.items.map(ad => ad.city).filter(Boolean))].sort();
-                const currencies = [...new Set(response.items.map(ad => ad.currency).filter(Boolean))].sort();
+                
+                // Extract manufacturing years (backend extracts them)
+                const years = [...new Set(response.items.map(ad => ad.manufacturingYear).filter(y => y !== null && y !== undefined))].sort((a, b) => b - a);
+                setUniqueManufacturingYears(years);
+                
+                // Extract car brands (backend extracts them)
+                const brands = [...new Set(response.items.map(ad => ad.carBrand).filter(Boolean))].sort();
+                setUniqueCarBrands(brands);
+                
                 setUniqueCities(cities);
-                setUniqueCurrencies(currencies);
             }
         } catch (err) {
             console.error('Failed to load filter options:', err);
@@ -175,12 +185,22 @@ const HarajData = () => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 closeImageModal();
-            } else if (e.key === 'ArrowLeft' && imageModal.images.length > 1) {
+            } else if (e.key === 'ArrowUp' && imageModal.images.length > 1) {
+                const container = document.getElementById('image-scroll-container');
+                if (container) {
+                    const imageHeight = container.clientHeight;
+                    container.scrollBy({ top: -imageHeight, behavior: 'smooth' });
+                }
                 setImageModal(prev => ({
                     ...prev,
                     currentIndex: (prev.currentIndex - 1 + prev.images.length) % prev.images.length
                 }));
-            } else if (e.key === 'ArrowRight' && imageModal.images.length > 1) {
+            } else if (e.key === 'ArrowDown' && imageModal.images.length > 1) {
+                const container = document.getElementById('image-scroll-container');
+                if (container) {
+                    const imageHeight = container.clientHeight;
+                    container.scrollBy({ top: imageHeight, behavior: 'smooth' });
+                }
                 setImageModal(prev => ({
                     ...prev,
                     currentIndex: (prev.currentIndex + 1) % prev.images.length
@@ -191,6 +211,44 @@ const HarajData = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [imageModal.isOpen, imageModal.images.length]);
+
+    // Scroll to correct position when modal opens or currentIndex changes
+    useEffect(() => {
+        if (!imageModal.isOpen || imageModal.images.length === 0) return;
+
+        const container = document.getElementById('image-scroll-container');
+        if (container) {
+            const imageHeight = container.clientHeight;
+            container.scrollTo({
+                top: imageHeight * imageModal.currentIndex,
+                behavior: 'smooth'
+            });
+        }
+    }, [imageModal.isOpen, imageModal.currentIndex]);
+
+    // Update currentIndex based on scroll position
+    useEffect(() => {
+        if (!imageModal.isOpen || imageModal.images.length === 0) return;
+
+        const container = document.getElementById('image-scroll-container');
+        if (!container) return;
+
+        const handleScroll = () => {
+            const imageHeight = container.clientHeight;
+            const scrollTop = container.scrollTop;
+            const newIndex = Math.round(scrollTop / imageHeight);
+            
+            if (newIndex !== imageModal.currentIndex && newIndex >= 0 && newIndex < imageModal.images.length) {
+                setImageModal(prev => ({
+                    ...prev,
+                    currentIndex: newIndex
+                }));
+            }
+        };
+
+        container.addEventListener('scroll', handleScroll);
+        return () => container.removeEventListener('scroll', handleScroll);
+    }, [imageModal.isOpen, imageModal.images.length, imageModal.currentIndex]);
 
     const handleFilterChange = (key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));
@@ -267,8 +325,6 @@ const HarajData = () => {
             title: 'Title',
             city: 'City',
             postedRelativeTime: 'Posted Time',
-            authorName: 'Author Name',
-            authorUrl: 'Author URL',
             price: 'Price',
             currency: 'Currency',
             description: 'Description',
@@ -290,7 +346,6 @@ const HarajData = () => {
         return ads.filter(ad => 
             ad.title?.toLowerCase().includes(searchLower) ||
             ad.description?.toLowerCase().includes(searchLower) ||
-            ad.authorName?.toLowerCase().includes(searchLower) ||
             ad.city?.toLowerCase().includes(searchLower)
         );
     }, [ads, filters.search]);
@@ -584,33 +639,33 @@ const HarajData = () => {
                         <Filter className="w-4 h-4 text-slate-500" />
                         <h2 className="text-[13px] font-semibold text-slate-900">Filters</h2>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <div className="flex items-end gap-2 overflow-x-auto">
                         {/* Search */}
-                        <div className="xl:col-span-2">
-                            <label className="block text-[10px] font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                        <div className="flex-shrink-0 w-[180px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                                 Search
                             </label>
                             <div className="relative">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                                 <input
                                     type="text"
                                     value={filters.search}
                                     onChange={(e) => handleFilterChange('search', e.target.value)}
-                                    placeholder="Search title, description..."
-                                    className="w-full pl-9 pr-3 py-2 text-[11px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                    placeholder="Search..."
+                                    className="w-full pl-8 pr-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                 />
                             </div>
                         </div>
 
                         {/* City */}
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                        <div className="flex-shrink-0 w-[120px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                                 City
                             </label>
                             <select
                                 value={filters.city}
                                 onChange={(e) => handleFilterChange('city', e.target.value)}
-                                className="w-full px-3 py-2 text-[11px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             >
                                 <option value="">All Cities</option>
                                 {uniqueCities.map(city => (
@@ -619,32 +674,49 @@ const HarajData = () => {
                             </select>
                         </div>
 
-                        {/* Currency */}
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                                Currency
+                        {/* Manufacturing Year */}
+                        <div className="flex-shrink-0 w-[110px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
+                                Year
                             </label>
                             <select
-                                value={filters.currency}
-                                onChange={(e) => handleFilterChange('currency', e.target.value)}
-                                className="w-full px-3 py-2 text-[11px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                value={filters.manufacturingYear}
+                                onChange={(e) => handleFilterChange('manufacturingYear', e.target.value)}
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             >
-                                <option value="">All Currencies</option>
-                                {uniqueCurrencies.map(currency => (
-                                    <option key={currency} value={currency}>{currency}</option>
+                                <option value="">All Years</option>
+                                {uniqueManufacturingYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Car Brand */}
+                        <div className="flex-shrink-0 w-[130px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
+                                Brand
+                            </label>
+                            <select
+                                value={filters.carBrand}
+                                onChange={(e) => handleFilterChange('carBrand', e.target.value)}
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            >
+                                <option value="">All Brands</option>
+                                {uniqueCarBrands.map(brand => (
+                                    <option key={brand} value={brand}>{brand}</option>
                                 ))}
                             </select>
                         </div>
 
                         {/* Has Price */}
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                        <div className="flex-shrink-0 w-[90px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                                 Has Price
                             </label>
                             <select
                                 value={filters.hasPrice}
                                 onChange={(e) => handleFilterChange('hasPrice', e.target.value)}
-                                className="w-full px-3 py-2 text-[11px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             >
                                 <option value="">All</option>
                                 <option value="yes">Yes</option>
@@ -653,14 +725,30 @@ const HarajData = () => {
                         </div>
 
                         {/* Has Images */}
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                        <div className="flex-shrink-0 w-[90px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                                 Has Images
                             </label>
                             <select
                                 value={filters.hasImages}
                                 onChange={(e) => handleFilterChange('hasImages', e.target.value)}
-                                className="w-full px-3 py-2 text-[11px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            >
+                                <option value="">All</option>
+                                <option value="yes">Yes</option>
+                                <option value="no">No</option>
+                            </select>
+                        </div>
+
+                        {/* Has Contact */}
+                        <div className="flex-shrink-0 w-[100px]">
+                            <label className="block text-[9px] font-semibold text-slate-600 mb-1 uppercase tracking-wide">
+                                Has Contact
+                            </label>
+                            <select
+                                value={filters.hasContact}
+                                onChange={(e) => handleFilterChange('hasContact', e.target.value)}
+                                className="w-full px-2 py-1.5 text-[10px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             >
                                 <option value="">All</option>
                                 <option value="yes">Yes</option>
@@ -712,7 +800,6 @@ const HarajData = () => {
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Title</th>
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">City</th>
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Price</th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Author</th>
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Posted</th>
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Images</th>
                                         <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
@@ -754,12 +841,6 @@ const HarajData = () => {
                                                 ) : (
                                                     <span className="text-[11px] text-slate-400">N/A</span>
                                                 )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-1.5">
-                                                    <User className="w-3.5 h-3.5 text-slate-400" />
-                                                    <span className="text-[11px] text-slate-700">{ad.authorName || 'N/A'}</span>
-                                                </div>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-1.5">
@@ -900,117 +981,133 @@ const HarajData = () => {
                             </h3>
                         </div>
 
-                        {/* Main Image Container */}
-                        <div className="relative w-full max-w-6xl h-full max-h-[90vh] flex items-center justify-center">
-                            {/* Previous Button */}
+                        {/* Main Image Container - Vertical Scrollable */}
+                        <div className="relative w-full max-w-6xl h-full max-h-[90vh] flex flex-col items-center justify-center mt-20 mb-16">
+                            {/* Previous Button (Top) */}
                             {imageModal.images.length > 1 && (
                                 <button
                                     type="button"
-                                    onClick={() => navigateImage('prev')}
-                                    className="absolute left-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                                    onClick={() => {
+                                        const container = document.getElementById('image-scroll-container');
+                                        if (container) {
+                                            const imageHeight = container.clientHeight;
+                                            container.scrollBy({ top: -imageHeight, behavior: 'smooth' });
+                                        }
+                                        navigateImage('prev');
+                                    }}
+                                    className="absolute top-20 left-1/2 -translate-x-1/2 z-20 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shadow-lg"
+                                    title="Previous Image"
                                 >
-                                    <ChevronLeftIcon className="w-6 h-6" />
+                                    <ChevronLeftIcon className="w-6 h-6 rotate-90" />
                                 </button>
                             )}
 
-                            {/* Image */}
-                            <div className="relative w-full h-full flex items-center justify-center">
-                                {imageModal.images[imageModal.currentIndex] ? (
-                                    <>
-                                        {imageLoading && (
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                <Loader2 className="w-12 h-12 animate-spin text-white" />
-                                            </div>
-                                        )}
-                                        <img
-                                            src={(() => {
-                                                const currentImg = imageModal.images[imageModal.currentIndex];
-                                                // Ensure we're using a string URL
-                                                if (typeof currentImg === 'string') {
-                                                    return currentImg;
-                                                }
-                                                // If it's an object, try to extract URL
-                                                if (typeof currentImg === 'object' && currentImg !== null) {
-                                                    return currentImg.url || currentImg.src || currentImg.link || currentImg.image || currentImg.imageUrl || '';
-                                                }
-                                                return '';
-                                            })()}
-                                            alt={`Image ${imageModal.currentIndex + 1} - ${imageModal.adTitle}`}
-                                            className={`max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-opacity duration-300 ${
-                                                imageLoading ? 'opacity-0' : 'opacity-100'
-                                            }`}
-                                            loading="lazy"
-                                            onError={async (e) => {
-                                                e.target.onerror = null;
-                                                setImageLoading(false);
-                                                setImageError(true);
-                                                // Log the actual image URL for debugging
-                                                const currentImg = imageModal.images[imageModal.currentIndex];
-                                                console.error('Image load error. Image data:', {
-                                                    type: typeof currentImg,
-                                                    value: currentImg,
-                                                    isString: typeof currentImg === 'string',
-                                                    isObject: typeof currentImg === 'object'
-                                                });
-                                            }}
-                                            onLoad={(e) => {
-                                                setImageLoading(false);
-                                                setImageError(false);
-                                                e.target.style.opacity = '1';
-                                            }}
-                                        />
-                                        {imageError && (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/50 rounded-lg">
-                                                <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
-                                                <p className="text-sm">Failed to load image in modal</p>
-                                                <p className="text-xs mt-2 opacity-75 mb-4 px-4 text-center break-all">
-                                                    URL: {(() => {
-                                                        const currentImg = imageModal.images[imageModal.currentIndex];
-                                                        if (typeof currentImg === 'string') {
-                                                            return currentImg.length > 80 ? currentImg.substring(0, 80) + '...' : currentImg;
-                                                        }
-                                                        return 'Invalid URL format';
-                                                    })()}
-                                                </p>
-                                                {window.electronAPI && window.electronAPI.showImageWindow && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            try {
-                                                                const currentImg = imageModal.images[imageModal.currentIndex];
-                                                                if (!currentImg || typeof currentImg !== 'string') {
-                                                                    console.error('Invalid image URL:', currentImg);
-                                                                    return;
+                            {/* Vertical Scrollable Image Container */}
+                            <div 
+                                id="image-scroll-container"
+                                className="w-full h-full overflow-y-auto overflow-x-hidden snap-y snap-mandatory flex flex-col"
+                                style={{
+                                    scrollbarWidth: 'thin',
+                                    scrollbarColor: 'rgba(255,255,255,0.3) transparent',
+                                    WebkitOverflowScrolling: 'touch'
+                                }}
+                            >
+                                {imageModal.images.map((img, idx) => {
+                                    // Extract image URL
+                                    let imageUrl = '';
+                                    if (typeof img === 'string') {
+                                        imageUrl = img;
+                                    } else if (typeof img === 'object' && img !== null) {
+                                        imageUrl = img.url || img.src || img.link || img.image || img.imageUrl || '';
+                                    } else {
+                                        imageUrl = String(img);
+                                    }
+
+                                    if (!imageUrl || (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+                                        return null;
+                                    }
+
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className="flex-shrink-0 w-full h-full snap-center flex items-center justify-center relative min-h-[70vh] py-4"
+                                        >
+                                            {imageLoading && idx === imageModal.currentIndex && (
+                                                <div className="absolute inset-0 flex items-center justify-center z-10">
+                                                    <Loader2 className="w-12 h-12 animate-spin text-white" />
+                                                </div>
+                                            )}
+                                            <img
+                                                src={imageUrl}
+                                                alt={`Image ${idx + 1} - ${imageModal.adTitle}`}
+                                                className={`max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl transition-opacity duration-300 ${
+                                                    imageLoading && idx === imageModal.currentIndex ? 'opacity-0' : 'opacity-100'
+                                                }`}
+                                                loading="lazy"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    if (idx === imageModal.currentIndex) {
+                                                        setImageLoading(false);
+                                                        setImageError(true);
+                                                    }
+                                                }}
+                                                onLoad={(e) => {
+                                                    if (idx === imageModal.currentIndex) {
+                                                        setImageLoading(false);
+                                                        setImageError(false);
+                                                    }
+                                                    e.target.style.opacity = '1';
+                                                }}
+                                            />
+                                            {imageError && idx === imageModal.currentIndex && (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/50 rounded-lg z-10">
+                                                    <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
+                                                    <p className="text-sm">Failed to load image in modal</p>
+                                                    <p className="text-xs mt-2 opacity-75 mb-4 px-4 text-center break-all">
+                                                        URL: {imageUrl.length > 80 ? imageUrl.substring(0, 80) + '...' : imageUrl}
+                                                    </p>
+                                                    {window.electronAPI && window.electronAPI.showImageWindow && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    if (!imageUrl || typeof imageUrl !== 'string') {
+                                                                        console.error('Invalid image URL:', imageUrl);
+                                                                        return;
+                                                                    }
+                                                                    await window.electronAPI.showImageWindow(imageUrl);
+                                                                } catch (err) {
+                                                                    console.error('Failed to open image window:', err);
                                                                 }
-                                                                await window.electronAPI.showImageWindow(currentImg);
-                                                            } catch (err) {
-                                                                console.error('Failed to open image window:', err);
-                                                            }
-                                                        }}
-                                                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold"
-                                                    >
-                                                        Open in Electron Browser
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center text-white">
-                                        <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
-                                        <p className="text-sm">Image not available</p>
-                                    </div>
-                                )}
+                                                            }}
+                                                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold"
+                                                        >
+                                                            Open in Electron Browser
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
 
-                            {/* Next Button */}
+                            {/* Next Button (Bottom) */}
                             {imageModal.images.length > 1 && (
                                 <button
                                     type="button"
-                                    onClick={() => navigateImage('next')}
-                                    className="absolute right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                                    onClick={() => {
+                                        const container = document.getElementById('image-scroll-container');
+                                        if (container) {
+                                            const imageHeight = container.clientHeight;
+                                            container.scrollBy({ top: imageHeight, behavior: 'smooth' });
+                                        }
+                                        navigateImage('next');
+                                    }}
+                                    className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors shadow-lg"
+                                    title="Next Image"
                                 >
-                                    <ChevronRightIcon className="w-6 h-6" />
+                                    <ChevronRightIcon className="w-6 h-6 rotate-90" />
                                 </button>
                             )}
                         </div>
@@ -1056,52 +1153,24 @@ const HarajData = () => {
                             </button>
                         </div>
 
-                        {/* Thumbnail Strip (if multiple images) */}
-                        {imageModal.images.length > 1 && (
-                            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 max-w-4xl overflow-x-auto">
-                                <div className="flex gap-2 px-4 py-2 bg-black/50 backdrop-blur-sm rounded-lg">
-                                    {imageModal.images.map((img, idx) => {
-                                        // Ensure we always have a string URL
-                                        let imageUrl = '';
-                                        if (typeof img === 'string') {
-                                            imageUrl = img;
-                                        } else if (typeof img === 'object' && img !== null) {
-                                            imageUrl = img.url || img.src || img.link || img.image || img.imageUrl || '';
-                                        } else {
-                                            imageUrl = String(img);
-                                        }
-                                        
-                                        // Only render if we have a valid URL
-                                        if (!imageUrl || (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
-                                            return null;
-                                        }
-                                        
-                                        return (
-                                            <button
-                                                key={idx}
-                                                type="button"
-                                                onClick={() => setImageModal(prev => ({ ...prev, currentIndex: idx }))}
-                                                className={`flex-shrink-0 w-16 h-16 rounded-md overflow-hidden border-2 transition-all ${
-                                                    idx === imageModal.currentIndex
-                                                        ? 'border-emerald-400 ring-2 ring-emerald-400/50'
-                                                        : 'border-transparent hover:border-white/50'
-                                                }`}
-                                            >
-                                                <img
-                                                    src={imageUrl}
-                                                    alt={`Thumbnail ${idx + 1}`}
-                                                    className="w-full h-full object-cover"
-                                                    crossOrigin="anonymous"
-                                                    onError={(e) => {
-                                                        e.target.style.display = 'none';
-                                                    }}
-                                                />
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+                        {/* Custom Scrollbar Styles */}
+                        <style>{`
+                            #image-scroll-container::-webkit-scrollbar {
+                                width: 8px;
+                            }
+                            #image-scroll-container::-webkit-scrollbar-track {
+                                background: rgba(0, 0, 0, 0.2);
+                                border-radius: 4px;
+                            }
+                            #image-scroll-container::-webkit-scrollbar-thumb {
+                                background: rgba(255, 255, 255, 0.3);
+                                border-radius: 4px;
+                            }
+                            #image-scroll-container::-webkit-scrollbar-thumb:hover {
+                                background: rgba(255, 255, 255, 0.5);
+                            }
+                        `}</style>
+
                     </div>
                 </div>
             )}
@@ -1109,7 +1178,7 @@ const HarajData = () => {
             {/* Details Modal */}
             {detailsModal.isOpen && detailsModal.ad && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div className="relative w-full max-w-7xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white">
                             <div className="flex items-center gap-3">
@@ -1118,7 +1187,6 @@ const HarajData = () => {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-bold">Ad Details</h2>
-                                    <p className="text-sm opacity-90">{detailsModal.ad.title || 'No Title'}</p>
                                 </div>
                             </div>
                             <button
@@ -1132,11 +1200,203 @@ const HarajData = () => {
 
                         {/* Content */}
                         <div className="flex-1 overflow-y-auto p-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                            {/* First Row: Title, Price, Posted Time, Description */}
+                            <div className="grid grid-cols-4 gap-3 mb-4">
+                                {/* Title */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-2">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <FileText className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                                                Title
+                                            </h3>
+                                            <p className="text-[11px] font-semibold text-slate-900 line-clamp-2 break-words">
+                                                {detailsModal.ad.title || 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Price */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-2">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <DollarSign className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                                                Price
+                                            </h3>
+                                            <p className="text-[11px] font-semibold text-emerald-700">
+                                                {detailsModal.ad.price ? formatPrice(detailsModal.ad.price, detailsModal.ad.currency) : 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Posted Time */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-2">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <Clock className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                                                Posted Time
+                                            </h3>
+                                            <p className="text-[11px] text-slate-700">
+                                                {detailsModal.ad.postedRelativeTime || formatDate(detailsModal.ad.lastScrapedAt) || 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Description */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-2">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <FileText className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                                                Description
+                                            </h3>
+                                            <p className="text-[11px] text-slate-700 line-clamp-3 break-words">
+                                                {detailsModal.ad.description || 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Second Row: City, Comments, Contact, Created At, URL */}
+                            <div className="grid grid-cols-5 gap-3 mb-4">
+                                {/* City */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-1.5">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <MapPin className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
+                                                City
+                                            </h3>
+                                            <p className="text-[10px] text-slate-900 line-clamp-2 break-words">
+                                                {detailsModal.ad.city || 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Comments - Special handling */}
+                                {(() => {
+                                    const comments = detailsModal.ad.comments;
+                                    const hasComments = Array.isArray(comments) && comments.length > 0;
+                                    return (
+                                        <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow">
+                                            <div className="flex items-start gap-1.5">
+                                                <div className="h-5 w-5 rounded-md bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                                    <FileText className="w-3 h-3 text-blue-600" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
+                                                        Comments
+                                                    </h3>
+                                                    {hasComments ? (
+                                                        <p className="text-[10px] font-semibold text-blue-700">
+                                                            {comments.length} comment(s)
+                                                        </p>
+                                                    ) : (
+                                                        <p className="text-[9px] text-slate-500 italic">No comments</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Contact - Special handling */}
+                                {(() => {
+                                    const contact = detailsModal.ad.contact;
+                                    const phone = contact?.phone;
+                                    return (
+                                        <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow">
+                                            <div className="flex items-start gap-1.5">
+                                                <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                                    <Phone className="w-3 h-3 text-emerald-600" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
+                                                        Contact
+                                                    </h3>
+                                                    {phone ? (
+                                                        <a 
+                                                            href={`tel:${phone}`}
+                                                            className="text-[10px] font-semibold text-green-700 hover:text-green-800 transition-colors line-clamp-1 break-all"
+                                                        >
+                                                            {phone}
+                                                        </a>
+                                                    ) : (
+                                                        <p className="text-[9px] text-slate-500 italic">No phone</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Created At */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-1.5">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <Calendar className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
+                                                Created At
+                                            </h3>
+                                            <p className="text-[10px] text-slate-700 line-clamp-2 break-words">
+                                                {formatDate(detailsModal.ad.createdAt) || 'N/A'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* URL */}
+                                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-start gap-1.5">
+                                        <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <LinkIcon className="w-3 h-3 text-emerald-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
+                                                URL
+                                            </h3>
+                                            {detailsModal.ad.url ? (
+                                                <a 
+                                                    href={detailsModal.ad.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[10px] text-blue-600 hover:text-blue-800 transition-colors line-clamp-2 break-all"
+                                                >
+                                                    {detailsModal.ad.url.length > 40 ? detailsModal.ad.url.substring(0, 40) + '...' : detailsModal.ad.url}
+                                                </a>
+                                            ) : (
+                                                <p className="text-[9px] text-slate-500 italic">N/A</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Remaining Fields in 3-column grid */}
+                            <div className="grid grid-cols-3 gap-2">
                                 {Object.entries(detailsModal.ad)
                                     .filter(([key]) => {
-                                        // Remove these fields
-                                        const excludedFields = ['_id', 'haraj_id', 'adId', 'lastScrapedAt', 'scrapeRuns', 'tracking', 'updatedAt', '__v'];
+                                        // Remove these fields (including title, price, postedRelativeTime, description, city, comments, contact, createdAt, url, and author fields)
+                                        const excludedFields = ['_id', 'haraj_id', 'adId', 'lastScrapedAt', 'scrapeRuns', 'tracking', 'updatedAt', '__v', 'title', 'price', 'currency', 'postedRelativeTime', 'description', 'city', 'comments', 'contact', 'createdAt', 'url', 'authorName', 'authorUrl'];
                                         return !excludedFields.includes(key);
                                     })
                                     .map(([key, value]) => {
@@ -1152,121 +1412,26 @@ const HarajData = () => {
                                         if (key === 'contact' || key.includes('phone')) return Phone;
                                         if (key === 'price' || key === 'currency') return DollarSign;
                                         if (key === 'city') return MapPin;
-                                        if (key === 'authorName') return User;
                                         if (key === 'comments') return FileText;
                                         return Tag;
                                     };
                                     
                                     const Icon = getIcon();
                                     
-                                    // Special handling for Contact field
-                                    if (key === 'contact') {
-                                        const phone = value?.phone;
-                                        return (
-                                            <div
-                                                key={key}
-                                                className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2.5 hover:shadow-sm transition-shadow"
-                                            >
-                                                <div className="flex items-start gap-2">
-                                                    <div className="h-6 w-6 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                                                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-1.5">
-                                                            {label}
-                                                        </h3>
-                                                        {phone ? (
-                                                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-green-50 border border-green-200 rounded-md">
-                                                                <Phone className="w-3.5 h-3.5 text-green-600" />
-                                                                <a 
-                                                                    href={`tel:${phone}`}
-                                                                    className="text-[12px] font-semibold text-green-700 hover:text-green-800 transition-colors"
-                                                                >
-                                                                    {phone}
-                                                                </a>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-slate-100 border border-slate-200 rounded-md">
-                                                                <Phone className="w-3.5 h-3.5 text-slate-400" />
-                                                                <span className="text-[11px] text-slate-500 italic">No phone number available</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
+                                    // Skip fields already handled in first and second rows
+                                    if (key === 'contact' || key === 'comments' || key === 'city' || key === 'url' || key === 'createdAt' || key === 'description') {
+                                        return null;
                                     }
                                     
-                                    // Special handling for Comments field
-                                    if (key === 'comments') {
-                                        const hasComments = isArray && value.length > 0;
-                                        return (
-                                            <div
-                                                key={key}
-                                                className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2.5 hover:shadow-sm transition-shadow md:col-span-2"
-                                            >
-                                                <div className="flex items-start gap-2">
-                                                    <div className="h-6 w-6 rounded-md bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                                        <FileText className="w-3.5 h-3.5 text-blue-600" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-2">
-                                                            {label} {hasComments && <span className="text-blue-600">({value.length})</span>}
-                                                        </h3>
-                                                        {hasComments ? (
-                                                            <div className="space-y-2 max-h-48 overflow-y-auto">
-                                                                {value.map((comment, idx) => (
-                                                                    <div 
-                                                                        key={idx} 
-                                                                        className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-md p-2 shadow-sm hover:shadow transition-shadow"
-                                                                    >
-                                                                        <div className="flex items-start gap-1.5">
-                                                                            <div className="h-5 w-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                                                <span className="text-[9px] font-bold text-white">{idx + 1}</span>
-                                                                            </div>
-                                                                            <div className="flex-1">
-                                                                                {typeof comment === 'string' ? (
-                                                                                    <p className="text-[11px] text-slate-800 leading-relaxed">{comment}</p>
-                                                                                ) : typeof comment === 'object' && comment !== null ? (
-                                                                                    <div className="space-y-0.5">
-                                                                                        {comment.text && (
-                                                                                            <p className="text-[11px] text-slate-800 leading-relaxed">{comment.text}</p>
-                                                                                        )}
-                                                                                        {comment.author && (
-                                                                                            <p className="text-[9px] text-slate-500 italic">— {comment.author}</p>
-                                                                                        )}
-                                                                                        {!comment.text && (
-                                                                                            <pre className="text-[10px] text-slate-700 whitespace-pre-wrap">{JSON.stringify(comment, null, 2)}</pre>
-                                                                                        )}
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <p className="text-[11px] text-slate-600">{String(comment)}</p>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2 px-3 py-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-md">
-                                                                <FileText className="w-4 h-4 text-slate-300" />
-                                                                <span className="text-[11px] text-slate-400 italic">No comments yet</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-                                    
-                                    // Special handling for Images field
+                                    // Special handling for Images field - Full width
                                     if (key === 'images') {
                                         const normalizedImages = normalizeImages(value, detailsModal.ad);
                                         const hasImages = normalizedImages.length > 0;
                                         return (
                                             <div
                                                 key={key}
-                                                className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2.5 hover:shadow-sm transition-shadow md:col-span-2"
+                                                className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2.5 hover:shadow-sm transition-shadow w-full"
+                                                style={{ gridColumn: '1 / -1' }}
                                             >
                                                 <div className="flex items-start gap-2">
                                                     <div className="h-6 w-6 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0">
@@ -1349,27 +1514,27 @@ const HarajData = () => {
                                     return (
                                         <div
                                             key={key}
-                                            className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2.5 hover:shadow-sm transition-shadow"
+                                            className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-2 hover:shadow-sm transition-shadow"
                                         >
-                                            <div className="flex items-start gap-2">
-                                                <div className="h-6 w-6 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                                                    <Icon className="w-3.5 h-3.5 text-emerald-600" />
+                                            <div className="flex items-start gap-1.5">
+                                                <div className="h-5 w-5 rounded-md bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                                    <Icon className="w-3 h-3 text-emerald-600" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <h3 className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                                                    <h3 className="text-[9px] font-semibold text-slate-700 uppercase tracking-wide mb-0.5">
                                                         {label}
                                                     </h3>
-                                                    <div className="text-[11px] text-slate-900">
+                                                    <div className="text-[10px] text-slate-900">
                                                         {isObject ? (
-                                                            <pre className="whitespace-pre-wrap break-words text-[10px] bg-slate-100 p-1.5 rounded border border-slate-200 max-h-32 overflow-y-auto">
+                                                            <pre className="whitespace-pre-wrap break-words text-[9px] bg-slate-100 p-1 rounded border border-slate-200 max-h-20 overflow-y-auto">
                                                                 {displayValue}
                                                             </pre>
                                                         ) : isLongText ? (
-                                                            <div className="bg-slate-100 p-1.5 rounded border border-slate-200 max-h-24 overflow-y-auto">
-                                                                <p className="text-[10px] whitespace-pre-wrap break-words">{displayValue}</p>
+                                                            <div className="bg-slate-100 p-1 rounded border border-slate-200 max-h-16 overflow-y-auto">
+                                                                <p className="text-[9px] whitespace-pre-wrap break-words">{displayValue}</p>
                                                             </div>
                                                         ) : (
-                                                            <p className="break-words text-[11px]">{displayValue}</p>
+                                                            <p className="break-words text-[10px] line-clamp-2">{displayValue}</p>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1383,7 +1548,7 @@ const HarajData = () => {
                         {/* Footer */}
                         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
                             <div className="text-[11px] text-slate-600">
-                                Total Fields: {Object.keys(detailsModal.ad).filter(k => !['_id', 'haraj_id', 'adId', 'lastScrapedAt', 'scrapeRuns', 'tracking', 'updatedAt', '__v'].includes(k)).length}
+                                Total Fields: {Object.keys(detailsModal.ad).filter(k => !['_id', 'haraj_id', 'adId', 'lastScrapedAt', 'scrapeRuns', 'tracking', 'updatedAt', '__v', 'authorName', 'authorUrl'].includes(k)).length}
                             </div>
                             <div className="flex items-center gap-2">
                                 {detailsModal.ad.url && (
