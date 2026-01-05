@@ -5,6 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from .formSteps import macro_form_config
 from .formFiller import fill_form
+from .checkMacroStatus import RunHalfCheckMacroStatus
 from scripts.core.utils import wait_for_element
 from scripts.core.processControl import (
     get_process_manager,

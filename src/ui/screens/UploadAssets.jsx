@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { useRam } from "../context/RAMContext";
+import { useNavStatus } from "../context/NavStatusContext";
 import { useSession } from "../context/SessionContext";
+import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
     Upload,
     AlertTriangle,
@@ -18,8 +21,9 @@ import {
 } from "lucide-react";
 import ReportsTable from "../components/ReportsTable";
 
-const UploadAssets = () => {
+const UploadAssets = ({ onViewChange }) => {
     const [excelFileName, setExcelFileName] = useState(null);
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [excelFilePath, setExcelFilePath] = useState(null);
     const [previewData, setPreviewData] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -29,6 +33,8 @@ const UploadAssets = () => {
     const [reportId, setReportId] = useState("");
 
     const { token } = useSession();
+    const { taqeemStatus } = useNavStatus();
+
 
     // Common fields state
     const [inspectionDate, setInspectionDate] = useState("");
@@ -271,6 +277,14 @@ const UploadAssets = () => {
                 data: previewData
             });
 
+            const isTaqeemLoggedIn = taqeemStatus?.state === "success";
+            const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, previewData.length || 0);
+
+            if (authStatus?.status === "INSUFFICIENT_POINTS") {
+                setShowInsufficientPointsModal(true);
+                return;
+            }
+
             const result = await window.electronAPI.apiRequest(
                 "POST",
                 "/api/report/createReportWithCommonFields",
@@ -312,10 +326,11 @@ const UploadAssets = () => {
                     const flowResult = await window.electronAPI.completeFlow(reportId.trim(), tabsNum);
                     console.log("[UploadAssets] completeFlow result:", flowResult);
 
-                    if (flowResult?.success) {
+                    if (flowResult?.status === "SUCCESS") {
                         setSuccess(prev => prev + `\n\n✅ Flow completed successfully`);
 
-                        const completedAssets = flowResult?.completedAssets
+                        const completedAssets = flowResult?.summary?.complete_macros
+                        console.log("[UploadAssets] Completed assets:", flowResult?.summary?.complete_macros);
                         if (completedAssets) {
                             try {
                                 await window.electronAPI.apiRequest(
@@ -478,7 +493,18 @@ const UploadAssets = () => {
 
     return (
         <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
-            {/* Header with Upload Button */}
+            {showInsufficientPointsModal && (
+                <div className="fixed inset-0 z-[9999]">
+                    {/* Modal positioned at top */}
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
+                        <InsufficientPointsModal
+                            viewChange={onViewChange}
+                            onClose={() => setShowInsufficientPointsModal(false)}
+                        />
+                    </div>
+                </div>
+            )}
+
             <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                 <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
                 <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
