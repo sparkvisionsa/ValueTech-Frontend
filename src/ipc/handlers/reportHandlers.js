@@ -68,17 +68,7 @@ async handleValidateReport(event, reportId) {
             const result = await pythonAPI.report.completeFlow(reportId, tabsNum);
             console.log("Result at handler:", result);
 
-            if (result.status === 'SUCCESS') {
-                return { status: 'SUCCESS', message: 'Flow completed' };
-
-            } else if (result.status === 'FAILED') {
-                return { status: 'FAILED', error: result.error || 'Flow failed' };
-
-            }
-            else {
-                return { status: 'ERROR', error: result.error || 'Flow failed' };
-            }
-
+            return result;
         } catch (error) {
             console.error('[MAIN] Complete flow error:', error);
             return { status: 'ERROR', error: error.message };
