@@ -285,16 +285,52 @@ class PythonWorkerService {
     }
 
     handleWorkerOutput(line) {
+        // Skip empty lines
+        if (!line || !line.trim()) return;
+
+        // Check if line starts with JSON-like content (starts with '{' or '[')
+        const trimmedLine = line.trim();
+        if (!trimmedLine.startsWith('{') && !trimmedLine.startsWith('[')) {
+            // This is likely a log message, not JSON
+            console.log('[PY] Log output:', trimmedLine);
+            return;
+        }
+
         try {
             const response = JSON.parse(line);
             console.log('[PY] Response:', response);
 
             // Handle progress updates
             if (response.type === 'progress') {
-                const reportId = response.reportId;
+                let reportId = response.reportId || response.processId;
+
+                // Extract reportId from processId for delete-report processes
+                if (response.processId && response.processId.startsWith('delete-report-')) {
+                    reportId = response.processId.replace('delete-report-', '');
+                }
+
+                // Extract reportId from processId for delete-incomplete-assets processes
+                if (response.processId && response.processId.startsWith('delete-incomplete-assets-')) {
+                    reportId = response.processId.replace('delete-incomplete-assets-', '');
+                }
+
                 const callback = this.progressCallbacks.get(reportId);
                 if (callback) {
-                    callback(response);
+                    // Transform the progress data to match frontend expectations
+                    const progressData = {
+                        current: response.completed || 0,
+                        total: response.total || 1,
+                        percentage: response.percentage || 0,
+                        message: response.message || `Processing: ${response.completed || 0}/${response.total || 1}`,
+                        paused: response.paused || false,
+                        stopped: response.stopped || false,
+                        processType: response.processType,
+                        timestamp: response.timestamp
+                    };
+                    console.log('[PY] Sending progress update:', progressData);
+                    callback(progressData);
+                } else {
+                    console.log('[PY] No callback found for reportId:', reportId, 'available callbacks:', Array.from(this.progressCallbacks.keys()));
                 }
                 return; // Don't process as command response
             }
@@ -318,7 +354,8 @@ class PythonWorkerService {
                 }
             }
         } catch (error) {
-            console.error('[PY] Failed to parse worker output:', line, error);
+            // Handle non-JSON output (log messages, etc.) gracefully
+            console.log('[PY] Failed to parse worker output:', trimmedLine, 'Error:', error.message);
         }
     }
 

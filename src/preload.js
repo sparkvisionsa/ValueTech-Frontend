@@ -128,7 +128,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.removeListener('create-macros-progress', subscription);
         };
     },
+    // Progress listener for delete-report
+    onDeleteReportProgress: (callback) => {
+        const subscription = (event, data) => callback(data);
+        ipcRenderer.on('delete-report-progress', subscription);
+        return () => {
+            ipcRenderer.removeListener('delete-report-progress', subscription);
+        };
+    },
 
+    // Progress listener for delete-assets
+    onDeleteAssetsProgress: (callback) => {
+        const subscription = (event, data) => callback(data);
+        ipcRenderer.on('delete-assets-progress', subscription);
+        return () => {
+            ipcRenderer.removeListener('delete-assets-progress', subscription);
+        };
+    },
+
+     
     // Worker
     showOpenDialog: () => safeInvoke('show-open-dialog'),
     showOpenDialogWord: () => safeInvoke('show-open-dialog-word'),

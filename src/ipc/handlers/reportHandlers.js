@@ -500,9 +500,29 @@ async handleValidateReport(event, reportId) {
 
     async deleteReport(event, reportId, maxRounds) {
         try {
-            return await pythonAPI.report.deleteReport(reportId, maxRounds);
+            // Get the window that sent the event
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+            // Register progress callback
+            pythonAPI.workerService.registerProgressCallback(reportId, (progressData) => {
+                console.log('[MAIN] Delete report progress update:', progressData);
+                // Send progress to renderer
+                if (senderWindow && !senderWindow.isDestroyed()) {
+                    senderWindow.webContents.send('delete-report-progress', progressData);
+                }
+            });
+
+            // Execute delete report
+            const result = await pythonAPI.report.deleteReport(reportId, maxRounds);
+
+            // Unregister progress callback
+            pythonAPI.workerService.unregisterProgressCallback(reportId);
+
+            return result;
         } catch (err) {
             console.error('[MAIN] Delete report error:', err && err.stack ? err.stack : err);
+            // Unregister on error
+            pythonAPI.workerService.unregisterProgressCallback(reportId);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },
@@ -545,9 +565,29 @@ async handleValidateReport(event, reportId) {
 
     async deleteIncompleteAssets(event, reportId, maxRounds) {
         try {
-            return await pythonAPI.report.deleteIncompleteAssets(reportId, maxRounds);
+            // Get the window that sent the event
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+            // Register progress callback
+            pythonAPI.workerService.registerProgressCallback(reportId, (progressData) => {
+                console.log('[MAIN] Delete incomplete assets progress update:', progressData);
+                // Send progress to renderer via dedicated channel
+                if (senderWindow && !senderWindow.isDestroyed()) {
+                    senderWindow.webContents.send('delete-assets-progress', progressData);
+                }
+            });
+
+            // Execute delete incomplete assets
+            const result = await pythonAPI.report.deleteIncompleteAssets(reportId, maxRounds);
+
+            // Unregister progress callback
+            pythonAPI.workerService.unregisterProgressCallback(reportId);
+
+            return result;
         } catch (err) {
             console.error('[MAIN] Delete incomplete assets error:', err && err.stack ? err.stack : err);
+            // Unregister on error
+            pythonAPI.workerService.unregisterProgressCallback(reportId);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

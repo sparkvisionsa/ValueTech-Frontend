@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
     CheckCircle,
     FileText,
-    Trash2,
     Search,
     PlayCircle,
     Package,
@@ -33,6 +32,12 @@ const DeleteAssets = () => {
     const [deleteAssetsStatus, setDeleteAssetsStatus] = useState(null); // 'running', 'paused', 'stopped', 'completed'
     const [operationResult, setOperationResult] = useState(null);
 
+    // Selected reports state
+    const [selectedReports, setSelectedReports] = useState(new Set());
+
+    // Progress state
+    const [deleteAssetsProgress, setDeleteAssetsProgress] = useState(null);
+
     const parseReportIds = (input) => {
         return [...new Set(
             (input || "")
@@ -61,6 +66,52 @@ const DeleteAssets = () => {
 
         await Promise.all(runners);
         return results;
+    };
+
+    // Progress listener effect
+    useEffect(() => {
+        const unsubscribe = window.electronAPI.onDeleteAssetsProgress((progressData) => {
+            console.log('Delete assets progress received:', progressData);
+            setDeleteAssetsProgress(progressData);
+        });
+
+        return unsubscribe;
+    }, []);
+
+    // Clear selections when checking new reports
+    useEffect(() => {
+        setSelectedReports(new Set());
+    }, [reportSummaryRow]);
+
+    // Handle report selection
+    const handleReportSelect = (reportId, isSelected) => {
+        setSelectedReports(prev => {
+            const newSet = new Set(prev);
+            if (isSelected) {
+                newSet.add(reportId);
+            } else {
+                newSet.delete(reportId);
+            }
+            return newSet;
+        });
+    };
+
+    // Handle select all
+    const handleSelectAll = (isSelected) => {
+        if (isSelected) {
+            // Only select reports that are in "مسودة" or "Draft" status
+            const selectableReports = reportSummaryRow
+                .filter(row => row.reportStatus === "مسودة" || row.reportStatus === "Draft")
+                .map(row => row.reportId);
+            setSelectedReports(new Set(selectableReports));
+        } else {
+            setSelectedReports(new Set());
+        }
+    };
+
+    // Get selected report data
+    const getSelectedReportData = () => {
+        return reportSummaryRow.filter(row => selectedReports.has(row.reportId));
     };
 
     // Handle check report in Taqeem
@@ -116,6 +167,9 @@ const DeleteAssets = () => {
             } else {
                 setError("");
             }
+
+            // Reset the text area after successful check
+            setReportId("");
         } catch (err) {
             console.error("Error checking reports:", err);
             setReportExists(false);
@@ -125,11 +179,11 @@ const DeleteAssets = () => {
         }
     };
 
-    // Handle delete only assets
-    const handleDeleteReportAssets = async () => {
-        const ids = parseReportIds(reportId);
-        if (!ids.length) {
-            setError("At least one Report ID is required");
+    // Handle delete assets for selected reports
+    const handleDeleteSelectedAssets = async () => {
+        const selectedIds = Array.from(selectedReports);
+        if (selectedIds.length === 0) {
+            setError("No reports selected");
             return;
         }
 
@@ -137,18 +191,18 @@ const DeleteAssets = () => {
         setDeleteAssetsRequested(true);
         setDeleteAssetsStatus("running");
         setOperationResult(null);
-        setDeletionResults([]);
+        setDeleteAssetsProgress(null);
 
         const maxRounds = 10;
-        const concurrency = 5;
+        const concurrency = Math.min(5, selectedIds.length); // lower concurrency for asset deletion
 
         setOperationResult({
             mode: "batch",
-            items: Object.fromEntries(ids.map(id => [id, { status: "queued" }]))
+            items: Object.fromEntries(selectedIds.map(id => [id, { status: "queued" }]))
         });
 
         try {
-            const results = await runWithConcurrency(ids, concurrency, async (id) => {
+            const results = await runWithConcurrency(selectedIds, concurrency, async (id) => {
                 setOperationResult(prev => ({
                     ...prev,
                     items: { ...prev.items, [id]: { status: "running" } }
@@ -173,9 +227,14 @@ const DeleteAssets = () => {
             const failed = results.filter(r => !r?.ok).length;
 
             setDeleteAssetsStatus(failed ? "partial" : "success");
+            setDeleteAssetsProgress(null);
+            
+            // Reset the text area after deletion
+            setReportId("");
         } catch (err) {
             console.error("Error initiating batch asset deletion:", err);
             setDeleteAssetsStatus("stopped");
+            setDeleteAssetsProgress(null);
         }
     };
 
@@ -338,6 +397,53 @@ const DeleteAssets = () => {
                             </div>
                         )}
 
+                        {/* Progress Bar */}
+                        {deleteAssetsStatus === 'running' && (
+                            <div className="mt-4">
+                                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                    <span>Progress</span>
+                                    <span>
+                                        {deleteAssetsProgress
+                                            ? `${Math.round(((deleteAssetsProgress.current || 0) / (deleteAssetsProgress.total || 1)) * 100)}% (${deleteAssetsProgress.current || 0} / ${deleteAssetsProgress.total || 1})`
+                                            : 'Initializing... 0%'
+                                        }
+                                    </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                        style={{
+                                            width: deleteAssetsProgress
+                                                ? `${((deleteAssetsProgress.current || 0) / (deleteAssetsProgress.total || 1)) * 100}%`
+                                                : '0%'
+                                        }}
+                                    ></div>
+                                </div>
+                                {deleteAssetsProgress?.message && (
+                                    <p className="text-xs text-gray-500 mt-1">{deleteAssetsProgress.message}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Completion Status */}
+                        {deleteAssetsStatus === 'success' && (
+                            <div className="mt-4 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <CheckCircle className="w-5 h-5 text-green-500" />
+                                <div>
+                                    <p className="font-medium text-green-800">Assets Delete Completed Successfully</p>
+                                    <p className="text-sm text-green-600">
+                                        {deletionResults.length > 0
+                                            ? `Reports with deleted assets: ${deletionResults
+                                                .filter(result => result.status === "Success")
+                                                .map(result => result.reportId)
+                                                .join(", ")}`
+                                            : "Assets deleted"
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         {deleteAssetsStatus === 'paused' && (
                             <div className="flex gap-2 mt-3">
                                 <button
@@ -445,29 +551,56 @@ const DeleteAssets = () => {
                                     </button>
 
                                     <button
-                                        onClick={handleDeleteReportAssets}
+                                        onClick={handleDeleteSelectedAssets}
                                         disabled={deleteAssetsStatus === 'running' || !reportId.trim()}
                                         className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg font-normal flex items-center gap-2 transition-colors whitespace-nowrap"
                                     >
                                         <Package className="w-3 h-3" />
                                         Delete  Assets
-                                    </button>
-                                </div>
+                                    </button>                                </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Enter the report IDs you wish to check. Separate multiple IDs with spaces.
+                                    {selectedReports.size > 0 
+                                        ? `${selectedReports.size} report(s) selected for batch operations. Use the buttons below the table.`
+                                        : "Enter the report IDs you wish to check. Separate multiple IDs with spaces."
+                                    }
                                 </p>
 
                                 {/* Report Validation Status */}
                                 {reportSummaryRow.length > 0 && (
                                     <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-                                        <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">
-                                            Report Summary
+                                        <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                                            <div className="text-sm font-semibold text-gray-700">
+                                                Report Summary ({reportSummaryRow.length} reports, {reportSummaryRow.filter(row => row.reportStatus === "مسودة" || row.reportStatus === "Draft").length} selectable)
+                                            </div>
+                                            {selectedReports.size > 0 && (
+                                                <div className="text-sm text-blue-600 font-medium">
+                                                    {selectedReports.size} selected
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full text-sm">
                                                 <thead className="bg-white border-b">
                                                     <tr>
+                                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">
+                                                            {(() => {
+                                                                const selectableReports = reportSummaryRow.filter(row => 
+                                                                    row.reportStatus === "مسودة" || row.reportStatus === "Draft"
+                                                                );
+                                                                const allSelectableSelected = selectableReports.length > 0 && 
+                                                                    selectableReports.every(row => selectedReports.has(row.reportId));
+                                                                
+                                                                return (
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={allSelectableSelected}
+                                                                        onChange={(e) => handleSelectAll(e.target.checked)}
+                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                                    />
+                                                                );
+                                                            })()}
+                                                        </th>
                                                         <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
                                                         <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
                                                         <th className="text-left px-4 py-2 font-semibold text-gray-600">Report Status</th>
@@ -477,10 +610,28 @@ const DeleteAssets = () => {
 
                                                 <tbody>
                                                     {reportSummaryRow.map((row, index) => (
-                                                        <tr key={index} className="border-b">
-                                                            <td className="px-4 py-2 text-gray-800">{row.reportId}</td>
+                                                        <tr key={index} className={`border-b ${selectedReports.has(row.reportId) ? 'bg-blue-50' : ''} ${row.reportStatus !== "مسودة" && row.reportStatus !== "Draft" ? 'opacity-60' : ''}`}>
+                                                            <td className="px-4 py-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedReports.has(row.reportId)}
+                                                                    onChange={(e) => handleReportSelect(row.reportId, e.target.checked)}
+                                                                    disabled={row.reportStatus !== "مسودة" && row.reportStatus !== "Draft"}
+                                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    title={row.reportStatus !== "مسودة" && row.reportStatus !== "Draft" ? `Cannot select reports with status: ${row.reportStatus}` : ""}
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2 text-gray-800 font-medium">{row.reportId}</td>
                                                             <td className="px-4 py-2 text-gray-800">{row.totalAssets}</td>
-                                                            <td className="px-4 py-2 text-gray-800">{row.reportStatus}</td>
+                                                            <td className="px-4 py-2 text-gray-800">
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                    row.reportStatus === "مسودة" || row.reportStatus === "Draft"
+                                                                        ? "bg-green-100 text-green-700"
+                                                                        : "bg-gray-100 text-gray-700"
+                                                                }`}>
+                                                                    {row.reportStatus}
+                                                                </span>
+                                                            </td>
                                                             <td className="px-4 py-2">
                                                                 <span
                                                                     className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -497,6 +648,20 @@ const DeleteAssets = () => {
                                                 </tbody>
                                             </table>
                                         </div>
+
+                                        {/* Action buttons for selected reports */}
+                                        {selectedReports.size > 0 && (
+                                            <div className="bg-gray-50 px-4 py-3 border-t flex gap-3">
+                                                <button
+                                                    onClick={() => handleDeleteSelectedAssets()}
+                                                    disabled={deleteAssetsStatus === 'running'}
+                                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+                                                >
+                                                    <Package className="w-4 h-4" />
+                                                    Delete Assets Only ({selectedReports.size})
+                                                </button>
+                                            </div>
+                                        )}
 
                                         <div
                                             className={`px-4 py-2 text-xs ${
@@ -580,10 +745,10 @@ const DeleteAssets = () => {
                             {/* Error Display */}
                             {error && (
                                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                                    <div className="flex items-center gap-3">
+                                    {/* <div className="flex items-center gap-3">
                                         <FileText className="w-5 h-5 text-red-500" />
                                         <span className="text-red-700">{error}</span>
-                                    </div>
+                                    </div> */}
                                 </div>
                             )}
 
