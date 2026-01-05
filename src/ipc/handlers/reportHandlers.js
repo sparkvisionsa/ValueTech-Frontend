@@ -151,9 +151,33 @@ async handleValidateReport(event, reportId) {
 
     async handleCreateReportById(event, recordId, tabsNum) {
         try {
-            return await pythonAPI.report.createReportById(recordId, tabsNum);
+            // Get the window that sent the event
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+            // Register progress callback for real-time updates
+            pythonAPI.workerService.registerProgressCallback(recordId, (progressData) => {
+                console.log('[MAIN] Progress update for report:', recordId, progressData);
+                // Send progress to renderer via IPC
+                if (senderWindow && !senderWindow.isDestroyed()) {
+                    senderWindow.webContents.send('submit-reports-quickly-progress', {
+                        ...progressData,
+                        reportId: recordId,
+                        processId: recordId
+                    });
+                }
+            });
+
+            // Execute create report
+            const result = await pythonAPI.report.createReportById(recordId, tabsNum);
+
+            // Unregister progress callback
+            pythonAPI.workerService.unregisterProgressCallback(recordId);
+
+            return result;
         } catch (err) {
             console.error('[MAIN] Create report by id error:', err && err.stack ? err.stack : err);
+            // Unregister on error
+            pythonAPI.workerService.unregisterProgressCallback(recordId);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

@@ -36,24 +36,27 @@ const getReportRecordId = (report) => report?._id || report?.id || report?.recor
 const getReportStatus = (report) => {
     if (report?.checked) return "approved";
     if (report?.endSubmitTime) return "complete";
-    if (report?.report_id) return "sent";
+    if (report?.report_status === "sent") return "sent";
+    if (report?.report_id) return "incomplete";
     return report?.report_status || "new";
 };
 
 const reportStatusLabels = {
     approved: "Approved",
     complete: "Complete",
+    incomplete : "incomplete ",
     sent: "Sent",
     new: "New",
-    incomplete: "Incomplete",
+    incomplete : "incomplete ",
 };
 
 const reportStatusClasses = {
     approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
     complete: "border-blue-200 bg-blue-50 text-blue-700",
-    sent: "border-amber-200 bg-amber-50 text-amber-700",
+    incomplete : "border-amber-200 bg-amber-50 text-amber-700",
+    sent: "border-purple-200 bg-purple-50 text-purple-700",
     new: "border-slate-200 bg-slate-50 text-slate-700",
-    incomplete: "border-rose-200 bg-rose-50 text-rose-700",
+    incomplete : "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 // Helper functions for validation
@@ -239,6 +242,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
     const [reports, setReports, resetReports] = usePersistentState("submitReportsQuickly:reports", [], { storage: "session" });
     const [reportsLoading, setReportsLoading] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
     const [expandedReports, setExpandedReports] = useState([]);
     const [selectedReportIds, setSelectedReportIds] = useState([]);
     const [reportSelectFilter, setReportSelectFilter] = useState("all");
@@ -246,6 +251,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [actionDropdown, setActionDropdown] = useState({});
     const [bulkAction, setBulkAction] = useState("");
     const [editingReportId, setEditingReportId] = useState(null);
+    const [reportProgress, setReportProgress] = useState({}); // { recordId: { percentage: 0, status: 'idle', message: '' } }
     const [formData, setFormData] = useState({
         title: "",
         client_name: "",
@@ -322,6 +328,87 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (reports.length === 0 && !reportsLoading) {
             loadReports();
         }
+    }, []);
+
+    // Set up real-time progress listener via IPC
+    useEffect(() => {
+        if (!window.electronAPI || !window.electronAPI.onSubmitReportsQuicklyProgress) {
+            console.warn('Electron API or progress listener not available');
+            return;
+        }
+
+        // Set up the progress listener for real-time updates
+        const cleanup = window.electronAPI.onSubmitReportsQuicklyProgress((progressData) => {
+            console.log('[RENDERER] Progress update received:', progressData);
+
+            if (progressData && (progressData.processId || progressData.reportId)) {
+                const recordId = progressData.processId || progressData.reportId;
+                if (!recordId) return;
+
+                // Extract progress information
+                const percentage = progressData.percentage || 0;
+                const message = progressData.message || progressData.currentItem || '';
+                
+                // Determine status from progress data - prioritize paused/stopped flags
+                let status = 'processing';
+                // Check paused/stopped flags first (these come from process control system)
+                if (progressData.paused === true || progressData.paused === 'true' || String(progressData.paused).toLowerCase() === 'true') {
+                    status = 'paused';
+                } else if (progressData.stopped === true || progressData.stopped === 'true' || String(progressData.stopped).toLowerCase() === 'true') {
+                    status = 'stopped';
+                } else if (progressData.status) {
+                    // Map status values
+                    const statusMap = {
+                        'paused': 'paused',
+                        'stopped': 'stopped',
+                        'processing': 'processing',
+                        'starting': 'starting',
+                        'completed': 'completed',
+                        'error': 'error'
+                    };
+                    status = statusMap[progressData.status.toLowerCase()] || progressData.status;
+                } else if (percentage >= 100) {
+                    status = 'completed';
+                } else if (percentage > 0) {
+                    status = 'processing';
+                } else {
+                    status = 'starting';
+                }
+                
+                // Update progress state in real-time - preserve existing state if status is same
+                setReportProgress((prev) => {
+                    const existing = prev[recordId] || {};
+                    return {
+                        ...prev,
+                        [recordId]: {
+                            percentage: Math.min(100, Math.max(0, percentage || existing.percentage || 0)),
+                            status: status,
+                            message: message || existing.message || `Processing: ${progressData.completed || 0}/${progressData.total || 0}`
+                        }
+                    };
+                });
+
+                // If message contains "Report created:" with report_id, update the report instantly
+                if (message && message.includes("Report created:")) {
+                    const reportIdMatch = message.match(/Report created:\s*(\S+)/);
+                    if (reportIdMatch && reportIdMatch[1]) {
+                        const newReportId = reportIdMatch[1];
+                        // Update the report in the reports list instantly
+                        setReports((prevReports) =>
+                            prevReports.map((r) => {
+                                const rId = r._id || r.id || r.recordId;
+                                if (rId === recordId) {
+                                    return { ...r, report_id: newReportId };
+                                }
+                                return r;
+                            })
+                        );
+                    }
+                }
+            }
+        });
+
+        return cleanup;
     }, []);
 
     const pdfMatchInfo = useMemo(() => {
@@ -441,8 +528,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
                 // Calculate report data (will be auto-generated)
                 const number_of_macros = marketAssetCount + costAssetCount;
-                const title = `${number_of_macros} + ${assetsTotal}`;
-                const client_name = `${number_of_macros} + ${assetsTotal}`;
+                const title = `عدد الأصول (${number_of_macros}) + القيمة النهائية (${assetsTotal})`;
+                const client_name = `عدد الأصول (${number_of_macros}) + القيمة النهائية (${assetsTotal})`;
 
                 const baseName = normalizeKey(stripExtension(file.name));
                 const matchedPdf = shouldValidatePdf ? pdfMap[baseName] : { name: DUMMY_PDF_NAME };
@@ -639,6 +726,184 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         [recommendedTabs]
     );
 
+    // Pause/Resume/Stop helpers for long-running macro fill processes (per report)
+    // These control the browser processes directly via process control system
+    const pauseReportProcess = useCallback(
+        async (recordId) => {
+            if (!recordId) {
+                setError("Missing report record id.");
+                return;
+            }
+            
+            if (!window?.electronAPI?.pauseMacroFill) {
+                setError("Desktop integration unavailable. Restart the app.");
+                return;
+            }
+
+            try {
+                // Optimistically update UI immediately
+                setReportProgress((prev) => {
+                    const current = prev[recordId] || { percentage: 0, status: 'processing', message: '' };
+                    return {
+                        ...prev,
+                        [recordId]: {
+                            ...current,
+                            status: 'paused',
+                            message: current.message || 'Pausing...'
+                        }
+                    };
+                });
+
+                setSuccess("Pausing report submission...");
+                
+                // Pause the macro fill process (which controls the browser)
+                const result = await window.electronAPI.pauseMacroFill(recordId);
+                
+                if (result?.status === "SUCCESS") {
+                    // Status is already updated optimistically, real-time listener will confirm
+                    setSuccess("Report submission paused.");
+                } else {
+                    // Revert optimistic update on failure
+                    setReportProgress((prev) => {
+                        const current = prev[recordId] || { percentage: 0, status: 'processing', message: '' };
+                        return {
+                            ...prev,
+                            [recordId]: {
+                                ...current,
+                                status: 'processing'
+                            }
+                        };
+                    });
+                    throw new Error(result?.error || "Failed to pause process.");
+                }
+            } catch (err) {
+                // Revert optimistic update on error
+                setReportProgress((prev) => {
+                    const current = prev[recordId] || { percentage: 0, status: 'processing', message: '' };
+                    return {
+                        ...prev,
+                        [recordId]: {
+                            ...current,
+                            status: 'processing'
+                        }
+                    };
+                });
+                setError(err?.message || "Failed to pause process.");
+            }
+        },
+        []
+    );
+
+    const resumeReportProcess = useCallback(
+        async (recordId) => {
+            if (!recordId) {
+                setError("Missing report record id.");
+                return;
+            }
+            
+            if (!window?.electronAPI?.resumeMacroFill) {
+                setError("Desktop integration unavailable. Restart the app.");
+                return;
+            }
+
+            try {
+                // Optimistically update UI immediately
+                setReportProgress((prev) => {
+                    const current = prev[recordId] || { percentage: 0, status: 'paused', message: '' };
+                    return {
+                        ...prev,
+                        [recordId]: {
+                            ...current,
+                            status: 'processing',
+                            message: current.message || 'Resuming...'
+                        }
+                    };
+                });
+
+                setSuccess("Resuming report submission...");
+                
+                // Resume the macro fill process (which controls the browser)
+                const result = await window.electronAPI.resumeMacroFill(recordId);
+                
+                if (result?.status === "SUCCESS") {
+                    // Status is already updated optimistically, real-time listener will confirm
+                    setSuccess("Report submission resumed.");
+                } else {
+                    // Revert optimistic update on failure
+                    setReportProgress((prev) => {
+                        const current = prev[recordId] || { percentage: 0, status: 'paused', message: '' };
+                        return {
+                            ...prev,
+                            [recordId]: {
+                                ...current,
+                                status: 'paused'
+                            }
+                        };
+                    });
+                    throw new Error(result?.error || "Failed to resume process.");
+                }
+            } catch (err) {
+                // Revert optimistic update on error
+                setReportProgress((prev) => {
+                    const current = prev[recordId] || { percentage: 0, status: 'paused', message: '' };
+                    return {
+                        ...prev,
+                        [recordId]: {
+                            ...current,
+                            status: 'paused'
+                        }
+                    };
+                });
+                setError(err?.message || "Failed to resume process.");
+            }
+        },
+        []
+    );
+
+    const stopReportProcess = useCallback(
+        async (recordId) => {
+            if (!recordId) {
+                setError("Missing report record id.");
+                return;
+            }
+            
+            if (!window?.electronAPI?.stopMacroFill) {
+                setError("Desktop integration unavailable. Restart the app.");
+                return;
+            }
+
+            if (!window.confirm("Are you sure you want to stop this report submission? Progress will be lost.")) {
+                return;
+            }
+
+            try {
+                setSuccess("Stopping report submission...");
+                
+                // Stop the macro fill process (which controls the browser)
+                const result = await window.electronAPI.stopMacroFill(recordId);
+                
+                if (result?.status === "SUCCESS") {
+                    // Status will be updated via real-time progress listener
+                    // Preserve current percentage for visibility
+                    setReportProgress((prev) => ({
+                        ...prev,
+                        [recordId]: {
+                            ...(prev[recordId] || { percentage: 0 }),
+                            status: "stopped",
+                            message: "Stopped by user"
+                        }
+                    }));
+                    setSuccess("Report submission stopped.");
+                } else {
+                    throw new Error(result?.error || "Failed to stop process.");
+                }
+            } catch (err) {
+                setError(err?.message || "Failed to stop process.");
+            }
+        },
+        []
+    );
+
     const submitToTaqeem = useCallback(
         async (recordId, tabsNum, options = {}) => {
             const { withLoading = true, resume = false } = options;
@@ -650,6 +915,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
             // Use global recommendedTabs if tabsNum not provided, otherwise use the provided value
             const resolvedTabs = tabsNum || Math.max(1, Number(recommendedTabs) || 3);
+
+            // Initialize progress for this report
+            setReportProgress((prev) => ({
+                ...prev,
+                [recordId]: { percentage: 0, status: 'starting', message: 'Initializing...' }
+            }));
 
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
@@ -669,6 +940,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 const result = await window.electronAPI.createReportById(recordId, resolvedTabs);
 
                 if (result?.status === "SUCCESS") {
+                    setReportProgress((prev) => ({
+                        ...prev,
+                        [recordId]: { percentage: 100, status: 'completed', message: 'Report submitted successfully' }
+                    }));
                     setSuccess("Report submitted to Taqeem successfully.");
                     await loadReports();
                     return;
@@ -761,32 +1036,131 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         }
 
         if (bulkAction === "upload-submit" || bulkAction === "retry-submit") {
-            // Process reports sequentially with 5-second delay between browsers
-            for (let i = 0; i < selectedIds.length; i++) {
-                const id = selectedIds[i];
+            // Calculate initial tabs per browser (distribute evenly)
+            const totalTabs = Math.max(1, Number(recommendedTabs) || 3);
+            const numReports = selectedIds.length;
+            const initialTabsPerBrowser = Math.floor(totalTabs / numReports);
+            const remainderTabs = totalTabs % numReports;
+            
+            // Initialize progress for all reports
+            const initialProgress = {};
+            selectedIds.forEach((id) => {
+                initialProgress[id] = { percentage: 0, status: 'pending', message: 'Waiting to start...' };
+            });
+            setReportProgress(initialProgress);
+            
+            // Open browsers in parallel with 5-second delays
+            const submissionPromises = selectedIds.map(async (id, index) => {
+                // Add delay before opening each browser (except the first one)
+                if (index > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 5000 * index)); // 5 second delay per browser
+                }
+                
                 const report = reports.find(r => getReportRecordId(r) === id);
                 const assetCount = report?.asset_data?.length || 0;
                 
-                // Use global recommendedTabs for each browser
-                const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
-                
-                // Add delay before opening each browser (except the first one)
-                if (i > 0) {
-                    setSuccess(`Opening browser ${i + 1} of ${selectedIds.length} in 5 seconds...`);
-                    await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+                // Calculate tabs for this browser (distribute evenly, remainder goes to first browsers)
+                let tabsNum = initialTabsPerBrowser;
+                if (index < remainderTabs) {
+                    tabsNum += 1; // Give remainder tabs to first browsers
                 }
+                tabsNum = Math.max(1, tabsNum); // Ensure at least 1 tab
                 
-                setSuccess(`Submitting report ${i + 1} of ${selectedIds.length}...`);
-                await submitToTaqeem(id, tabsNum);
-            }
+                // Update progress to starting
+                setReportProgress((prev) => ({
+                    ...prev,
+                    [id]: { percentage: 0, status: 'starting', message: 'Opening browser...' }
+                }));
+                
+                // Submit report (this will open a browser and process)
+                try {
+                    await submitToTaqeem(id, tabsNum, { withLoading: false });
+                } catch (err) {
+                    setReportProgress((prev) => ({
+                        ...prev,
+                        [id]: { percentage: 0, status: 'error', message: err.message || 'Submission failed' }
+                    }));
+                }
+            });
+            
+            // Wait for all submissions to complete (they run in parallel)
+            await Promise.allSettled(submissionPromises);
+            
             setSelectedReportIds([]);
             setBulkAction("");
-            setSuccess(`All ${selectedIds.length} report(s) submitted successfully.`);
+            setSuccess(`All ${selectedIds.length} report(s) submitted. Check progress bars for status.`);
+            return;
+        }
+
+        if (bulkAction === "send-approver") {
+            try {
+                setSuccess(`Sending ${selectedIds.length} report(s) to approver...`);
+                
+                // Get reports with report_id (Taqeem report IDs)
+                const reportsToSend = selectedIds
+                    .map(id => reports.find(r => getReportRecordId(r) === id))
+                    .filter(r => r && r.report_id);
+                
+                if (reportsToSend.length === 0) {
+                    setError("No reports with Taqeem report IDs found. Reports must be submitted to Taqeem first.");
+                    return;
+                }
+
+                const reportIds = reportsToSend.map(r => r.report_id).filter(Boolean);
+                
+                if (!window.electronAPI?.finalizeMultipleReports) {
+                    throw new Error("Desktop integration unavailable. Restart the app.");
+                }
+
+                const result = await window.electronAPI.finalizeMultipleReports(reportIds);
+                
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Failed to send reports to approver.");
+                }
+
+                // Update report status to "sent" for all selected reports
+                for (const id of selectedIds) {
+                    try {
+                        await updateSubmitReportsQuickly(id, { report_status: "sent" });
+                    } catch (err) {
+                        console.error(`Failed to update report ${id}:`, err);
+                    }
+                }
+
+                await loadReports();
+                setSelectedReportIds([]);
+                setBulkAction("");
+                setSuccess(`Successfully sent ${reportsToSend.length} report(s) to approver.`);
+            } catch (err) {
+                setError(err?.message || "Failed to send reports to approver.");
+            }
+            return;
+        }
+
+        if (bulkAction === "approve") {
+            try {
+                setSuccess(`Approving ${selectedIds.length} report(s)...`);
+                
+                for (const id of selectedIds) {
+                    try {
+                        await updateSubmitReportsQuickly(id, { checked: true });
+                    } catch (err) {
+                        console.error(`Failed to approve report ${id}:`, err);
+                    }
+                }
+
+                await loadReports();
+                setSelectedReportIds([]);
+                setBulkAction("");
+                setSuccess(`Successfully approved ${selectedIds.length} report(s).`);
+            } catch (err) {
+                setError(err?.message || "Failed to approve reports.");
+            }
             return;
         }
     };
 
-    const handleReportAction = (report, action) => {
+    const handleReportAction = async (report, action) => {
         const recordId = getReportRecordId(report);
         if (!recordId) return;
 
@@ -798,6 +1172,50 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             handleDeleteReport(recordId);
         } else if (action === "edit") {
             handleEditReport(report);
+        } else if (action === "send-approver") {
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
+            try {
+                if (!report.report_id) {
+                    setError("Report must be submitted to Taqeem first (must have a report_id).");
+                    return;
+                }
+
+                setSuccess("Sending report to approver...");
+
+                if (!window.electronAPI?.finalizeMultipleReports) {
+                    throw new Error("Desktop integration unavailable. Restart the app.");
+                }
+
+                const result = await window.electronAPI.finalizeMultipleReports([report.report_id]);
+                
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Failed to send report to approver.");
+                }
+
+                // Update report status to "sent"
+                await updateSubmitReportsQuickly(recordId, { report_status: "sent" });
+                
+                await loadReports();
+                setSuccess("Report sent to approver successfully.");
+            } catch (err) {
+                setError(err?.message || "Failed to send report to approver.");
+            } finally {
+                setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
+            }
+        } else if (action === "approve") {
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
+            try {
+                setSuccess("Approving report...");
+                
+                await updateSubmitReportsQuickly(recordId, { checked: true });
+                
+                await loadReports();
+                setSuccess("Report approved successfully.");
+            } catch (err) {
+                setError(err?.message || "Failed to approve report.");
+            } finally {
+                setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
+            }
         }
     };
 
@@ -817,6 +1235,27 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (reportSelectFilter === "all") return reports;
         return reports.filter((report) => getReportStatus(report) === reportSelectFilter);
     }, [reports, reportSelectFilter]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredReports.length / itemsPerPage));
+    
+    const visibleReports = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        return filteredReports.slice(startIndex, endIndex);
+    }, [filteredReports, currentPage, itemsPerPage]);
+
+    useEffect(() => {
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(1);
+        }
+    }, [totalPages]);
+
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
 
     const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
 
@@ -1289,6 +1728,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             >
                                 <option value="all">All statuses</option>
                                 <option value="new">New</option>
+                                <option value="incomplete ">incomplete </option>
                                 <option value="sent">Sent</option>
                                 <option value="complete">Complete</option>
                                 <option value="approved">Approved</option>
@@ -1304,6 +1744,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 <option value="upload-submit">Upload & Submit to Taqeem</option>
                                 <option value="delete">Delete</option>
                                 <option value="retry-submit">Retry Submit</option>
+                                <option value="send-approver">Send to Approver</option>
+                                <option value="approve">Approve</option>
                             </select>
                             <button
                                 type="button"
@@ -1342,8 +1784,9 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 )}
 
                 {filteredReports.length > 0 && (
-                    <div className="w-full overflow-x-auto">
-                        <div className="min-w-full">
+                    <>
+                        <div className="w-full overflow-x-auto">
+                            <div className="min-w-full">
                             <table className="w-full text-xs text-slate-700">
                                 <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-800 border-b-2 border-blue-200">
                                     <tr>
@@ -1358,7 +1801,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredReports.map((report, idx) => {
+                                    {visibleReports.map((report, idx) => {
                                         const recordId = getReportRecordId(report);
                                         const statusKey = getReportStatus(report);
                                         const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
@@ -1387,8 +1830,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                         </button>
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <div className="text-xs font-semibold text-slate-900 truncate" title={report.report_id || "Not sent"}>
-                                                            {report.report_id || "Not sent"}
+                                                        <div className="text-xs font-semibold text-slate-900 truncate" title={report.report_id || "Not submit"}>
+                                                            {report.report_id || "Not submit"}
                                                         </div>
                                                         <div className="text-[10px] text-slate-500 truncate" title={recordId || "-"}>
                                                             {recordId || "-"}
@@ -1401,13 +1844,81 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                         {report.final_value || "-"}
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <span
-                                                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                                                reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
-                                                            }`}
-                                                        >
-                                                            {reportStatusLabels[statusKey] || statusKey}
-                                                        </span>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span
+                                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                                                    reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
+                                                                }`}
+                                                            >
+                                                                {reportStatusLabels[statusKey] || statusKey}
+                                                            </span>
+                                                            {reportProgress[recordId] && (
+                                                                <div className="w-full space-y-1">
+                                                                    <div className="flex items-center justify-between mb-0.5">
+                                                                        <span className="text-[9px] text-slate-600 font-medium">
+                                                                            {Math.round(reportProgress[recordId].percentage)}%
+                                                                        </span>
+                                                                        <span className="text-[9px] text-slate-500 truncate max-w-[120px]" title={reportProgress[recordId].message}>
+                                                                            {reportProgress[recordId].message}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                                                        <div
+                                                                            className={`h-full transition-all duration-300 ${
+                                                                                reportProgress[recordId].status === "error"
+                                                                                    ? "bg-red-500"
+                                                                                    : reportProgress[recordId].status === "paused"
+                                                                                    ? "bg-yellow-500"
+                                                                                    : reportProgress[recordId].status === "stopped"
+                                                                                    ? "bg-slate-500"
+                                                                                    : "bg-blue-600"
+                                                                            }`}
+                                                                            style={{ width: `${Math.min(100, Math.max(0, reportProgress[recordId].percentage))}%` }}
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {(() => {
+                                                                            const currentStatus = reportProgress[recordId]?.status;
+                                                                            const isProcessing = currentStatus === "processing" || currentStatus === "starting";
+                                                                            const isPaused = currentStatus === "paused";
+                                                                            const canStop = ["processing", "starting", "paused"].includes(currentStatus);
+                                                                            
+                                                                            return (
+                                                                                <>
+                                                                                    {isProcessing && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => pauseReportProcess(recordId)}
+                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                                                                        >
+                                                                                            Pause
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {isPaused && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => resumeReportProcess(recordId)}
+                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                                                                        >
+                                                                                            Resume
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {canStop && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => stopReportProcess(recordId)}
+                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-rose-400 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                                                                                        >
+                                                                                            Stop
+                                                                                        </button>
+                                                                                    )}
+                                                                                </>
+                                                                            );
+                                                                        })()}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-2 py-2">
                                                         <div className="flex flex-col gap-1">
@@ -1428,6 +1939,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                     <option value="retry">Retry submit</option>
                                                                     <option value="delete">Delete</option>
                                                                     <option value="edit">Edit</option>
+                                                                    <option value="send-approver">Send to Approver</option>
+                                                                    <option value="approve">Approve</option>
                                                                 </select>
                                                                 <button
                                                                     type="button"
@@ -1482,29 +1995,43 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                                     <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Asset name</th>
                                                                                     <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Final value</th>
                                                                                     <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Sheet</th>
+                                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
                                                                                 </tr>
                                                                             </thead>
                                                                             <tbody>
                                                                                 {assetList.length === 0 ? (
                                                                                     <tr>
-                                                                                        <td colSpan={3} className="px-2 py-2 text-center text-slate-500 text-xs">
+                                                                                        <td colSpan={4} className="px-2 py-2 text-center text-slate-500 text-xs">
                                                                                             No assets available for this report.
                                                                                         </td>
                                                                                     </tr>
                                                                                 ) : (
-                                                                                    assetList.map((asset, assetIdx) => (
-                                                                                        <tr key={`${recordId}-${assetIdx}`} className="border-t border-slate-200 hover:bg-slate-50/50">
-                                                                                            <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
-                                                                                                {asset.asset_name || "-"}
-                                                                                            </td>
-                                                                                            <td className="px-2 py-1.5 text-slate-700 text-xs">
-                                                                                                {asset.final_value || "-"}
-                                                                                            </td>
-                                                                                            <td className="px-2 py-1.5 text-slate-600 text-xs">
-                                                                                                {asset.source_sheet || "-"}
-                                                                                            </td>
-                                                                                        </tr>
-                                                                                    ))
+                                                                                    assetList.map((asset, assetIdx) => {
+                                                                                        const assetStatus = asset.submitState === 1 ? "complete" : "incomplete";
+                                                                                        const statusLabel = assetStatus === "complete" ? "Complete" : "Incomplete";
+                                                                                        const statusClass = assetStatus === "complete" 
+                                                                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                                                            : "border-amber-200 bg-amber-50 text-amber-700";
+                                                                                        
+                                                                                        return (
+                                                                                            <tr key={`${recordId}-${assetIdx}`} className="border-t border-slate-200 hover:bg-slate-50/50">
+                                                                                                <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
+                                                                                                    {asset.asset_name || "-"}
+                                                                                                </td>
+                                                                                                <td className="px-2 py-1.5 text-slate-700 text-xs">
+                                                                                                    {asset.final_value || "-"}
+                                                                                                </td>
+                                                                                                <td className="px-2 py-1.5 text-slate-600 text-xs">
+                                                                                                    {asset.source_sheet || "-"}
+                                                                                                </td>
+                                                                                                <td className="px-2 py-1.5">
+                                                                                                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-semibold ${statusClass}`}>
+                                                                                                        {statusLabel}
+                                                                                                    </span>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })
                                                                                 )}
                                                                             </tbody>
                                                                         </table>
@@ -1519,8 +2046,149 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                     })}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
-                    </div>
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (() => {
+                        const getPageNumbers = () => {
+                            const pages = [];
+
+                            if (totalPages <= 6) {
+                                // Show all pages if 6 or fewer
+                                for (let i = 1; i <= totalPages; i++) {
+                                    pages.push(i);
+                                }
+                                return pages;
+                            }
+
+                            // Always show first 3 pages
+                            pages.push(1, 2, 3);
+
+                            const lastThree = [totalPages - 2, totalPages - 1, totalPages];
+                            const lastThreeStart = totalPages - 2;
+
+                            // If current page is in first 3 or overlaps with last 3
+                            if (currentPage <= 3) {
+                                // Show: 1, 2, 3, 4, 5, ..., last 3
+                                if (4 < lastThreeStart) {
+                                    pages.push(4, 5);
+                                    pages.push('ellipsis');
+                                }
+                            } else if (currentPage >= lastThreeStart) {
+                                // Show: 1, 2, 3, ..., last 3
+                                if (3 < lastThreeStart - 1) {
+                                    pages.push('ellipsis');
+                                }
+                            } else {
+                                // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
+                                const showBefore = currentPage - 1;
+                                const showAfter = currentPage + 1;
+
+                                // Check if we need ellipsis before current page
+                                if (showBefore > 4) {
+                                    pages.push('ellipsis');
+                                    pages.push(showBefore);
+                                } else if (showBefore > 3) {
+                                    pages.push(showBefore);
+                                }
+
+                                pages.push(currentPage);
+
+                                // Check if we need ellipsis after current page
+                                if (showAfter < lastThreeStart - 1) {
+                                    pages.push(showAfter);
+                                    if (showAfter < lastThreeStart - 2) {
+                                        pages.push('ellipsis');
+                                    }
+                                }
+                            }
+
+                            // Always show last 3 pages (avoid duplicates)
+                            lastThree.forEach(page => {
+                                if (!pages.includes(page)) {
+                                    pages.push(page);
+                                }
+                            });
+
+                            // Clean up and ensure proper order
+                            const cleaned = [];
+                            let prevNum = 0;
+
+                            for (let i = 0; i < pages.length; i++) {
+                                const item = pages[i];
+                                if (item === 'ellipsis') {
+                                    if (cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                        cleaned.push('ellipsis');
+                                    }
+                                } else if (typeof item === 'number') {
+                                    if (item > prevNum) {
+                                        if (item > prevNum + 1 && prevNum > 0 && cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                            cleaned.push('ellipsis');
+                                        }
+                                        cleaned.push(item);
+                                        prevNum = item;
+                                    }
+                                }
+                            }
+
+                            return cleaned;
+                        };
+
+                        const pageNumbers = getPageNumbers();
+
+                        return (
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
+                                <div className="text-xs text-slate-600 font-medium">
+                                    Showing <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredReports.length)}</span> of <span className="font-semibold text-slate-800">{filteredReports.length}</span> reports
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePageChange(currentPage - 1)}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        Previous
+                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        {pageNumbers.map((page, idx) => {
+                                            if (page === 'ellipsis') {
+                                                return (
+                                                    <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-slate-600">
+                                                        ...
+                                                    </span>
+                                                );
+                                            }
+                                            return (
+                                                <button
+                                                    key={page}
+                                                    type="button"
+                                                    onClick={() => handlePageChange(page)}
+                                                    className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                                        currentPage === page
+                                                            ? "bg-blue-600 text-white shadow-sm"
+                                                            : "text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400"
+                                                    }`}
+                                                >
+                                                    {page}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePageChange(currentPage + 1)}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                        })()}
+                    </>
                 )}
             </div>
 
