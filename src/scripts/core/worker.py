@@ -3,6 +3,7 @@ import asyncio, sys, json, traceback, platform
 from .browser import closeBrowser, get_browser, check_browser_status, spawn_new_browser
 
 from scripts.loginFlow.login import startLogin, submitOtp
+from scripts.loginFlow.newLogin import public_login_flow
 from scripts.loginFlow.register import register_user
 
 from scripts.submission.validateReport import validate_report
@@ -145,6 +146,26 @@ async def handle_command(cmd):
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
         
+    elif action == "public-login":
+        base_url = (
+            "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
+        )
+
+        params = (
+            "?client_id=cli-qima-valuers"
+            "&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
+            "&scope=openid"
+            "&response_type=code"
+        )
+
+        login_url = base_url + params
+        is_auth = cmd.get("isAuth", False)
+
+        result = await public_login_flow(login_url, is_auth)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
     elif action == "otp":
         browser = await get_browser()
         if not browser or not browser.main_tab:

@@ -348,6 +348,7 @@ class PythonWorkerService {
                         response.status === 'NOT_LOGGED_IN' ||
                         response.status === 'MACROS_EXIST' ||
                         response.status === 'NOT_FOUND' ||
+                        response.status === 'CHECK' ||
                         response.status === 'CANCELLED') {
                         handler.resolve(response);
                     } else {

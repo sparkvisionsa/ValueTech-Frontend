@@ -32,8 +32,8 @@ const UploadAssets = ({ onViewChange }) => {
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
 
-    const { token } = useSession();
-    const { taqeemStatus } = useNavStatus();
+    const { token, login } = useSession();
+    const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
 
     // Common fields state
@@ -278,7 +278,7 @@ const UploadAssets = ({ onViewChange }) => {
             });
 
             const isTaqeemLoggedIn = taqeemStatus?.state === "success";
-            const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, previewData.length || 0);
+            const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, previewData.length || 0, login, setTaqeemStatus);
 
             if (authStatus?.status === "INSUFFICIENT_POINTS") {
                 setShowInsufficientPointsModal(true);

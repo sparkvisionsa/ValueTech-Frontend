@@ -52,6 +52,7 @@ function registerIpcHandlers() {
     // Auth handlers
     if (authHandlers) {
         safeHandle('login', authHandlers.handleLogin, 'authHandlers.handleLogin');
+        safeHandle('public-login', authHandlers.handlePublicLogin, 'authHandlers.handlePublicLogin');
         safeHandle('submit-otp', authHandlers.handleSubmitOtp, 'authHandlers.handleSubmitOtp');
         safeHandle('check-status', authHandlers.handleCheckStatus, 'authHandlers.handleCheckStatus');
         safeHandle('get-companies', authHandlers.handleGetCompanies, 'authHandlers.handleGetCompanies');
@@ -177,6 +178,7 @@ function registerIpcHandlers() {
 
 function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('login');
+    ipcMain.removeAllListeners('public-login');
     ipcMain.removeAllListeners('submit-otp');
     ipcMain.removeAllListeners('check-status');
     ipcMain.removeAllListeners('get-companies');

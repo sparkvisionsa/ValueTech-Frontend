@@ -26,20 +26,73 @@ async def spawn_new_browser(
     await new_browser.cookies.load()
     return new_browser    
 
-async def get_browser(force_new=False):
+
+async def switch_to_headless():
+    global browser
+
+    if not browser:
+        return {"status": "FAILED", "error": "No active browser"}
+
+    old_browser = browser
+
+    try:
+        await old_browser.cookies.save()
+        profile_path = os.getenv("USER_DATA_DIR", None)
+
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+        )
+        
+        headless_browser = await uc.start(
+            headless=True,
+            user_data_dir=profile_path,
+            browser_args=[
+                f"--user-agent={user_agent}",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no_sandbox=True",
+                "--disable-popup-blocking",
+                "--disable-features=VizDisplayCompositor",
+                "--lang=en-US",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+        )
+        await headless_browser.cookies.load()
+        browser = headless_browser
+        old_browser.stop()
+
+        return {"status": "SUCCESS"}
+
+    except Exception as e:
+        return {"status": "FAILED", "error": str(e)}
+
+
+
+async def get_browser(force_new=False, headless_override=None):
     global browser
 
     if force_new and browser:
         await closeBrowser()
 
     if browser is None:
-        headless = os.getenv("HEADLESS", "false").lower() in ("true", "1", "yes")
-        print(json.dumps({"type": "DEBUG", "message": f"Headless mode: {headless}"}), flush=True)
+        # Default behavior from environment
+        env_headless = os.getenv("HEADLESS", "false").lower() in ("true", "1", "yes")
+
+        # Allow callers to explicitly override
+        headless = headless_override if headless_override is not None else env_headless
+
+        print(json.dumps({
+            "type": "DEBUG",
+            "message": f"Headless mode: {headless}"
+        }), flush=True)
 
         user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
         )
+
         profile_path = os.getenv("USER_DATA_DIR", None)
 
         browser = await uc.start(
@@ -54,11 +107,13 @@ async def get_browser(force_new=False):
                 "--disable-features=VizDisplayCompositor",
                 "--lang=en-US",
                 "--no-first-run",
-                "--no-default-browser-check"
+                "--no-default-browser-check",
             ],
-            window_size=(1920, 1080)
+            window_size=(1920, 1080),
         )
+
     return browser
+
 
 async def get_main_tab():
     b = await get_browser()

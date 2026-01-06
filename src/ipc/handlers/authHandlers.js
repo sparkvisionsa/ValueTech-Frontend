@@ -289,11 +289,6 @@ const authHandlers = {
             return { status: 'ERROR', error: error.message || String(error) };
         }
     },
-
-    /**
-     * Opens the Taqeem login page in a dedicated browser window with an isolated session.
-     * This keeps the main automation session intact while allowing a second login.
-     */
     async handleOpenTaqeemLogin(event, opts = {}) {
         const loginUrl = opts.url || (
             'https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth'
@@ -354,6 +349,17 @@ const authHandlers = {
         } catch (error) {
             console.error('[MAIN] Failed to open Taqeem login window:', error);
             return { status: 'ERROR', error: error.message || String(error) };
+        }
+    },
+
+    async handlePublicLogin(event, isAuth) {
+        try {
+            console.log('[MAIN] Received public login request');
+            const result = await pythonAPI.auth.publicLogin(isAuth);
+            return result;
+        } catch (error) {
+            console.error('[MAIN] Login error:', error);
+            return { status: 'ERROR', error: error.message };
         }
     }
 };

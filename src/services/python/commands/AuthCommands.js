@@ -20,6 +20,13 @@ class AuthCommands {
         });
     }
 
+    async publicLogin(isAuth) {
+        return this._sendCommand({
+            action: 'public-login',
+            isAuth
+        });
+    }
+
     async submitOtp(otp) {
         return this._sendCommand({
             action: 'otp',
