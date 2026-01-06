@@ -41,6 +41,7 @@ from scripts.submission.ElRajhiFiller import (
     ElRajhiFiller,
     ElrajhiRetry,
     ElrajhiRetryByReportIds,
+    ElrajhiRetryByRecordIds,
 
     pause_batch,
     resume_batch,
@@ -555,6 +556,17 @@ async def handle_command(cmd):
 
         print(json.dumps(result), flush=True)
 
+    elif action == "elrajhi-retry-by-record-ids":
+        browser = await get_browser()
+
+        record_ids = cmd.get("recordIds")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await ElrajhiRetryByRecordIds(browser, record_ids, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
+
     elif action == "elrajhi-retry-by-report-ids":
         browser = await get_browser()
 
@@ -642,7 +654,7 @@ async def handle_command(cmd):
         finally:
             # Close the browser after completion
             if new_browser:
-                await new_browser.stop()
+                new_browser.stop()
         
     elif action == "close":
         await closeBrowser()

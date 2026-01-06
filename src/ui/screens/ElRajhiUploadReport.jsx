@@ -1111,6 +1111,77 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
+    const mergeBatchCheckReports = (reports = [], checkReports = []) => {
+        if (!Array.isArray(checkReports) || !checkReports.length) return reports;
+        const statusByReportId = new Map();
+
+        checkReports.forEach((item) => {
+            const reportId = item?.reportId || item?.report_id || "";
+            if (!reportId) return;
+            statusByReportId.set(String(reportId), item);
+        });
+
+        return reports.map((report) => {
+            const reportId = report?.report_id || report?.reportId || "";
+            if (!reportId) return report;
+            const checkItem = statusByReportId.get(String(reportId));
+            if (!checkItem) return report;
+
+            const nextStatus = (checkItem.status || checkItem.reportStatus || checkItem.report_status || "")
+                .toString()
+                .toUpperCase();
+            if (!nextStatus) return report;
+
+            let nextSubmitState = report.submit_state ?? report.submitState;
+            if (nextStatus === "INCOMPLETE") {
+                nextSubmitState = 0;
+            } else if (nextStatus === "NOT_FOUND") {
+                nextSubmitState = -1;
+            } else {
+                nextSubmitState = 1;
+            }
+
+            return {
+                ...report,
+                report_status: nextStatus,
+                reportStatus: nextStatus,
+                status: nextStatus,
+                submit_state: nextSubmitState,
+                last_checked_at: checkItem.checkedAt || report.last_checked_at,
+            };
+        });
+    };
+
+    const applyBatchCheckResults = (batches = []) => {
+        if (!Array.isArray(batches) || !batches.length) return;
+
+        setBatchReports((prev) => {
+            const next = { ...prev };
+            batches.forEach((batch) => {
+                const batchKey = batch?.batchId || batch?.batch_id;
+                if (!batchKey || !next[batchKey]) return;
+                const checkReports = Array.isArray(batch?.reports) ? batch.reports : [];
+                if (!checkReports.length) return;
+                next[batchKey] = mergeBatchCheckReports(next[batchKey], checkReports);
+            });
+            return next;
+        });
+
+        setBatchList((prev) =>
+            prev.map((batch) => {
+                const checkBatch = batches.find((item) => item?.batchId === batch?.batchId);
+                if (!checkBatch) return batch;
+                return {
+                    ...batch,
+                    totalReports: checkBatch.total ?? batch.totalReports,
+                    completedReports: checkBatch.complete ?? batch.completedReports,
+                    sentReports: checkBatch.sent ?? batch.sentReports,
+                    confirmedReports: checkBatch.confirmed ?? batch.confirmedReports,
+                };
+            })
+        );
+    };
+
     const runBatchCheck = async (batchId = null) => {
         if (!window?.electronAPI?.checkElrajhiBatches) {
             setBatchMessage({
@@ -1148,6 +1219,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             } else if (expandedBatch) {
                 await loadBatchReports(expandedBatch);
             }
+            applyBatchCheckResults(result?.batches);
         } catch (err) {
             setBatchMessage({
                 type: "error",
@@ -1895,14 +1967,20 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         );
     };
 
-    const selectionKey = (batchId, reportId) => `${batchId || "batch"}::${reportId || "unknown"}`;
+    const selectionKey = (batchId, report) => {
+        const reportId = report?.report_id || report?.reportId || "";
+        const recordId = report?.id || report?._id || report?.record_id || report?.recordId || "";
+        const assetKey = report?.asset_name || report?.assetName || report?.asset_id || "";
+        const keyCore = reportId || recordId || assetKey || "unknown";
+        return `${batchId || "batch"}::${keyCore}`;
+    };
 
-    const isSelected = (batchId, reportId) => selectedReports.has(selectionKey(batchId, reportId));
+    const isSelected = (batchId, report) => selectedReports.has(selectionKey(batchId, report));
 
-    const toggleReportSelection = (batchId, reportId, checked) => {
+    const toggleReportSelection = (batchId, report, checked) => {
         setSelectedReports((prev) => {
             const next = new Set(prev);
-            const key = selectionKey(batchId, reportId);
+            const key = selectionKey(batchId, report);
             if (checked) {
                 next.add(key);
             } else {
@@ -1916,9 +1994,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setSelectedReports((prev) => {
             const next = new Set(prev);
             reports.forEach((r) => {
-                const rid = r.report_id || r.reportId;
-                if (!rid) return;
-                const key = selectionKey(batchId, rid);
+                const key = selectionKey(batchId, r);
                 if (checked) {
                     next.add(key);
                 } else {
@@ -1930,7 +2006,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     };
 
     const handleBulkAction = async (action, batchId, reports = []) => {
-        const selected = reports.filter((r) => isSelected(batchId, r.report_id || r.reportId));
+        const selected = reports.filter((r) => isSelected(batchId, r));
         if (!selected.length) {
             setBatchMessage({
                 type: "info",
@@ -1940,15 +2016,17 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
 
         const readableAction =
-            action === "delete"
-                ? "Delete"
-                : action === "retry"
-                    ? "Retry"
-                    : action === "send"
-                        ? "Finalize"
-                        : action === "approve"
-                            ? "Approve"
-                            : "Download certificates";
+            action === "retry-submit"
+                ? "Retry submit"
+                : action === "delete"
+                    ? "Delete"
+                    : action === "retry"
+                        ? "Retry"
+                        : action === "send"
+                            ? "Finalize"
+                            : action === "approve"
+                                ? "Approve"
+                                : "Download certificates";
 
         setBulkActionBusy(action);
         setBatchMessage({
@@ -1957,16 +2035,67 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         });
 
         try {
-            // Extract report IDs for the selected reports
-            const reportIds = selected
-                .map(report => report.report_id || report.reportId)
-                .filter(id => id && id.trim() !== "");
+            if (action === "retry-submit") {
+                const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
+                if (authStatus?.status === "INSUFFICIENT_POINTS") {
+                    setBatchMessage({
+                        type: "error",
+                        text: "Insufficient points to submit reports. Please recharge and try again.",
+                    });
+                    return;
+                }
+                if (!authStatus) {
+                    setBatchMessage({
+                        type: "error",
+                        text: "Taqeem login required. Finish login and choose a company to continue.",
+                    });
+                    return;
+                }
+                if (!window?.electronAPI?.createReportById) {
+                    throw new Error("Desktop integration unavailable. Restart the app.");
+                }
 
-            if (reportIds.length === 0) {
-                throw new Error("No valid report IDs found in selected reports");
-            }
+                const recordIds = Array.from(
+                    new Set(
+                        selected
+                            .map((report) => report.id || report._id || report.record_id || report.recordId)
+                            .filter((id) => id && String(id).trim() !== "")
+                    )
+                );
 
-            if (action === "delete") {
+                if (recordIds.length === 0) {
+                    throw new Error("No valid report record IDs found in selected reports");
+                }
+
+                if (!window?.electronAPI?.retryElrajhiReportRecordIds) {
+                    throw new Error("Desktop integration unavailable. Restart the app.");
+                }
+
+                const result = await window.electronAPI.retryElrajhiReportRecordIds(
+                    recordIds,
+                    recommendedTabs
+                );
+                if (result?.status !== "SUCCESS") {
+                    throw new Error(result?.error || "Retry submit failed");
+                }
+
+                await loadBatchReports(batchId);
+                await loadBatchList();
+
+                setBatchMessage({
+                    type: "success",
+                    text: `Retry submit completed for ${recordIds.length} report(s).`,
+                });
+            } else if (action === "delete") {
+                // Extract report IDs for the selected reports
+                const reportIds = selected
+                    .map((report) => report.report_id || report.reportId)
+                    .filter((id) => id && String(id).trim() !== "");
+
+                if (reportIds.length === 0) {
+                    throw new Error("No valid report IDs found in selected reports");
+                }
+
                 // Use the new deleteMultipleReports function
                 const result = await window.electronAPI.deleteMultipleReports(reportIds, 10);
                 if (result?.status !== "SUCCESS") {
@@ -1983,6 +2112,14 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 });
 
             } else if (action === "retry") {
+                const reportIds = selected
+                    .map((report) => report.report_id || report.reportId)
+                    .filter((id) => id && String(id).trim() !== "");
+
+                if (reportIds.length === 0) {
+                    throw new Error("No valid report IDs found in selected reports");
+                }
+
                 // Use the new retryElrajhiReportReportIds function
                 const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, recommendedTabs);
                 if (result?.status !== "SUCCESS") {
@@ -1999,6 +2136,14 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 });
 
             } else if (action === "send") {
+                const reportIds = selected
+                    .map((report) => report.report_id || report.reportId)
+                    .filter((id) => id && String(id).trim() !== "");
+
+                if (reportIds.length === 0) {
+                    throw new Error("No valid report IDs found in selected reports");
+                }
+
                 // Use the new finalizeMultipleReports function
                 const result = await window.electronAPI.finalizeMultipleReports(reportIds);
                 if (result?.status !== "SUCCESS") {
@@ -2020,6 +2165,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     text: "Approve via single-report automation is not wired to desktop integration yet.",
                 });
             } else if (action === "certificate") {
+                const reportIds = selected
+                    .map((report) => report.report_id || report.reportId)
+                    .filter((id) => id && String(id).trim() !== "");
+
+                if (reportIds.length === 0) {
+                    throw new Error("No valid report IDs found in selected reports");
+                }
                 await downloadCertificatesForReports(batchId, selected, "selected reports");
             }
         } catch (err) {
@@ -3160,7 +3312,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                                 checked={
                                                                                                     batchReports[batch.batchId]?.length
                                                                                                         ? batchReports[batch.batchId].every((r) =>
-                                                                                                            isSelected(batch.batchId, r.report_id || r.reportId)
+                                                                                                            isSelected(batch.batchId, r)
                                                                                                         )
                                                                                                         : false
                                                                                                 }
@@ -3194,6 +3346,14 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                             </button>
                                                                                             {actionMenuOpen && actionMenuBatch === batch.batchId && (
                                                                                                 <div className="absolute right-0 mt-1 w-44 rounded-md border border-blue-900/20 bg-white shadow-lg z-10">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-indigo-700 hover:bg-indigo-50"
+                                                                                                        onClick={() => handleBulkAction("retry-submit", batch.batchId, batchReports[batch.batchId] || [])}
+                                                                                                    >
+                                                                                                        <Send className="w-4 h-4" />
+                                                                                                        Retry submit
+                                                                                                    </button>
                                                                                                     <button
                                                                                                         type="button"
                                                                                                         className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-red-700 hover:bg-red-50"
@@ -3265,10 +3425,10 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                     status = "DELETED";
                                                                                 } else if (!reportId) {
                                                                                     status = "MISSING_ID";
-                                                                                } else if (report.report_status === "SENT") {
+                                                                                } else if (rawStatus === "SENT") {
                                                                                     status = "SENT";
                                                                                 }
-                                                                                else if (report.report_status === "CONFIRMED") {
+                                                                                else if (rawStatus === "CONFIRMED") {
                                                                                     status = "CONFIRMED";
                                                                                 }
 
@@ -3346,8 +3506,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                                 <input
                                                                                                     type="checkbox"
                                                                                                     className="h-4 w-4"
-                                                                                                    checked={isSelected(batch.batchId, reportId)}
-                                                                                                    onChange={(e) => toggleReportSelection(batch.batchId, reportId, e.target.checked)}
+                                                                                                    checked={isSelected(batch.batchId, report)}
+                                                                                                    onChange={(e) => toggleReportSelection(batch.batchId, report, e.target.checked)}
                                                                                                 />
                                                                                                 <button
                                                                                                     type="button"

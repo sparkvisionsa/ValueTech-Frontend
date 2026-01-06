@@ -209,6 +209,15 @@ async handleValidateReport(event, reportId) {
         }
     },
 
+    async handleRetryElRajhiReportByRecordIds(event, recordIds, tabsNum) {
+        try {
+            return await pythonAPI.report.retryElRajhiReportByRecordIds(recordIds, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Retry ElRajhi report by record ids error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async handlePauseElRajhiBatch(event, batchId) {
         try {
             return await pythonAPI.report.pauseElRajhiBatch(batchId);

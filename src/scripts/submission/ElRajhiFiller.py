@@ -2,6 +2,7 @@ import asyncio, traceback, json
 from datetime import datetime, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 
 from .formSteps import form_steps, macro_form_config
 from .formFiller import fill_form
@@ -1355,6 +1356,256 @@ async def ElrajhiRetryByReportIds(browser, report_ids, tabs_num=3, pdf_only=Fals
             new_browser.stop()
 
         
+
+async def ElrajhiRetryByRecordIds(browser, record_ids, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=False):
+    new_browser = None
+    try:
+        if not record_ids:
+            return {"status": "FAILED", "error": "record_ids array is empty"}
+
+        valid_ids = []
+        for rid in record_ids:
+            rid_str = str(rid).strip()
+            if ObjectId.is_valid(rid_str):
+                valid_ids.append(ObjectId(rid_str))
+
+        if not valid_ids:
+            return {"status": "FAILED", "error": "No valid record_ids provided"}
+
+        process_id = f"elrajhi-retry-record-ids-{hash(tuple(sorted([str(r) for r in valid_ids])))}"
+        process_manager = get_process_manager()
+
+        cursor = db.urgentreports.find({"_id": {"$in": valid_ids}})
+        raw_records = await cursor.to_list(length=None)
+
+        # Deduplicate
+        seen_ids = set()
+        report_records = []
+        for rec in raw_records:
+            rid = str(rec["_id"])
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                report_records.append(rec)
+
+        if not report_records:
+            return {
+                "status": "FAILED",
+                "error": "No matching records found for provided record_ids"
+            }
+
+        if pdf_only:
+            report_records = [
+                r for r in report_records if not is_dummy_pdf(r)
+            ]
+
+        incomplete_records = [
+            r for r in report_records
+            if r.get("report_id")
+            and len(r["report_id"]) >= 7
+            and r.get("submit_state") == 0
+        ]
+
+        non_created_records = [
+            r for r in report_records
+            if not r.get("report_id") or len(r.get("report_id", "")) < 7
+        ]
+
+        total_records = len(incomplete_records) + len(non_created_records)
+        if total_records == 0:
+            return {
+                "status": "SUCCESS",
+                "message": "Nothing to retry"
+            }
+
+        try:
+            if company_url:
+                if isinstance(company_url, dict):
+                    set_selected_company(
+                        company_url.get("url"),
+                        name=company_url.get("name"),
+                        office_id=company_url.get("officeId") or company_url.get("office_id"),
+                        sector_id=company_url.get("sectorId") or company_url.get("sector_id"),
+                    )
+                else:
+                    set_selected_company(company_url)
+            require_selected_company()
+            create_url = build_report_create_url()
+        except Exception as e:
+            return {"status": "FAILED", "error": str(e)}
+
+        process_state = create_process(
+            process_id=process_id,
+            process_type="elrajhi-retry-record-ids",
+            total=total_records,
+            record_ids=[str(r) for r in valid_ids],
+            tabs_num=tabs_num,
+            pdf_only=pdf_only,
+            finalize_submission=finalize_submission,
+        )
+
+        new_browser = await spawn_new_browser(browser)
+        main_page = new_browser.main_tab
+
+        macros_to_fill = []
+        results = []
+
+        completed = failed = 0
+        finalized_reports = finalization_failed = 0
+
+        emit_progress(
+            process_id,
+            message=f"Starting retry for {total_records} reports"
+        )
+
+        # ---- PHASE 1: INCOMPLETE REPORTS ----
+        for rec in incomplete_records:
+            action = await check_and_wait(process_id)
+            if action == "stop":
+                clear_process(process_id)
+                return {"status": "STOPPED"}
+
+            try:
+                report_id = rec["report_id"]
+                report_url = f"https://qima.taqeem.sa/report/{report_id}"
+
+                await main_page.get(report_url)
+                await asyncio.sleep(2)
+                await wait_for_table_rows(main_page, timeout=5)
+
+                macro_link = await wait_for_element(
+                    main_page,
+                    "#m-table tbody tr:first-child td:nth-child(1) a",
+                    timeout=5
+                )
+
+                if not macro_link:
+                    raise Exception("No macro found")
+
+                macro_id = macro_link.text.strip()
+
+                macros_to_fill.append({
+                    "macro_id": macro_id,
+                    "macro_data": extract_asset_from_report(rec),
+                    "report_id": report_id,
+                    "record_id": str(rec["_id"])
+                })
+
+                completed += 1
+                results.append({"status": "SUCCESS", "type": "incomplete", "report_id": report_id})
+
+            except Exception as e:
+                failed += 1
+                results.append({
+                    "status": "FAILED",
+                    "type": "incomplete",
+                    "error": str(e),
+                    "record_id": str(rec["_id"])
+                })
+
+            await update_progress(process_id, completed=completed, failed=failed)
+
+        # ---- PHASE 2: NON-CREATED REPORTS ----
+        for rec in non_created_records:
+            action = await check_and_wait(process_id)
+            if action == "stop":
+                clear_process(process_id)
+                return {"status": "STOPPED"}
+
+            result = await create_report_and_collect_macro(
+                main_page,
+                rec,
+                create_url
+            )
+
+            if result.get("status") == "SUCCESS":
+                macros_to_fill.append(result)
+                completed += 1
+            else:
+                failed += 1
+
+            results.append(result)
+            await update_progress(process_id, completed=completed, failed=failed)
+
+        # ---- PHASE 3: MACRO FILLING ----
+        if macros_to_fill:
+            process_state.total += len(macros_to_fill)
+            pages = [main_page] + [
+                await new_browser.get("", new_tab=True)
+                for _ in range(min(tabs_num, len(macros_to_fill)) - 1)
+            ]
+
+            chunks = balanced_chunks(macros_to_fill, len(pages))
+            lock = asyncio.Lock()
+            filled = failed_macros = 0
+
+            async def worker(chunk, page):
+                nonlocal filled, failed_macros, finalized_reports, finalization_failed
+
+                for m in chunk:
+                    action = await check_and_wait(process_id)
+                    if action == "stop":
+                        return
+
+                    try:
+                        res = await fill_macro_form(
+                            page,
+                            m["macro_id"],
+                            m["macro_data"],
+                            macro_form_config["field_map"],
+                            macro_form_config["field_types"],
+                        )
+
+                        if finalize_submission:
+                            fin = await finalize_report_submission(page, m["report_id"])
+                            if fin["status"] == "SUCCESS":
+                                finalized_reports += 1
+                            else:
+                                finalization_failed += 1
+
+                        async with lock:
+                            filled += 1
+                            if res.get("status") == "FAILED":
+                                failed_macros += 1
+
+                    except Exception:
+                        async with lock:
+                            filled += 1
+                            failed_macros += 1
+
+                    await update_progress(
+                        process_id,
+                        completed=completed + filled,
+                        failed=failed + failed_macros
+                    )
+
+            await asyncio.gather(
+                *[worker(c, p) for c, p in zip(chunks, pages) if c]
+            )
+
+            for p in pages[1:]:
+                await p.close()
+
+        clear_process(process_id)
+
+        return {
+            "status": "SUCCESS",
+            "reports_processed": completed,
+            "reports_failed": failed,
+            "macros_filled": filled if macros_to_fill else 0,
+            "macros_failed": failed_macros if macros_to_fill else 0,
+            "reports_finalized": finalized_reports,
+            "finalization_failed": finalization_failed,
+            "results": results
+        }
+
+    except Exception as e:
+        clear_process(process_id)
+        return {"status": "FAILED", "error": str(e), "traceback": traceback.format_exc()}
+    
+    finally:
+        if new_browser:
+            new_browser.stop()
+
 
 async def pause_batch(batch_id):
     """Pause batch processing"""

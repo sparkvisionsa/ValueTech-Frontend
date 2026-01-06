@@ -19,6 +19,8 @@ db = client["test"]
 
 VALID_STATUSES = {"INCOMPLETE", "COMPLETE", "SENT", "CONFIRMED"}
 SENT_BUTTON_MARKER = 'id="reject"'
+SENT_STATUS_LABEL = "حالة التقرير"
+SENT_STATUS_VALUE = "مرسل"
 CONFIRMED_BUTTON_TEXT = "شهادة التسجيل"
 
 
@@ -120,11 +122,16 @@ async def _check_single_report(page, report_doc):
 
         html_lower = html.lower() if isinstance(html, str) else ""
         has_sent_marker = SENT_BUTTON_MARKER in html_lower or 'name="reject"' in html_lower
+        has_sent_status_text = (
+            isinstance(html, str)
+            and SENT_STATUS_LABEL in html
+            and SENT_STATUS_VALUE in html
+        )
         has_confirmed_marker = (
             isinstance(html, str) and CONFIRMED_BUTTON_TEXT in html
         )
 
-        if has_sent_marker:
+        if has_sent_marker or has_sent_status_text:
             status_value = "SENT"
             submit_state = 1
 

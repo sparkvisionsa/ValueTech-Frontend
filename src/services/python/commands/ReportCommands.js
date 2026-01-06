@@ -209,6 +209,14 @@ class ReportCommands {
         });
     }
 
+    async retryElRajhiReportByRecordIds(recordIds, tabsNum) {
+        return this._sendCommand({
+            action: 'elrajhi-retry-by-record-ids',
+            recordIds,
+            tabsNum
+        });
+    }
+
     async pauseMacroFill(reportId) {
         return this._sendCommand({
             action: 'pause-macro-edit',
