@@ -136,7 +136,7 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None, progre
                 if result.get("status") == "SAVED" and record.get("_id"):
                     # Use provided collection or find it
                     target_collection = collection
-                    if not target_collection:
+                    if target_collection is None:
                         # Find the collection by searching for the record
                         collections_to_check = [
                             (db.multiapproachreports, 'multiapproachreports'),
@@ -154,7 +154,7 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None, progre
                             except:
                                 continue
                     
-                    if target_collection:
+                    if target_collection is not None:
                         try:
                             # Update using array positional operator
                             update_result = await target_collection.update_one(

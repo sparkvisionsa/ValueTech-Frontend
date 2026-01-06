@@ -127,7 +127,7 @@ async def find_record_in_collections(record_id_obj, collection_names):
             return record, collection
     return None, None
 
-def emit_progress_update(record_id, percentage, message, status="processing"):
+def emit_progress_update(record_id, percentage, message, status="processing", created_report_id=None):
     """Emit progress update to stdout for frontend to receive"""
     progress_data = {
         "type": "progress",
@@ -138,6 +138,8 @@ def emit_progress_update(record_id, percentage, message, status="processing"):
         "status": status,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+    if created_report_id:
+        progress_data["createdReportId"] = str(created_report_id)
     print(json.dumps(progress_data), flush=True)
 
 async def create_report_for_record(browser, record, tabs_num=3, collection=None):
@@ -272,10 +274,10 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                 if assets_created_in_step2:
                     # Assets were created in step 2, so we're at 15% total
                     current_progress = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT
-                    emit_progress_update(record_id, current_progress, f"Report created: {form_id}", "processing")
+                    emit_progress_update(record_id, current_progress, f"Report created: {form_id}", "processing", created_report_id=form_id)
                 else:
                     # Assets will be created via fill_form, so we're at 10%
-                    emit_progress_update(record_id, REPORT_CREATE_PERCENT, f"Report created: {form_id}", "processing")
+                    emit_progress_update(record_id, REPORT_CREATE_PERCENT, f"Report created: {form_id}", "processing", created_report_id=form_id)
 
                 # Determine collection name for macro ID update
                 collection_name_map = {

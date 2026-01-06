@@ -263,6 +263,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     });
 
     const pdfInputRef = useRef(null);
+    const reportCreationWaitersRef = useRef(new Map());
+    const reportCreatedCacheRef = useRef(new Map());
     const isTaqeemLoggedIn = taqeemStatus?.state === "success";
 
     const handleExcelChange = (e) => {
@@ -324,10 +326,66 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         }
     }, [setReports]);
 
+    const clearReportCreatedCache = useCallback((recordId) => {
+        reportCreatedCacheRef.current.delete(recordId);
+    }, []);
+
+    const resolveReportCreated = useCallback((recordId, createdReportId) => {
+        if (!recordId || !createdReportId) return;
+        reportCreatedCacheRef.current.set(recordId, createdReportId);
+        const waiter = reportCreationWaitersRef.current.get(recordId);
+        if (waiter) {
+            clearTimeout(waiter.timeoutId);
+            reportCreationWaitersRef.current.delete(recordId);
+            waiter.resolve(createdReportId);
+        }
+    }, []);
+
+    const waitForReportCreated = useCallback((recordId, timeoutMs = 300000) => {
+        if (!recordId) {
+            return Promise.reject(new Error("Missing report record id."));
+        }
+        const cached = reportCreatedCacheRef.current.get(recordId);
+        if (cached) {
+            reportCreatedCacheRef.current.delete(recordId);
+            return Promise.resolve(cached);
+        }
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reportCreationWaitersRef.current.delete(recordId);
+                reject(new Error("Timed out waiting for report id."));
+            }, timeoutMs);
+            reportCreationWaitersRef.current.set(recordId, { resolve, reject, timeoutId });
+        });
+    }, []);
+
+    const handleReportCreatedUpdate = useCallback((recordId, createdReportId) => {
+        if (!recordId || !createdReportId) return;
+        setReports((prevReports) =>
+            prevReports.map((report) => {
+                const rId = report?._id || report?.id || report?.recordId;
+                if (rId === recordId) {
+                    return { ...report, report_id: createdReportId };
+                }
+                return report;
+            })
+        );
+        resolveReportCreated(recordId, createdReportId);
+    }, [resolveReportCreated, setReports]);
+
     useEffect(() => {
         if (reports.length === 0 && !reportsLoading) {
             loadReports();
         }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            reportCreationWaitersRef.current.forEach((waiter) => {
+                clearTimeout(waiter.timeoutId);
+            });
+            reportCreationWaitersRef.current.clear();
+        };
     }, []);
 
     // Set up real-time progress listener via IPC
@@ -348,6 +406,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 // Extract progress information
                 const percentage = progressData.percentage || 0;
                 const message = progressData.message || progressData.currentItem || '';
+                const createdReportId = progressData.createdReportId;
                 
                 // Determine status from progress data - prioritize paused/stopped flags
                 let status = 'processing';
@@ -388,28 +447,19 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     };
                 });
 
-                // If message contains "Report created:" with report_id, update the report instantly
-                if (message && message.includes("Report created:")) {
+                if (createdReportId) {
+                    handleReportCreatedUpdate(recordId, createdReportId);
+                } else if (message && message.includes("Report created:")) {
                     const reportIdMatch = message.match(/Report created:\s*(\S+)/);
                     if (reportIdMatch && reportIdMatch[1]) {
-                        const newReportId = reportIdMatch[1];
-                        // Update the report in the reports list instantly
-                        setReports((prevReports) =>
-                            prevReports.map((r) => {
-                                const rId = r._id || r.id || r.recordId;
-                                if (rId === recordId) {
-                                    return { ...r, report_id: newReportId };
-                                }
-                                return r;
-                            })
-                        );
+                        handleReportCreatedUpdate(recordId, reportIdMatch[1]);
                     }
                 }
             }
         });
 
         return cleanup;
-    }, []);
+    }, [handleReportCreatedUpdate]);
 
     const pdfMatchInfo = useMemo(() => {
         if (!wantsPdfUpload) {
@@ -1049,46 +1099,58 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             });
             setReportProgress(initialProgress);
             
-            // Open browsers in parallel with 5-second delays
-            const submissionPromises = selectedIds.map(async (id, index) => {
-                // Add delay before opening each browser (except the first one)
-                if (index > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 5000 * index)); // 5 second delay per browser
-                }
-                
-                const report = reports.find(r => getReportRecordId(r) === id);
-                const assetCount = report?.asset_data?.length || 0;
-                
+            const submissionPromises = [];
+            let queueError = null;
+
+            for (let index = 0; index < selectedIds.length; index += 1) {
+                const id = selectedIds[index];
+
                 // Calculate tabs for this browser (distribute evenly, remainder goes to first browsers)
                 let tabsNum = initialTabsPerBrowser;
                 if (index < remainderTabs) {
                     tabsNum += 1; // Give remainder tabs to first browsers
                 }
                 tabsNum = Math.max(1, tabsNum); // Ensure at least 1 tab
-                
+
                 // Update progress to starting
                 setReportProgress((prev) => ({
                     ...prev,
                     [id]: { percentage: 0, status: 'starting', message: 'Opening browser...' }
                 }));
-                
-                // Submit report (this will open a browser and process)
-                try {
-                    await submitToTaqeem(id, tabsNum, { withLoading: false });
-                } catch (err) {
+
+                clearReportCreatedCache(id);
+                const reportCreatedPromise = waitForReportCreated(id);
+
+                const submissionPromise = submitToTaqeem(id, tabsNum, { withLoading: false }).catch((err) => {
                     setReportProgress((prev) => ({
                         ...prev,
                         [id]: { percentage: 0, status: 'error', message: err.message || 'Submission failed' }
                     }));
+                    throw err;
+                });
+                submissionPromises.push(submissionPromise);
+
+                try {
+                    await reportCreatedPromise;
+                } catch (err) {
+                    queueError = err;
+                    setReportProgress((prev) => ({
+                        ...prev,
+                        [id]: { percentage: 0, status: 'error', message: err.message || 'Failed to create report id' }
+                    }));
+                    break;
                 }
-            });
-            
-            // Wait for all submissions to complete (they run in parallel)
+            }
+
             await Promise.allSettled(submissionPromises);
-            
+
             setSelectedReportIds([]);
             setBulkAction("");
-            setSuccess(`All ${selectedIds.length} report(s) submitted. Check progress bars for status.`);
+            if (queueError) {
+                setError(queueError.message || "Stopped queue: report id was not created.");
+            } else {
+                setSuccess(`All ${selectedIds.length} report(s) submitted. Check progress bars for status.`);
+            }
             return;
         }
 

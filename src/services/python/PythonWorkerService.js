@@ -322,6 +322,8 @@ class PythonWorkerService {
                         total: response.total || 1,
                         percentage: response.percentage || 0,
                         message: response.message || `Processing: ${response.completed || 0}/${response.total || 1}`,
+                        status: response.status,
+                        createdReportId: response.createdReportId,
                         paused: response.paused || false,
                         stopped: response.stopped || false,
                         processType: response.processType,
