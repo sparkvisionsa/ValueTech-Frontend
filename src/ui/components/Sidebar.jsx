@@ -214,6 +214,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     {mainLinks.map((item, index) => {
                         const blocked = isFeatureBlocked(item.id);
                         const isActive = activeGroup === item.id;
+                        const groupTabs = valueSystemGroups[item.id]?.tabs || [];
+                        const firstTab = groupTabs?.[0]?.id;
                         return (
                             <li
                                 key={item.id}
@@ -224,7 +226,17 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                     onClick={() => {
                                         if (blocked) return;
                                         setActiveGroup(item.id);
-                                        delayViewChange('apps');
+                                        // Automatically set and navigate to the first tab immediately if it exists
+                                        if (firstTab) {
+                                            setActiveTab(firstTab);
+                                            // Navigate immediately without delay to skip intermediate apps view
+                                            if (onViewChange) {
+                                                onViewChange(firstTab);
+                                            }
+                                        } else {
+                                            setActiveTab(null);
+                                            delayViewChange('apps');
+                                        }
                                     }}
                                     disabled={blocked}
                                     className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${

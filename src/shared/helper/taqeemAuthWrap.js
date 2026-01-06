@@ -1,4 +1,4 @@
-async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn) {
+async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, assetCount = 0) {
     try {
         if (!token) {
             onViewChange?.("taqeem-login");
@@ -8,13 +8,17 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn) {
         const res = await window.electronAPI.apiRequest(
             "POST",
             "/api/users/authorize",
-            {},
+            { assetCount },
             { Authorization: `Bearer ${token}` }
         );
 
         if (res?.status === "AUTHORIZED" && !isTaqeemLoggedIn) {
             onViewChange?.("taqeem-login");
             return false;
+        }
+
+        if (res?.status === "INSUFFICIENT_POINTS") {
+            return { status: "INSUFFICIENT_POINTS" };
         }
 
         if (res?.status === "AUTHORIZED") return true;

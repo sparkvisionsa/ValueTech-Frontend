@@ -116,7 +116,7 @@ const AppContent = () => {
                 return <GrabMacroIds />;
 
             case 'upload-assets':
-                return <UploadAssets />;
+                return <UploadAssets onViewChange={handleViewChange} />;
 
             case 'macro-edit':
                 return <SubmitMacro />;

@@ -8,15 +8,15 @@ async def fill_valuers(page, valuers):
         if len(valuers) > 1:
             for _ in range(len(valuers) - 1):
                 try:
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)  # Reduced delay
                     add_btn = await wait_for_element(page, "#duplicateValuer", timeout=30)
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)  # Reduced delay
                 except Exception:
                     add_btn = None
 
                 if add_btn:
                     await add_btn.click()
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)  # Reduced delay
 
         # --- Step 2: verify number of created selectors ---
         async def count_rows():
@@ -32,7 +32,7 @@ async def fill_valuers(page, valuers):
             try:
                 add_btn = await wait_for_element(page, "#duplicateValuer", timeout=10)
                 await add_btn.click()
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.2)  # Reduced delay - button click is fast
             except Exception:
                 break
 
@@ -83,11 +83,11 @@ async def set_location(page, country_name, region_name, city_name):
             return text.strip()
 
         async def wait_for_options(selector, min_options=2, timeout=10):
-            for _ in range(timeout * 2):
-                el = await wait_for_element(page, selector, timeout=1)
+            for _ in range(timeout * 5):  # More frequent checks (every 0.2s instead of 0.5s)
+                el = await wait_for_element(page, selector, timeout=0.5)
                 if el and getattr(el, "children", None) and len(el.children) >= min_options:
                     return el
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.2)  # Reduced delay for faster detection
             return None
 
         async def get_location_code(name, selector):
@@ -134,11 +134,11 @@ async def set_location(page, country_name, region_name, city_name):
             _location_cache[cache_key] = (region_code, city_code)
 
         await set_field("#country_id", "1")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)  # Reduced delay - location fields update quickly
         await set_field("#region", region_code)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)  # Reduced delay
         await set_field("#city", city_code)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)  # Minimal delay after last field
 
         return True
 
@@ -267,10 +267,11 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
             continue_btn = await wait_for_element(page, "input[name='continue']", timeout=10)
             if continue_btn:
                 await continue_btn.click()
-                await asyncio.sleep(2)
-                error_div = await wait_for_element(page, "div.alert.alert-danger", timeout=5)
+                # Reduced wait time - check for errors faster
+                await asyncio.sleep(1.0)
+                error_div = await wait_for_element(page, "div.alert.alert-danger", timeout=3)
                 if error_div and retries < max_retries:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
                     return await fill_form(
                         page, record, field_map, 
                         field_types, is_last_step, retries+1, 
@@ -278,9 +279,10 @@ async def fill_form(page, record, field_map, field_types, is_last_step=False, re
         else:
             save_btn = await wait_for_element(page, "input[type='submit']", timeout=10)
             if save_btn:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.2)  # Reduced delay before click
                 await save_btn.click()
-                await asyncio.sleep(2)
+                # Reduced wait time - form submission is usually quick
+                await asyncio.sleep(1.0)
                 return {"status":"SAVED"}
             else:
                 return {"status":"FAILED","error":"Save button not found"}

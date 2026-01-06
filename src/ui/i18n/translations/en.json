@@ -234,6 +234,18 @@
                 "label": "Delete Report",
                 "description": "Delete reports and related assets safely."
             },
+            "delete-assets": {
+                "label": "Delete Assets",
+                "description": "Delete assets safely."
+            },
+            "submit-reports-quickly": {
+                "label": "Submit Reports Quickly",
+                "description": "Quickly submit reports with minimal data entry using Excel sheets."
+            },
+            "upload-assets": {
+                "label": "Upload Assets",
+                "description": "Upload asset files and attach them to existing reports."
+            },
             "system-status": {
                 "label": "System Operating Status",
                 "description": "Monitor and control system availability."

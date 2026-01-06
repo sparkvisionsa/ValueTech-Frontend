@@ -1,7 +1,8 @@
 import time, asyncio, sys
 from datetime import datetime
 
-async def wait_for_element(page, selector, timeout=30, check_interval=1):
+async def wait_for_element(page, selector, timeout=30, check_interval=0.2):
+    """Optimized wait_for_element with faster check interval for better performance"""
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:

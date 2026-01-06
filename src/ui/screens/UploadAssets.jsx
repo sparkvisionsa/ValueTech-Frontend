@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { useRam } from "../context/RAMContext";
+import { useNavStatus } from "../context/NavStatusContext";
 import { useSession } from "../context/SessionContext";
+import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
     Upload,
     AlertTriangle,
@@ -12,12 +15,15 @@ import {
     Calendar,
     MapPin,
     User,
-    Info
+    Info,
+    CheckCircle2,
+    Loader2
 } from "lucide-react";
 import ReportsTable from "../components/ReportsTable";
 
-const UploadAssets = () => {
+const UploadAssets = ({ onViewChange }) => {
     const [excelFileName, setExcelFileName] = useState(null);
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [excelFilePath, setExcelFilePath] = useState(null);
     const [previewData, setPreviewData] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -27,6 +33,8 @@ const UploadAssets = () => {
     const [reportId, setReportId] = useState("");
 
     const { token } = useSession();
+    const { taqeemStatus } = useNavStatus();
+
 
     // Common fields state
     const [inspectionDate, setInspectionDate] = useState("");
@@ -269,7 +277,14 @@ const UploadAssets = () => {
                 data: previewData
             });
 
-            // Call the new backend endpoint
+            const isTaqeemLoggedIn = taqeemStatus?.state === "success";
+            const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, previewData.length || 0);
+
+            if (authStatus?.status === "INSUFFICIENT_POINTS") {
+                setShowInsufficientPointsModal(true);
+                return;
+            }
+
             const result = await window.electronAPI.apiRequest(
                 "POST",
                 "/api/report/createReportWithCommonFields",
@@ -293,7 +308,6 @@ const UploadAssets = () => {
             if (result.success) {
                 const successMessage = `✅ Successfully created report "${reportId}" with ${previewData.length} assets`;
 
-                // Add common fields info if any were applied
                 const commonFieldsInfo = [];
                 if (inspectionDate) commonFieldsInfo.push(`Inspection Date: ${inspectionDate}`);
                 if (region) commonFieldsInfo.push(`Region: ${region}`);
@@ -306,21 +320,31 @@ const UploadAssets = () => {
                     setSuccess(successMessage);
                 }
 
-                // ✅ NEW: Call completeFlow after successful upload
                 try {
-                    // Get the tabsNum from RAM context
                     const tabsNum = getTabsCount();
-
                     console.log("[UploadAssets] Calling completeFlow for report:", reportId, "tabsNum:", tabsNum);
-
                     const flowResult = await window.electronAPI.completeFlow(reportId.trim(), tabsNum);
-
                     console.log("[UploadAssets] completeFlow result:", flowResult);
 
-                    if (flowResult?.success) {
-                        setSuccess(prev =>
-                            prev + `\n\n✅ Flow completed successfully`
-                        );
+                    if (flowResult?.status === "SUCCESS") {
+                        setSuccess(prev => prev + `\n\n✅ Flow completed successfully`);
+
+                        const completedAssets = flowResult?.summary?.complete_macros
+                        console.log("[UploadAssets] Completed assets:", flowResult?.summary?.complete_macros);
+                        if (completedAssets) {
+                            try {
+                                await window.electronAPI.apiRequest(
+                                    "PATCH",
+                                    `/api/packages/deduct`,
+                                    { amount: completedAssets },
+                                    { Authorization: `Bearer ${token}` }
+                                );
+
+                                console.log("[UploadAssets] Deducting assets:", completedAssets);
+                            } catch (err) {
+                                console.error("[UploadAssets] Error deducting assets:", err);
+                            }
+                        }
                     }
                 } catch (flowError) {
                     console.error("[UploadAssets] Error calling completeFlow:", flowError);
@@ -392,69 +416,57 @@ const UploadAssets = () => {
 
     const PreviewTable = ({ data }) => {
         if (!data || data.length === 0) return (
-            <div className="p-6 text-center text-gray-500 border-2 border-dashed rounded-lg">
-                <FileText className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                <div>No preview data to display</div>
+            <div className="p-6 text-center text-slate-500 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
+                <FileText className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                <div className="text-sm font-medium">No preview data to display</div>
             </div>
         );
 
         const displayData = data.slice(0, 50);
 
         return (
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-                    <div className="flex items-center gap-3">
-                        <Table className="w-5 h-5 text-blue-600" />
+            <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 bg-slate-50/50">
+                    <div className="flex items-center gap-2">
+                        <Table className="w-4 h-4 text-blue-600" />
                         <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Data Preview</h3>
-                            <p className="text-sm text-gray-600">
+                            <h3 className="text-sm font-semibold text-slate-800">Data Preview</h3>
+                            <p className="text-[10px] text-slate-600">
                                 Showing {displayData.length} of {data.length} records
                                 {displayData.length < data.length && " (first 50 rows)"}
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={handleUploadToDB}
-                        disabled={uploadLoading || !reportId.trim()}
-                        className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-                    >
-                        {uploadLoading ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <CheckCircle className="w-4 h-4" />
-                        )}
-                        {uploadLoading ? "Uploading..." : "Upload to Database and Submit to Taqeem"}
-                    </button>
                 </div>
 
                 <div className="max-h-96 overflow-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50 sticky top-0">
+                    <table className="min-w-full text-xs">
+                        <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0">
                             <tr>
                                 {tableHeadings.map(column => (
                                     <th
                                         key={column}
-                                        className="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-r border-gray-200 last:border-r-0"
+                                        className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider border-r border-white/10 last:border-r-0"
                                     >
                                         {formatColumnName(column)}
                                     </th>
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="divide-y divide-slate-200">
                             {displayData.map((row, rowIndex) => (
                                 <tr
                                     key={rowIndex}
-                                    className="hover:bg-gray-50 transition-colors"
+                                    className="hover:bg-blue-50/30 transition-colors"
                                 >
                                     {tableHeadings.map(column => (
                                         <td
                                             key={column}
-                                            className={`px-3 py-2 text-sm border-r border-gray-100 last:border-r-0 whitespace-nowrap ${(column === 'inspection_date' && inspectionDate) ||
+                                            className={`px-2 py-1.5 border-r border-slate-100 last:border-r-0 whitespace-nowrap ${(column === 'inspection_date' && inspectionDate) ||
                                                 (column === 'region' && region) ||
                                                 (column === 'city' && city)
-                                                ? 'text-green-600 font-semibold'
-                                                : 'text-gray-900'
+                                                ? 'text-emerald-600 font-semibold'
+                                                : 'text-slate-700'
                                                 }`}
                                         >
                                             {formatValue(row[column])}
@@ -466,251 +478,269 @@ const UploadAssets = () => {
                     </table>
                 </div>
 
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-600">
+                <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-600">
                     <div className="flex justify-between items-center">
-                        <span>Columns: {tableHeadings.length}</span>
-                        <span>Total rows: {data.length}</span>
+                        <span>Columns: <span className="font-semibold text-slate-800">{tableHeadings.length}</span></span>
+                        <span>Total rows: <span className="font-semibold text-slate-800">{data.length}</span></span>
                     </div>
                 </div>
             </div>
         );
     };
 
+    // Check if upload should be enabled
+    const isUploadEnabled = excelFileName && previewData && previewData.length > 0 && reportId.trim();
+
     return (
-        <div className="min-h-screen bg-gray-50 p-4">
-            <div className="max-w-[95vw] mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    {/* Header */}
-                    <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-6 text-white">
-                        <div className="flex items-center gap-3 mb-2">
-                            <Table className="w-7 h-7" />
-                            <h1 className="text-2xl font-bold">Upload Assets</h1>
-                        </div>
-                        <p className="text-blue-100 text-sm">
-                            Upload Excel files and apply common fields
+        <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
+            {showInsufficientPointsModal && (
+                <div className="fixed inset-0 z-[9999]">
+                    {/* Modal positioned at top */}
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
+                        <InsufficientPointsModal
+                            viewChange={onViewChange}
+                            onClose={() => setShowInsufficientPointsModal(false)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
+                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
+                <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-3">
+                    <div className="space-y-1">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                            Asset Management
                         </p>
+                        <h2 className="text-lg md:text-xl font-display text-compact text-slate-900 font-bold">
+                            Upload Assets
+                        </h2>
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-700">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
+                                <Table className="h-3 w-3 text-emerald-600" />
+                                {getTabsCount()} tab{getTabsCount() !== 1 ? 's' : ''} auto
+                            </span>
+                        </div>
                     </div>
 
-                    {/* Main Content - Side by Side Layout */}
-                    <div className="p-4">
-                        {/* Simple RAM Info Box */}
-                        {ramInfo && (
-                            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <div className="flex items-center gap-2">
-                                    <Info className="w-4 h-4 text-blue-500" />
-                                    <span className="text-sm text-blue-700">
-                                        Recommended tabs: <strong>{getTabsCount()}</strong>
-                                    </span>
-                                </div>
-                            </div>
+                    {/* Upload Button moved here - Always visible */}
+                    <button
+                        onClick={handleUploadToDB}
+                        disabled={!isUploadEnabled || uploadLoading}
+                        className="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white shadow-sm hover:shadow-md hover:scale-[1.02] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-sm"
+                        title={!isUploadEnabled ? "Please select a file first" : ""}
+                    >
+                        {uploadLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <CheckCircle className="w-4 h-4" />
                         )}
+                        {uploadLoading ? "Uploading..." : "Upload & Submit"}
+                    </button>
+                </div>
+            </div>
 
-                        <div className="grid grid-cols-12 gap-4">
-                            {/* Left Column - File Selection & Common Fields */}
-                            <div className="col-span-4 space-y-4">
-                                {/* File Selection */}
-                                <div className="border border-gray-200 rounded-lg p-4">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h2 className="text-lg font-semibold text-gray-900">File Selection</h2>
-                                        {excelFileName && (
-                                            <button
-                                                onClick={removeFile}
-                                                className="text-red-600 hover:text-red-700 flex items-center gap-1 text-sm"
-                                            >
-                                                <X className="w-4 h-4" />
-                                                Remove
-                                            </button>
-                                        )}
-                                    </div>
+            {/* Status Messages */}
+            {(error || success) && (
+                <div
+                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
+                        ? "bg-rose-50 text-rose-700 border-rose-300"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                        }`}
+                >
+                    {error ? (
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    ) : (
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="text-xs font-medium whitespace-pre-line">{error || success}</div>
+                </div>
+            )}
 
-                                    <div className="space-y-3">
-                                        <button
-                                            onClick={openFileDialogAndExtract}
-                                            disabled={previewLoading}
-                                            className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
-                                        >
-                                            {previewLoading ? (
-                                                <RefreshCw className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                                <Upload className="w-4 h-4" />
-                                            )}
-                                            {previewLoading ? "Processing..." : "Select Excel File"}
-                                        </button>
+            {/* Main Content */}
+            <div className="grid grid-cols-12 gap-3">
+                {/* Left Column - File Selection & Common Fields */}
+                <div className="col-span-4 space-y-3">
+                    {/* File Selection */}
+                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-semibold text-slate-800">File Selection</h3>
+                            {excelFileName && (
+                                <button
+                                    onClick={removeFile}
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700 px-2 py-1 rounded-md hover:bg-rose-50 transition-colors"
+                                >
+                                    <X className="w-3 h-3" />
+                                    Remove
+                                </button>
+                            )}
+                        </div>
 
-                                        {excelFileName ? (
-                                            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                                                <div className="flex items-center gap-2">
-                                                    <FileText className="w-4 h-4 text-green-600" />
-                                                    <span className="text-sm font-medium text-green-800 truncate">
-                                                        {excelFileName}
-                                                    </span>
-                                                </div>
-                                                {reportId && (
-                                                    <div className="mt-2 text-xs text-blue-700 font-medium">
-                                                        Report ID: {reportId}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-gray-500 p-3 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                                                No file selected
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Common Fields */}
-                                {previewData && (
-                                    <div className="border border-gray-200 rounded-lg p-4">
-                                        <h2 className="text-lg font-semibold text-gray-900 mb-3">Common Fields</h2>
-
-                                        <div className="space-y-4">
-                                            {/* Inspection Date */}
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                    Inspection Date
-                                                </label>
-                                                <div className="relative">
-                                                    <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <input
-                                                        type="date"
-                                                        value={inspectionDate}
-                                                        onChange={(e) => handleCommonFieldChange('inspectionDate', e.target.value)}
-                                                        max={getTodayDate()}
-                                                        className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Region & City */}
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                        Region
-                                                    </label>
-                                                    <div className="relative">
-                                                        <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                        <select
-                                                            value={region}
-                                                            onChange={(e) => handleCommonFieldChange('region', e.target.value)}
-                                                            className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
-                                                        >
-                                                            <option value="">Select Region</option>
-                                                            {Object.keys(saudiRegions).map(regionName => (
-                                                                <option key={regionName} value={regionName}>
-                                                                    {regionName}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                        City
-                                                    </label>
-                                                    <div className="relative">
-                                                        <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                        <select
-                                                            value={city}
-                                                            onChange={(e) => handleCommonFieldChange('city', e.target.value)}
-                                                            disabled={!region}
-                                                            className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white disabled:bg-gray-50 disabled:text-gray-400"
-                                                        >
-                                                            <option value="">{region ? "Select City" : "Select region first"}</option>
-                                                            {availableCities.map(cityName => (
-                                                                <option key={cityName} value={cityName}>
-                                                                    {cityName}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Owner Name */}
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                    Owner Name
-                                                </label>
-                                                <div className="relative">
-                                                    <User className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                                                    <input
-                                                        type="text"
-                                                        value={ownerName}
-                                                        onChange={(e) => handleCommonFieldChange('ownerName', e.target.value)}
-                                                        className="w-full pl-8 pr-2 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                                        placeholder="Owner name (optional)"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                        <div className="space-y-2">
+                            <button
+                                onClick={openFileDialogAndExtract}
+                                disabled={previewLoading}
+                                className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-all bg-blue-600 text-white shadow-sm hover:bg-blue-700 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {previewLoading ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Upload className="w-3.5 h-3.5" />
                                 )}
-                            </div>
+                                {previewLoading ? "Processing..." : "Select Excel File"}
+                            </button>
 
-                            {/* Right Column - Preview Table */}
-                            <div className="col-span-8">
-                                <div className="border border-gray-200 rounded-lg p-4 h-full">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h2 className="text-lg font-semibold text-gray-900">Data Preview</h2>
-                                        {previewData && (
-                                            <div className="text-sm text-gray-600">
-                                                {previewData.length} records
-                                            </div>
-                                        )}
+                            {excelFileName ? (
+                                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <FileText className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                                        <span className="text-xs font-medium text-emerald-800 truncate">
+                                            {excelFileName}
+                                        </span>
                                     </div>
-
-                                    {previewLoading ? (
-                                        <div className="flex items-center justify-center gap-3 p-8">
-                                            <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
-                                            <div className="text-gray-600">
-                                                <div className="font-medium">Extracting data...</div>
-                                                <div className="text-sm">Processing your Excel file</div>
-                                            </div>
-                                        </div>
-                                    ) : previewData ? (
-                                        <PreviewTable data={previewData} />
-                                    ) : (
-                                        <div className="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                            <Table className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                            <div className="text-gray-500">
-                                                <div className="font-medium mb-1">No preview available</div>
-                                                <div className="text-sm">Select an Excel file to see data preview</div>
-                                            </div>
+                                    {reportId && (
+                                        <div className="mt-1 text-[10px] text-blue-700 font-medium">
+                                            Report ID: {reportId}
                                         </div>
                                     )}
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Status Messages */}
-                        <div className="mt-4">
-                            {error && (
-                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                    <div className="flex items-center gap-2 text-red-700">
-                                        <AlertTriangle className="w-4 h-4" />
-                                        <span className="text-sm">{error}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {success && (
-                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                    <div className="flex items-center gap-2 text-green-700">
-                                        <CheckCircle className="w-4 h-4" />
-                                        <span className="text-sm whitespace-pre-line">{success}</span>
-                                    </div>
+                            ) : (
+                                <div className="text-xs text-slate-500 px-2 py-2 bg-slate-50 border border-slate-200 rounded-md text-center">
+                                    No file selected
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    {/* Common Fields */}
+                    {previewData && (
+                        <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                            <h3 className="text-sm font-semibold text-slate-800 mb-2">Common Fields</h3>
+
+                            <div className="space-y-2">
+                                {/* Inspection Date */}
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-700 mb-1">
+                                        Inspection Date
+                                    </label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
+                                        <input
+                                            type="date"
+                                            value={inspectionDate}
+                                            onChange={(e) => handleCommonFieldChange('inspectionDate', e.target.value)}
+                                            max={getTodayDate()}
+                                            className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Region & City */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-700 mb-1">
+                                            Region
+                                        </label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
+                                            <select
+                                                value={region}
+                                                onChange={(e) => handleCommonFieldChange('region', e.target.value)}
+                                                className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white cursor-pointer"
+                                            >
+                                                <option value="">Select Region</option>
+                                                {Object.keys(saudiRegions).map(regionName => (
+                                                    <option key={regionName} value={regionName}>
+                                                        {regionName}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-slate-700 mb-1">
+                                            City
+                                        </label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
+                                            <select
+                                                value={city}
+                                                onChange={(e) => handleCommonFieldChange('city', e.target.value)}
+                                                disabled={!region}
+                                                className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer disabled:cursor-not-allowed"
+                                            >
+                                                <option value="">{region ? "Select City" : "Select region first"}</option>
+                                                {availableCities.map(cityName => (
+                                                    <option key={cityName} value={cityName}>
+                                                        {cityName}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Owner Name */}
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-700 mb-1">
+                                        Owner Name
+                                    </label>
+                                    <div className="relative">
+                                        <User className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={ownerName}
+                                            onChange={(e) => handleCommonFieldChange('ownerName', e.target.value)}
+                                            className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                                            placeholder="Owner name (optional)"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Reports Table Section - Added below the existing content */}
-                <div className="mt-8">
-                    <ReportsTable />
+                {/* Right Column - Preview Table */}
+                <div className="col-span-8">
+                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3 h-full">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-semibold text-slate-800">Data Preview</h3>
+                            {previewData && (
+                                <div className="text-xs text-slate-600 font-medium">
+                                    {previewData.length} records
+                                </div>
+                            )}
+                        </div>
+
+                        {previewLoading ? (
+                            <div className="flex items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                <div className="text-slate-600">
+                                    <div className="text-xs font-semibold">Extracting data...</div>
+                                    <div className="text-[10px]">Processing your Excel file</div>
+                                </div>
+                            </div>
+                        ) : previewData ? (
+                            <PreviewTable data={previewData} />
+                        ) : (
+                            <div className="text-center p-6 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
+                                <Table className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                                <div className="text-slate-500">
+                                    <div className="text-xs font-semibold mb-1">No preview available</div>
+                                    <div className="text-[10px]">Select an Excel file to see data preview</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
+            </div>
+
+            {/* Reports Table Section */}
+            <div className="mt-4">
+                <ReportsTable />
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-import asyncio, traceback, sys
+import asyncio, traceback, sys, json
 
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -127,10 +127,33 @@ async def find_record_in_collections(record_id_obj, collection_names):
             return record, collection
     return None, None
 
+def emit_progress_update(record_id, percentage, message, status="processing"):
+    """Emit progress update to stdout for frontend to receive"""
+    progress_data = {
+        "type": "progress",
+        "processId": str(record_id),
+        "reportId": str(record_id),
+        "percentage": percentage,
+        "message": message,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    print(json.dumps(progress_data), flush=True)
+
 async def create_report_for_record(browser, record, tabs_num=3, collection=None):
     try:
         if not record or "_id" not in record:
             return {"status": "FAILED", "error": "Invalid record object (missing _id)"}
+
+        record_id = str(record["_id"])
+        asset_count = len(record.get("asset_data", []))
+        
+        # Calculate progress increments
+        # 10% for report creation, 5% for asset creation, 85% for asset filling
+        REPORT_CREATE_PERCENT = 10
+        ASSET_CREATE_PERCENT = 5
+        ASSET_FILL_BASE = 85
+        asset_fill_increment = ASSET_FILL_BASE / asset_count if asset_count > 0 else 0
 
         # Determine which collection this record belongs to if not provided
         if collection is None:
@@ -155,8 +178,10 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
             {"$set": {"startSubmitTime": datetime.now(timezone.utc)}}
         )
 
+        emit_progress_update(record_id, 0, "Starting report submission...", "processing")
+
         results = []
-        record["number_of_macros"] = str(len(record.get("asset_data", [])))
+        record["number_of_macros"] = str(asset_count)
 
         # Normalize valuers to shape expected by fill_valuers (valuerName/percentage)
         valuers = []
@@ -171,6 +196,9 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
         main_page = await browser.get(create_url)
         await asyncio.sleep(1)
 
+        # Track if assets were created in step 2
+        assets_created_in_step2 = False
+
         for step_num, step_config in enumerate(form_steps, 1):
             is_last = step_num == len(form_steps)
 
@@ -181,12 +209,16 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
             })
 
             if step_num == 2 and len(record.get("asset_data", [])) > 10:
+                # Create assets with progress tracking
                 result = await run_create_assets_by_count(
                     browser,
                     len(record.get("asset_data")),
                     tabs_num=tabs_num,
                     batch_size=10
                 )
+                # Mark that assets were created
+                if not isinstance(result, dict) or result.get("status") != "FAILED":
+                    assets_created_in_step2 = True
             else:
                 result = await fill_form(
                     main_page,
@@ -226,14 +258,24 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                         {"_id": record["_id"]},
                         {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
                     )
+                    emit_progress_update(record_id, 0, "Failed to create report", "error")
                     return {"status": "FAILED", "results": results}
 
-                # Save report_id on document
+                # Save report_id on document - Update instantly
                 await collection.update_one(
                     {"_id": record["_id"]},
                     {"$set": {"report_id": form_id}}
                 )
                 record["report_id"] = form_id
+                
+                # Calculate progress: 10% for report creation, +5% if assets already created = 15%
+                if assets_created_in_step2:
+                    # Assets were created in step 2, so we're at 15% total
+                    current_progress = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT
+                    emit_progress_update(record_id, current_progress, f"Report created: {form_id}", "processing")
+                else:
+                    # Assets will be created via fill_form, so we're at 10%
+                    emit_progress_update(record_id, REPORT_CREATE_PERCENT, f"Report created: {form_id}", "processing")
 
                 # Determine collection name for macro ID update
                 collection_name_map = {
@@ -243,7 +285,14 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                 }
                 coll_name = collection_name_map.get(collection, 'multiapproachreports')
 
-                # Get macro IDs
+                # Get macro IDs - Keep progress at 15% (or 10% if assets not created yet)
+                # Preserve current progress percentage and message
+                current_progress_before_macro_ids = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT if assets_created_in_step2 else REPORT_CREATE_PERCENT
+                current_message_before_macro_ids = f"Report created: {form_id}"
+                
+                # Emit progress to maintain 15% (or 10%) while getting macro IDs
+                emit_progress_update(record_id, current_progress_before_macro_ids, current_message_before_macro_ids, "processing")
+                
                 macro_ids_result = await get_all_macro_ids_parallel(browser, form_id, tabs_num=tabs_num, collection_name=coll_name)
                 if isinstance(macro_ids_result, dict) and macro_ids_result.get("status") == "FAILED":
                     results.append({
@@ -277,8 +326,28 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                     )
                     return {"status": "FAILED", "results": results}
 
-                # Handle macro edits
-                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num)
+                # After getting macro IDs, maintain 15% (or 10%) progress with report created message
+                # This ensures progress doesn't reset when navigating to report page
+                emit_progress_update(record_id, current_progress_before_macro_ids, current_message_before_macro_ids, "processing")
+
+                # Handle macro edits with progress tracking
+                # Calculate base progress (report + assets = 15% if assets created, otherwise 10%)
+                base_progress = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT if assets_created_in_step2 else REPORT_CREATE_PERCENT
+                
+                # Custom progress callback that maps macro filling (0-100%) to 15-100% range
+                def progress_callback(completed, total):
+                    if total == 0:
+                        return
+                    # Map completed/total (0-1) to 15-100% range
+                    fill_progress = base_progress + (ASSET_FILL_BASE * completed / total)
+                    emit_progress_update(
+                        record_id,
+                        fill_progress,
+                        f"Filling assets: {completed}/{total}",
+                        "processing"
+                    )
+                
+                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num, record_id=record_id, progress_callback=progress_callback, collection=collection)
                 if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
                     results.append({
                         "status": "FAILED",

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Loader2, X } from "lucide-react";
 
 export default function EditAssetModal({
-    open,
+    isOpen,
     onClose,
     asset,
     reportId,
@@ -13,7 +13,7 @@ export default function EditAssetModal({
     const [error, setError] = useState("");
 
     useEffect(() => {
-        if (open && asset) {
+        if (isOpen && asset) {
             setForm({
                 asset_name: asset.asset_name || "",
                 final_value: asset.final_value || "",
@@ -26,7 +26,7 @@ export default function EditAssetModal({
 
             setError("");
         }
-    }, [open, asset]);
+    }, [isOpen, asset]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -62,7 +62,7 @@ export default function EditAssetModal({
         }
     };
 
-    if (!open) return null;
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

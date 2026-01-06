@@ -5,6 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from .formSteps import macro_form_config
 from .formFiller import fill_form
+from .checkMacroStatus import RunHalfCheckMacroStatus
 from scripts.core.utils import wait_for_element
 from scripts.core.processControl import (
     get_process_manager,
@@ -35,7 +36,8 @@ def balanced_chunks(lst, n):
 async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
     await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
     await wait_for_element(page, "#asset_usage_id", timeout=30)
-    await asyncio.sleep(0.5)
+    # Reduced delay - element is already loaded by wait_for_element
+    await asyncio.sleep(0.1)
 
     try:
         result = await fill_form(
@@ -50,7 +52,7 @@ async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
         print(f"Filling macro {macro_id} failed: {e}", file=sys.stderr)
         return {"status": "FAILED", "error": str(e)}
 
-async def handle_macro_edits(browser, record, tabs_num=3, record_id=None): 
+async def handle_macro_edits(browser, record, tabs_num=3, record_id=None, progress_callback=None, collection=None): 
     asset_data = record.get("asset_data", [])
     if not asset_data: 
         return {"status": "SUCCESS", "message": "No assets to edit"}
@@ -121,13 +123,7 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
                     current_completed = completed
                     current_failed = failed
                 
-                # Emit progress BEFORE processing
-                emit_progress(
-                    record_id,
-                    current_item=str(macro_id),
-                    message=f"Processing macro {macro_id} ({current_completed}/{total_assets})"
-                )
-                
+                # Process the macro form (progress emitted after completion)
                 result = await fill_macro_form(
                     page,
                     macro_id,
@@ -136,7 +132,50 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
                     macro_form_config["field_types"],
                 )
                 
-                # Update counters
+                # Update submitState in database if save was successful
+                if result.get("status") == "SAVED" and record.get("_id"):
+                    # Use provided collection or find it
+                    target_collection = collection
+                    if not target_collection:
+                        # Find the collection by searching for the record
+                        collections_to_check = [
+                            (db.multiapproachreports, 'multiapproachreports'),
+                            (db.submitreportsquicklies, 'submitreportsquicklies'),
+                            (db.submitreportsquickly, 'submitreportsquickly')
+                        ]
+                        
+                        for coll, coll_name in collections_to_check:
+                            try:
+                                from bson import ObjectId
+                                record_doc = await coll.find_one({"_id": record["_id"]})
+                                if record_doc:
+                                    target_collection = coll
+                                    break
+                            except:
+                                continue
+                    
+                    if target_collection:
+                        try:
+                            # Update using array positional operator
+                            update_result = await target_collection.update_one(
+                                {"_id": record["_id"], "asset_data.id": str(macro_id)},
+                                {"$set": {"asset_data.$.submitState": 1}}
+                            )
+                            
+                            # If no document matched, try to find by index
+                            if update_result.matched_count == 0:
+                                asset_data = record.get("asset_data", [])
+                                for idx, a in enumerate(asset_data):
+                                    if a.get("id") == str(macro_id):
+                                        await target_collection.update_one(
+                                            {"_id": record["_id"]},
+                                            {"$set": {f"asset_data.{idx}.submitState": 1}}
+                                        )
+                                        break
+                        except Exception as e:
+                            print(f"Error updating submitState for macro {macro_id}: {e}", file=sys.stderr)
+                
+                # Update counters (batch progress update)
                 lock = process_manager.get_lock(record_id)
                 if lock:
                     async with lock:
@@ -152,13 +191,27 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None):
                     current_completed = completed
                     current_failed = failed
                 
-                # Update progress in state manager
+                # Batch progress update (emit once per asset instead of multiple times)
                 await update_progress(
                     record_id,
                     completed=current_completed,
                     failed=current_failed,
                     emit=True
                 )
+                
+                # Emit progress message after completion
+                emit_progress(
+                    record_id,
+                    current_item=str(macro_id),
+                    message=f"Completed macro {macro_id} ({current_completed}/{total_assets})"
+                )
+                
+                # Call custom progress callback if provided
+                if progress_callback:
+                    try:
+                        progress_callback(current_completed, total_assets)
+                    except Exception as e:
+                        print(f"Error in progress callback: {e}", file=sys.stderr)
                             
             except Exception as e:
                 lock = process_manager.get_lock(record_id)
@@ -369,6 +422,12 @@ async def pause_macro_edit(report_id):
                 "error": f"No active process found for report {report_id}"
             }
         
+        # Emit progress update immediately to notify UI
+        emit_progress(
+            report_id,
+            message=f"Paused macro editing for report {report_id}"
+        )
+        
         return {
             "status": "SUCCESS",
             "message": f"Paused macro editing for report {report_id}",
@@ -388,6 +447,12 @@ async def resume_macro_edit(report_id):
                 "status": "FAILED",
                 "error": f"No active process found for report {report_id}"
             }
+        
+        # Emit progress update immediately to notify UI
+        emit_progress(
+            report_id,
+            message=f"Resumed macro editing for report {report_id}"
+        )
         
         return {
             "status": "SUCCESS",

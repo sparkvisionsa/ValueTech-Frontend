@@ -11,6 +11,7 @@ let mainWindow;
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || '';
 const SHOULD_OPEN_DEVTOOLS = process.env.ELECTRON_DEVTOOLS === '1' || process.argv.includes('--devtools');
 const STARTUP_TIMEOUT_MS = 60000;
+const LOADING_DELAY_MS = 3000;
 const LOADING_ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const LOADING_ICON_DATA_URL = fs.existsSync(LOADING_ICON_PATH)
     ? `data:image/png;base64,${fs.readFileSync(LOADING_ICON_PATH, 'base64')}`
@@ -22,23 +23,119 @@ const LOADING_HTML = 'data:text/html,' + encodeURIComponent(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Loading</title>
+  <title>STARTING...</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; background: #0f1115; color: #f5f5f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
-    .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-    .icon-wrap { width: 72px; height: 72px; border-radius: 16px; background: #1b1f2a; display: grid; place-items: center; box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
-    .icon-wrap img { width: 70%; height: 70%; object-fit: contain; }
-    .icon-fallback { font-size: 30px; font-weight: 700; letter-spacing: 1px; }
-    .spinner { width: 24px; height: 24px; border: 3px solid rgba(245,245,245,0.2); border-top-color: #f5f5f5; border-radius: 50%; animation: spin 0.8s linear infinite; }
-    .title { font-size: 14px; letter-spacing: 0.6px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    :root {
+      --bg-1: #0b0f17;
+      --bg-2: #121a2a;
+      --glow-1: rgba(80, 197, 255, 0.35);
+      --glow-2: rgba(255, 180, 90, 0.3);
+      --accent-1: #8cf3ff;
+      --accent-2: #ffd29c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 420px at 8% 12%, rgba(255,255,255,0.07), transparent 60%),
+        radial-gradient(700px 380px at 92% 18%, var(--glow-1), transparent 65%),
+        radial-gradient(620px 420px at 16% 88%, var(--glow-2), transparent 70%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      color: #eef6ff;
+      display: grid;
+      place-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      width: 380px;
+      height: 380px;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.45;
+      z-index: 0;
+    }
+    body::before { background: #4cb3ff; top: -160px; left: -120px; }
+    body::after { background: #ffb46e; bottom: -180px; right: -120px; }
+    .wrap {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 48px 64px 44px;
+      border-radius: 28px;
+      background: rgba(14, 20, 32, 0.78);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 25px 70px rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+      min-width: 320px;
+    }
+    .icon-wrap {
+      width: 86px;
+      height: 86px;
+      border-radius: 24px;
+      background: linear-gradient(150deg, rgba(140,243,255,0.2), rgba(255,210,156,0.2));
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+    }
+    .icon-wrap img { width: 68%; height: 68%; object-fit: contain; }
+    .icon-fallback { font-size: 34px; font-weight: 700; letter-spacing: 2px; }
+    .title {
+      font-size: 42px;
+      font-weight: 600;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      margin: 0;
+      background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+      -webkit-background-clip: text;
+      color: transparent;
+      text-shadow: 0 6px 18px rgba(140,243,255,0.2);
+    }
+    .subtitle {
+      font-size: 12px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      opacity: 0.65;
+    }
+    .progress {
+      position: relative;
+      width: 220px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+    }
+    .progress::after {
+      content: "";
+      position: absolute;
+      width: 45%;
+      height: 100%;
+      left: -45%;
+      top: 0;
+      background: linear-gradient(90deg, transparent, var(--accent-1), var(--accent-2), transparent);
+      animation: slide 1.4s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(320px); }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     ${LOADING_ICON_HTML}
-    <div class="spinner"></div>
-    <div class="title">Starting</div>
+    <h1 class="title">STARTING...</h1>
+    <div class="subtitle">Preparing workspace</div>
+    <div class="progress"></div>
   </div>
 </body>
 </html>`);
@@ -194,22 +291,28 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js')
         },
         icon: path.join(__dirname, 'assets/icon.png'),
-        show: devMode
+        backgroundColor: '#0b0f17',
+        show: false
     });
 
-    if (devMode) {
-        mainWindow.loadURL(LOADING_HTML);
-        loadDevRenderer(mainWindow).catch((error) => {
-            console.error('[MAIN] Dev renderer load failed:', error);
-        });
-    } else {
-        loadProdRenderer(mainWindow).catch((error) => {
-            console.error('[MAIN] Prod renderer load failed:', error);
-        });
-        mainWindow.once('ready-to-show', () => {
-            mainWindow.show();
-        });
-    }
+    mainWindow.webContents.once('did-finish-load', () => {
+        mainWindow.show();
+        setTimeout(() => {
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return;
+            }
+            if (devMode) {
+                loadDevRenderer(mainWindow).catch((error) => {
+                    console.error('[MAIN] Dev renderer load failed:', error);
+                });
+            } else {
+                loadProdRenderer(mainWindow).catch((error) => {
+                    console.error('[MAIN] Prod renderer load failed:', error);
+                });
+            }
+        }, LOADING_DELAY_MS);
+    });
+    mainWindow.loadURL(LOADING_HTML);
 
     mainWindow.on('closed', () => {
         mainWindow = null;

@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
 
+
     // Progress listener for delete-assets
     onDeleteAssetsProgress: (callback) => {
         const subscription = (event, data) => callback(data);
@@ -147,6 +148,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
      
+
+    // Progress listener for submit-reports-quickly
+    onSubmitReportsQuicklyProgress: (callback) => {
+        const subscription = (event, data) => callback(data);
+        ipcRenderer.on('submit-reports-quickly-progress', subscription);
+        return () => {
+            ipcRenderer.removeListener('submit-reports-quickly-progress', subscription);
+        };
+    },
+
+
     // Worker
     showOpenDialog: () => safeInvoke('show-open-dialog'),
     showOpenDialogWord: () => safeInvoke('show-open-dialog-word'),
