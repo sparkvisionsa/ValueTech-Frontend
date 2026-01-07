@@ -436,6 +436,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                         const Icon = item.icon;
                         const blocked = isFeatureBlocked(item.groupId);
                         const isActive = activeGroup === item.groupId;
+                        const groupTabs = valueSystemGroups[item.groupId]?.tabs || [];
+                        const firstTab = groupTabs?.[0]?.id;
                         return (
                             <button
                                 key={item.id}
@@ -443,8 +445,13 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                     if (blocked) return;
                                     chooseCard(item.id);
                                     setActiveGroup(item.groupId);
-                                    if (setActiveTab) setActiveTab(null);
-                                    delayViewChange('apps');
+                                    if (firstTab) {
+                                        setActiveTab(firstTab);
+                                        if (onViewChange) onViewChange(firstTab);
+                                    } else {
+                                        if (setActiveTab) setActiveTab(null);
+                                        delayViewChange('apps');
+                                    }
                                 }}
                                 disabled={blocked}
                                 className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
@@ -536,7 +543,15 @@ const Sidebar = ({ currentView, onViewChange }) => {
                         onClick={() => {
                             if (settingsBlocked) return;
                             setActiveGroup('settings');
-                            delayViewChange('apps');
+                            const groupTabs = valueSystemGroups.settings?.tabs || [];
+                            const firstTab = groupTabs?.[0]?.id;
+                            if (firstTab) {
+                                setActiveTab(firstTab);
+                                if (onViewChange) onViewChange(firstTab);
+                            } else {
+                                setActiveTab(null);
+                                delayViewChange('apps');
+                            }
                         }}
                         disabled={settingsBlocked}
                         className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
