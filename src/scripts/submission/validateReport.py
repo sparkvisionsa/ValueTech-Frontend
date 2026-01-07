@@ -106,6 +106,128 @@ def extract_report_info_from_html(html: str) -> dict:
     return {"info": info, "reportStatusLabel": status_label, "reportStatus": status_value}
 
 
+async def calculate_total_assets(page) -> dict:
+    """
+    Calculate total assets using DataTables pagination and current rows.
+    Returns:
+      {
+        "total_micros": int|None,
+        "assets_exact": int|None,
+        "last_page_num": int|None,
+        "last_page_ids": list,
+        "first_page_ids": list,
+        "error": str|None
+      }
+    """
+    result = {
+        "total_micros": None,
+        "assets_exact": None,
+        "last_page_num": None,
+        "last_page_ids": [],
+        "first_page_ids": [],
+        "error": None
+    }
+
+    try:
+        # Always count current page first (covers single-page reports)
+        first_page_ids = await page.evaluate(r"""
+            (() => {
+                const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
+                const ids = [];
+                for (const tr of rows) {
+                    const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
+                    if (!a) continue;
+                    const href = a.getAttribute('href') || '';
+                    const m = href.match(/\/macro\/(\d+)\//);
+                    if (m) ids.push(parseInt(m[1], 10));
+                    else {
+                        const txt = (a.textContent || '').trim();
+                        if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
+                    }
+                }
+                return ids;
+            })()
+        """)
+        result["first_page_ids"] = first_page_ids
+        first_count = len(first_page_ids) if isinstance(first_page_ids, list) else 0
+
+        # Detect last page number; if no pagination => 1 page
+        last_page_num = await page.evaluate(r"""
+            (() => {
+                const selectors = ['nav ul', '.dataTables_paginate ul', 'ul.pagination'];
+                let ul = null;
+                for (const sel of selectors) {
+                    const el = document.querySelector(sel);
+                    if (el && el.querySelectorAll('li').length > 0) { ul = el; break; }
+                }
+
+                // No pagination UI => single page
+                if (!ul) return 1;
+
+                const lis = Array.from(ul.querySelectorAll('li'));
+                const numericLis = lis.filter(li => /^\d+$/.test(li.textContent.trim()));
+                if (numericLis.length === 0) return 1;
+
+                const lastLi = numericLis[numericLis.length - 1];
+                const pageNum = parseInt(lastLi.textContent.trim(), 10) || 1;
+
+                // Click last page (ok if it's already active)
+                const clickable = lastLi.querySelector('a,button') || lastLi;
+                try { clickable.click(); } catch (_) {}
+
+                return pageNum;
+            })()
+        """)
+
+        last_page_num = int(last_page_num or 1)
+        result["last_page_num"] = last_page_num
+
+        # Single page
+        if last_page_num <= 1:
+            result["assets_exact"] = first_count
+            result["total_micros"] = first_count
+            result["last_page_ids"] = first_page_ids
+            return result
+
+        # Multi-page: wait for last page rows then collect IDs on last page
+        await asyncio.sleep(1)
+        try:
+            await wait_for_table_rows(page, timeout=3)
+        except Exception:
+            pass
+
+        last_page_ids = await page.evaluate(r"""
+            (() => {
+                const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
+                const ids = [];
+                for (const tr of rows) {
+                    const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
+                    if (!a) continue;
+                    const href = a.getAttribute('href') || '';
+                    const m = href.match(/\/macro\/(\d+)\//);
+                    if (m) ids.push(parseInt(m[1], 10));
+                    else {
+                        const txt = (a.textContent || '').trim();
+                        if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
+                    }
+                }
+                return ids;
+            })()
+        """)
+
+        result["last_page_ids"] = last_page_ids
+        count_on_last = len(last_page_ids) if isinstance(last_page_ids, list) else 0
+
+        # Keep the original assumption: 15 rows per page
+        result["assets_exact"] = int((last_page_num - 1) * 15 + count_on_last)
+        result["total_micros"] = int(last_page_num) * 15
+        return result
+
+    except Exception as e:
+        result["error"] = str(e)
+        return result
+
+
 async def validate_report(cmd):
     report_id = cmd.get("reportId")
     if not report_id:
@@ -192,114 +314,24 @@ async def validate_report(cmd):
         }), file=sys.stderr)
 
         if macros_table:
-            total_micros = None
-            assets_exact = None
-            last_page_num = None
-            last_page_ids = []
+            assets_info = await calculate_total_assets(page)
+            total_micros = assets_info.get("total_micros")
+            assets_exact = assets_info.get("assets_exact")
+            last_page_num = assets_info.get("last_page_num")
+            last_page_ids = assets_info.get("last_page_ids") or []
 
-            try:
-                # --- Always count current page first (covers single-page reports) ---
-                first_page_ids = await page.evaluate(r"""
-                    (() => {
-                        const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
-                        const ids = [];
-                        for (const tr of rows) {
-                            const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
-                            if (!a) continue;
-                            const href = a.getAttribute('href') || '';
-                            const m = href.match(/\/macro\/(\d+)\//);
-                            if (m) ids.push(parseInt(m[1], 10));
-                            else {
-                                const txt = (a.textContent || '').trim();
-                                if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
-                            }
-                        }
-                        return ids;
-                    })()
-                """)
-                first_count = len(first_page_ids) if isinstance(first_page_ids, list) else 0
-
-                # --- Detect last page number; if no pagination => 1 page ---
-                last_page_num = await page.evaluate(r"""
-                    (() => {
-                        const selectors = ['nav ul', '.dataTables_paginate ul', 'ul.pagination'];
-                        let ul = null;
-                        for (const sel of selectors) {
-                            const el = document.querySelector(sel);
-                            if (el && el.querySelectorAll('li').length > 0) { ul = el; break; }
-                        }
-
-                        // No pagination UI => single page
-                        if (!ul) return 1;
-
-                        const lis = Array.from(ul.querySelectorAll('li'));
-                        const numericLis = lis.filter(li => /^\d+$/.test(li.textContent.trim()));
-                        if (numericLis.length === 0) return 1;
-
-                        const lastLi = numericLis[numericLis.length - 1];
-                        const pageNum = parseInt(lastLi.textContent.trim(), 10) || 1;
-
-                        // Click last page (ok if it's already active)
-                        const clickable = lastLi.querySelector('a,button') || lastLi;
-                        try { clickable.click(); } catch (_) {}
-
-                        return pageNum;
-                    })()
-                """)
-
-                last_page_num = int(last_page_num or 1)
-
-                # --- If single page, exact assets = number of rows on current page ---
-                if last_page_num <= 1:
-                    assets_exact = first_count
-                    total_micros = first_count
-                    last_page_ids = first_page_ids
-
-                else:
-                    # --- Multi-page: wait for last page rows then collect IDs on last page ---
-                    await asyncio.sleep(1)
-                    try:
-                        await wait_for_table_rows(page, timeout=3)
-                    except Exception:
-                        pass
-
-                    last_page_ids = await page.evaluate(r"""
-                        (() => {
-                            const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
-                            const ids = [];
-                            for (const tr of rows) {
-                                const a = tr.querySelector('td:nth-child(1) a[href*="/report/macro/"]');
-                                if (!a) continue;
-                                const href = a.getAttribute('href') || '';
-                                const m = href.match(/\/macro\/(\d+)\//);
-                                if (m) ids.push(parseInt(m[1], 10));
-                                else {
-                                    const txt = (a.textContent || '').trim();
-                                    if (/^\d+$/.test(txt)) ids.push(parseInt(txt, 10));
-                                }
-                            }
-                            return ids;
-                        })()
-                    """)
-
-                    count_on_last = len(last_page_ids) if isinstance(last_page_ids, list) else 0
-
-                    # Keep your original assumption: 15 rows per page
-                    assets_exact = int((last_page_num - 1) * 15 + count_on_last)
-                    total_micros = int(last_page_num) * 15
-
-                print(json.dumps({
-                    "event": "assets_computed",
-                    "page": last_page_num,
-                    "countLastPage": len(last_page_ids) if isinstance(last_page_ids, list) else None,
-                    "assetsExact": assets_exact
-                }), file=sys.stderr)
-
-            except Exception as e:
+            if assets_info.get("error"):
                 print(json.dumps({
                     "event": "compute_error",
-                    "error": str(e)
+                    "error": assets_info.get("error")
                 }), file=sys.stderr)
+
+            print(json.dumps({
+                "event": "assets_computed",
+                "page": last_page_num,
+                "countLastPage": len(last_page_ids) if isinstance(last_page_ids, list) else None,
+                "assetsExact": assets_exact
+            }), file=sys.stderr)
 
             return {
                 "status": "MACROS_EXIST",

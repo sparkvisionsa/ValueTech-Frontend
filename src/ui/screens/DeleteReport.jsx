@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     CheckCircle,
     FileText,
@@ -11,11 +11,18 @@ import {
     StopCircle,
     AlertCircle
 } from "lucide-react";
+import { useSession } from "../context/SessionContext";
 
 const DeleteReport = () => {
     // Report ID state
     const [reportId, setReportId] = useState("");
-    
+
+    const { user } = useSession();
+    const userId = useMemo(
+        () => user?._id || user?.id || user?.userId || user?.user?._id || null,
+        [user]
+    );
+
 
 const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
@@ -38,6 +45,17 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
     // Progress state
     const [deleteReportProgress, setDeleteReportProgress] = useState(null);
+    const [deleteReportProgressById, setDeleteReportProgressById] = useState({});
+    const [deletedRows, setDeletedRows] = useState([]);
+    const [deletedPage, setDeletedPage] = useState(1);
+    const [deletedTotal, setDeletedTotal] = useState(0);
+    const [deletedLoading, setDeletedLoading] = useState(false);
+    const [deletedError, setDeletedError] = useState("");
+    const deletedLimit = 10;
+    const deletedTotalPages = useMemo(
+        () => Math.max(1, Math.ceil(deletedTotal / deletedLimit)),
+        [deletedTotal, deletedLimit]
+    );
 
     // Selected reports state
     const [selectedReports, setSelectedReports] = useState(new Set());
@@ -47,10 +65,41 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
         const unsubscribe = window.electronAPI.onDeleteReportProgress((progressData) => {
             console.log('Delete report progress:', progressData);
             setDeleteReportProgress(progressData);
+            if (progressData?.reportId) {
+                setDeleteReportProgressById(prev => ({
+                    ...prev,
+                    [progressData.reportId]: progressData
+                }));
+            }
         });
 
         return unsubscribe;
     }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+        if (!userId) return;
+        setDeletedLoading(true);
+        setDeletedError("");
+        window.electronAPI.getReportDeletions(userId, "report", deletedPage, deletedLimit)
+            .then((res) => {
+                if (!isMounted) return;
+                if (res?.status === "SUCCESS") {
+                    setDeletedRows(res.items || []);
+                    setDeletedTotal(res.total || 0);
+                } else {
+                    setDeletedError(res?.error || "Failed to load deleted reports");
+                }
+            })
+            .catch((err) => {
+                if (!isMounted) return;
+                setDeletedError(err?.message || "Failed to load deleted reports");
+            })
+            .finally(() => {
+                if (isMounted) setDeletedLoading(false);
+            });
+        return () => { isMounted = false; };
+    }, [userId, deletedPage, deletedLimit, deleteReportStatus]);
 
     // Clear selections when checking new reports
     useEffect(() => {
@@ -97,11 +146,15 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
         }
 
         setError("");
+        setReportSummaryRow([]);
+        setSelectedReports(new Set());
+        setReportExists(null);
         setDeleteRequested(true);
         setStatusChangeResult(null);
         setDeleteReportStatus("running");
         setOperationResult(null);
         setDeleteReportProgress(null);
+        setDeleteReportProgressById({});
 
         const maxRounds = 10;
         const concurrency = Math.min(10, selectedIds.length); // adjust safely
@@ -121,7 +174,7 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
                 }));
 
                 try {
-                    const res = await window.electronAPI.deleteReport(id, maxRounds);
+                    const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
                     // mark success
                     setOperationResult(prev => ({
                         ...prev,
@@ -149,6 +202,7 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
             setDeleteReportStatus(failed ? "partial" : "success");
             setDeleteReportProgress(null);
+            setDeleteReportProgressById({});
             
             // Reset the text area after deletion
             setReportId("");
@@ -156,6 +210,7 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             console.error("Error initiating batch deletion:", err);
             setDeleteReportStatus("stopped");
             setDeleteReportProgress(null);
+            setDeleteReportProgressById({});
         }
     };
 
@@ -179,7 +234,7 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
         try {
             const results = await runWithConcurrency(selectedIds, concurrency, async (id) => {
                 try {
-                    const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds);
+                    const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
                     return { id, ok: true, result: res };
                 } catch (err) {
                     return { id, ok: false, error: String(err) };
@@ -352,9 +407,10 @@ const handleDeleteReport = async () => {
   setError("");
   setDeleteRequested(true);
   setStatusChangeResult(null);
-  setDeleteReportStatus("running");
-  setOperationResult(null);
-  setDeleteReportProgress(null); // Reset progress
+        setDeleteReportStatus("running");
+        setOperationResult(null);
+        setDeleteReportProgress(null); // Reset progress
+        setDeleteReportProgressById({});
 
   const maxRounds = 10;
   const concurrency = 10; // adjust safely (2–4 recommended)
@@ -374,7 +430,7 @@ const handleDeleteReport = async () => {
       }));
 
       try {
-        const res = await window.electronAPI.deleteReport(id, maxRounds);
+        const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
         // mark success
         setOperationResult(prev => ({
           ...prev,
@@ -402,10 +458,12 @@ const handleDeleteReport = async () => {
 
     setDeleteReportStatus(failed ? "partial" : "success");
     setDeleteReportProgress(null); // Clear progress on completion
+    setDeleteReportProgressById({});
   } catch (err) {
     console.error("Error initiating batch deletion:", err);
     setDeleteReportStatus("stopped");
     setDeleteReportProgress(null); // Clear progress on error
+    setDeleteReportProgressById({});
   }
 };
 
@@ -437,7 +495,7 @@ const handleDeleteReport = async () => {
             console.log(`Sending delete assets request for report: ${reportId}`);
 
             // Fire the delete assets request
-            window.electronAPI.deleteIncompleteAssets(reportId, 10).then(result => {
+            window.electronAPI.deleteIncompleteAssets(reportId, 10, userId).then(result => {
                 console.log("Report assets deletion completed:", result);
             }).catch(err => {
                 console.error("Report assets deletion encountered error:", err);
@@ -528,6 +586,7 @@ const handleDeleteReport = async () => {
             if (result.status === "SUCCESS") {
                 setDeleteReportStatus('stopped');
                 setDeleteReportProgress(null); // Clear progress on stop
+                setDeleteReportProgressById({});
             } else {
                 setOperationResult({
                     type: 'stop',
@@ -743,32 +802,7 @@ const handleDeleteReport = async () => {
                         )}
 
                         {/* Progress Bar */}
-                        {deleteReportStatus === 'running' && (
-                            <div className="mt-4">
-                                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                                    <span>Progress</span>
-                                    <span>
-                                        {deleteReportProgress 
-                                            ? `${Math.round(((deleteReportProgress.current || 0) / (deleteReportProgress.total || 1)) * 100)}% (${deleteReportProgress.current || 0} / ${deleteReportProgress.total || 1})`
-                                            : 'Initializing... 0%'
-                                        }
-                                    </span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                                        style={{
-                                            width: deleteReportProgress 
-                                                ? `${((deleteReportProgress.current || 0) / (deleteReportProgress.total || 1)) * 100}%` 
-                                                : '0%'
-                                        }}
-                                    ></div>
-                                </div>
-                                {deleteReportProgress?.message && (
-                                    <p className="text-xs text-gray-500 mt-1">{deleteReportProgress.message}</p>
-                                )}
-                            </div>
-                        )}
+                        {/* Progress moved into table */}
 
                         {/* Completion Status */}
                         {deleteReportStatus === 'success' && (
@@ -799,6 +833,60 @@ const handleDeleteReport = async () => {
                                 </button>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {deleteReportStatus === 'running' && Object.keys(deleteReportProgressById).length > 0 && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">
+                            Delete Report Progress
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-white border-b">
+                                    <tr>
+                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
+                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Status</th>
+                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
+                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Remaining</th>
+                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Progress</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {Object.entries(deleteReportProgressById).map(([id, progress]) => {
+                                        const total = progress.total || 1;
+                                        const current = progress.current || 0;
+                                        const remaining = Math.max(total - current, 0);
+                                        const pct = Math.round((current / total) * 100);
+                                        return (
+                                            <tr key={id} className="border-b">
+                                                <td className="px-4 py-2 text-gray-800 font-medium">{id}</td>
+                                                <td className="px-4 py-2 text-gray-800">Deleting</td>
+                                                <td className="px-4 py-2 text-gray-800">{total}</td>
+                                                <td className="px-4 py-2 text-gray-800">{remaining}</td>
+                                                <td className="px-4 py-2">
+                                                    <div>
+                                                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                                                            <span>{pct}%</span>
+                                                            <span>{current}/{total}</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div
+                                                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                                                style={{ width: `${pct}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        {progress?.message && (
+                                                            <p className="text-xs text-gray-500 mt-1">{progress.message}</p>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 
@@ -1051,6 +1139,7 @@ const handleDeleteReport = async () => {
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Report Status</th>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Present / Not</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Progress</th>
           </tr>
         </thead>
 
@@ -1088,6 +1177,34 @@ const handleDeleteReport = async () => {
                 >
                   {row.presentOrNot}
                 </span>
+              </td>
+              <td className="px-4 py-2">
+                {(() => {
+                  const progress = deleteReportProgressById[row.reportId];
+                  if (!progress) return <span className="text-xs text-gray-500">—</span>;
+                  const pct = Math.round(((progress.current || 0) / (progress.total || 1)) * 100);
+                  const total = progress.total || 1;
+                  const current = progress.current || 0;
+                  const remaining = Math.max(total - current, 0);
+                  return (
+                    <div>
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>{pct}%</span>
+                        <span>{current}/{total}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Total: {total}</span>
+                        <span>Remaining: {remaining}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </td>
             </tr>
           ))}
@@ -1134,6 +1251,77 @@ const handleDeleteReport = async () => {
 )}
 
                             </div>
+
+                            {userId && (
+                                <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                                        <div className="text-sm font-semibold text-gray-700">
+                                            Deleted Reports
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            Page {deletedPage} of {deletedTotalPages}
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-white border-b">
+                                                <tr>
+                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
+                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Delete Type</th>
+                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Deleted</th>
+                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Remaining Assets</th>
+                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {deletedLoading && (
+                                                    <tr>
+                                                        <td className="px-4 py-3 text-gray-500" colSpan={5}>Loading...</td>
+                                                    </tr>
+                                                )}
+                                                {!deletedLoading && deletedRows.length === 0 && (
+                                                    <tr>
+                                                        <td className="px-4 py-3 text-gray-500" colSpan={5}>No deleted reports found.</td>
+                                                    </tr>
+                                                )}
+                                                {deletedRows.map((row, index) => (
+                                                    <tr key={`${row.report_id}-${index}`} className="border-b">
+                                                        <td className="px-4 py-2 text-gray-800 font-medium">{row.report_id}</td>
+                                                        <td className="px-4 py-2 text-gray-800">{row.delete_type}</td>
+                                                        <td className="px-4 py-2 text-gray-800">
+                                                            <input type="checkbox" checked={!!row.deleted} readOnly />
+                                                        </td>
+                                                        <td className="px-4 py-2 text-gray-800">{row.remaining_assets ?? 0}</td>
+                                                        <td className="px-4 py-2 text-gray-800">{row.total_assets ?? 0}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {deletedError && (
+                                        <div className="px-4 py-2 text-xs text-red-600">{deletedError}</div>
+                                    )}
+                                    <div className="bg-gray-50 px-4 py-3 border-t flex items-center justify-between">
+                                        <button
+                                            onClick={() => setDeletedPage((p) => Math.max(p - 1, 1))}
+                                            disabled={deletedPage <= 1}
+                                            className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
+                                        >
+                                            Prev
+                                        </button>
+                                        <div className="text-xs text-gray-500">
+                                            {deletedTotal} item(s)
+                                        </div>
+                                        <button
+                                            onClick={() => setDeletedPage((p) => Math.min(p + 1, deletedTotalPages))}
+                                            disabled={deletedPage >= deletedTotalPages}
+                                            className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Operation Status Section */}
                             {renderOperationStatus()}

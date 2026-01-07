@@ -318,6 +318,7 @@ class PythonWorkerService {
                 if (callback) {
                     // Transform the progress data to match frontend expectations
                     const progressData = {
+                        reportId,
                         current: response.completed || 0,
                         total: response.total || 1,
                         percentage: response.percentage || 0,

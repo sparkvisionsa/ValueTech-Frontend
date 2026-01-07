@@ -312,11 +312,12 @@ class ReportCommands {
         });
     }
 
-    async deleteReport(reportId, maxRounds) {
+    async deleteReport(reportId, maxRounds, userId) {
         return this._sendCommand({
             action: 'delete-report',
             reportId,
-            maxRounds
+            maxRounds,
+            userId
         });
     }
 
@@ -349,11 +350,22 @@ class ReportCommands {
         });
     }
 
-    async deleteIncompleteAssets(reportId, maxRounds) {
+    async deleteIncompleteAssets(reportId, maxRounds, userId) {
         return this._sendCommand({
             action: 'delete-incomplete-assets',
             reportId,
-            maxRounds
+            maxRounds,
+            userId
+        });
+    }
+
+    async getReportDeletions(userId, deleteType, page, limit) {
+        return this._sendCommand({
+            action: 'get-report-deletions',
+            userId,
+            deleteType,
+            page,
+            limit
         });
     }
 

@@ -521,7 +521,7 @@ async handleValidateReport(event, reportId) {
         }
     },
 
-    async deleteReport(event, reportId, maxRounds) {
+    async deleteReport(event, reportId, maxRounds, userId) {
         try {
             // Get the window that sent the event
             const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -536,7 +536,7 @@ async handleValidateReport(event, reportId) {
             });
 
             // Execute delete report
-            const result = await pythonAPI.report.deleteReport(reportId, maxRounds);
+            const result = await pythonAPI.report.deleteReport(reportId, maxRounds, userId);
 
             // Unregister progress callback
             pythonAPI.workerService.unregisterProgressCallback(reportId);
@@ -586,7 +586,7 @@ async handleValidateReport(event, reportId) {
         }
     },
 
-    async deleteIncompleteAssets(event, reportId, maxRounds) {
+    async deleteIncompleteAssets(event, reportId, maxRounds, userId) {
         try {
             // Get the window that sent the event
             const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -601,7 +601,7 @@ async handleValidateReport(event, reportId) {
             });
 
             // Execute delete incomplete assets
-            const result = await pythonAPI.report.deleteIncompleteAssets(reportId, maxRounds);
+            const result = await pythonAPI.report.deleteIncompleteAssets(reportId, maxRounds, userId);
 
             // Unregister progress callback
             pythonAPI.workerService.unregisterProgressCallback(reportId);
@@ -638,6 +638,15 @@ async handleValidateReport(event, reportId) {
             return await pythonAPI.report.stopDeleteIncompleteAssets(reportId);
         } catch (err) {
             console.error('[MAIN] Stop delete incomplete assets error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async getReportDeletions(event, userId, deleteType, page, limit) {
+        try {
+            return await pythonAPI.report.getReportDeletions(userId, deleteType, page, limit);
+        } catch (err) {
+            console.error('[MAIN] Get report deletions error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

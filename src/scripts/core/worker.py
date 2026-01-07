@@ -448,8 +448,9 @@ async def handle_command(cmd):
 
         report_id = cmd.get("reportId")
         max_rounds = int(cmd.get("maxRounds", 10))
+        user_id = cmd.get("userId")
 
-        result = await delete_report_flow(report_id=report_id, max_rounds=max_rounds)
+        result = await delete_report_flow(report_id=report_id, max_rounds=max_rounds, user_id=user_id)
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
@@ -499,10 +500,53 @@ async def handle_command(cmd):
 
         report_id = cmd.get("reportId")
         max_rounds = int(cmd.get("maxRounds", 10))
+        user_id = cmd.get("userId")
 
-        result = await delete_incomplete_assets_flow(report_id=report_id, max_rounds=max_rounds)
+        result = await delete_incomplete_assets_flow(report_id=report_id, max_rounds=max_rounds, user_id=user_id)
         result["commandId"] = cmd.get("commandId")
 
+        print(json.dumps(result), flush=True)
+
+    elif action == "get-report-deletions":
+        user_id = cmd.get("userId")
+        delete_type = cmd.get("deleteType")
+        page = int(cmd.get("page", 1))
+        limit = int(cmd.get("limit", 10))
+
+        if not user_id:
+            result = {"status": "FAILED", "error": "Missing userId"}
+        else:
+            try:
+                query = {"user_id": str(user_id), "deleted": True}
+                if delete_type:
+                    query["delete_type"] = delete_type
+                skip = max(page - 1, 0) * limit
+                coll = mongo_db.report_deletions
+                total = await coll.count_documents(query)
+                cursor = coll.find(query).sort("updated_at", -1).skip(skip).limit(limit)
+                docs = await cursor.to_list(length=limit)
+                items = []
+                for d in docs:
+                    items.append({
+                        "report_id": d.get("report_id"),
+                        "delete_type": d.get("delete_type"),
+                        "deleted": bool(d.get("deleted")),
+                        "remaining_assets": d.get("remaining_assets"),
+                        "total_assets": d.get("total_assets"),
+                        "updated_at": d.get("updated_at").isoformat() if d.get("updated_at") else None,
+                        "deleted_at": d.get("deleted_at").isoformat() if d.get("deleted_at") else None
+                    })
+                result = {
+                    "status": "SUCCESS",
+                    "items": items,
+                    "total": total,
+                    "page": page,
+                    "limit": limit
+                }
+            except Exception as e:
+                result = {"status": "FAILED", "error": str(e)}
+
+        result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
     elif action == "pause-delete-incomplete-assets":

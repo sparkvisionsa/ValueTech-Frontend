@@ -28,6 +28,7 @@ function registerIpcHandlers() {
         ipcMain.removeHandler('show-image-window');
         ipcMain.removeHandler('read-file');
         ipcMain.removeHandler('read-template-file');
+        ipcMain.removeHandler('get-report-deletions');
     } catch (err) {
         // Ignore errors if handlers don't exist
     }
@@ -127,6 +128,7 @@ function registerIpcHandlers() {
     ipcMain.handle('resume-delete-incomplete-assets', reportHandlers.resumeDeleteIncompleteAssets);
     ipcMain.handle('stop-delete-incomplete-assets', reportHandlers.stopDeleteIncompleteAssets);
     ipcMain.handle('pause-delete-incomplete-assets', reportHandlers.pauseDeleteIncompleteAssets);
+    ipcMain.handle('get-report-deletions', reportHandlers.getReportDeletions);
 
     ipcMain.handle('handle-cancelled-report', reportHandlers.handleCancelledReport);
 
@@ -244,6 +246,7 @@ function unregisterIpcHandlers() {
     ipcMain.removeAllListeners('resume-delete-incomplete-assets');
     ipcMain.removeAllListeners('stop-delete-incomplete-assets');
     ipcMain.removeAllListeners('pause-delete-incomplete-assets');
+    ipcMain.removeHandler('get-report-deletions');
 
     ipcMain.removeAllListeners('handle-cancelled-report');
 
