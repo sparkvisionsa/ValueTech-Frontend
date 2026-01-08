@@ -43,7 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Reports
-    validateReport: (reportId) => safeInvoke('validate-report', reportId),
+    validateReport: (reportId, userId = null) => safeInvoke('validate-report', reportId, userId),
     createMacros: (reportId, macroCount, tabsNum, batchSize) => safeInvoke('create-macros', reportId, macroCount, tabsNum, batchSize),
     extractAssetData: (excelFilePath) => safeInvoke('extract-asset-data', excelFilePath),
     completeFlow: (reportId, tabsNum) => safeInvoke('complete-flow', reportId, tabsNum),
@@ -109,8 +109,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resumeDeleteIncompleteAssets: (reportId) => safeInvoke('resume-delete-incomplete-assets', reportId),
     stopDeleteIncompleteAssets: (reportId) => safeInvoke('stop-delete-incomplete-assets', reportId),
 
-    getReportDeletions: (userId, deleteType, page = 1, limit = 10) =>
-        safeInvoke('get-report-deletions', userId, deleteType, page, limit),
+    getReportDeletions: (userId, deleteType, page = 1, limit = 10, searchTerm = "") =>
+        safeInvoke('get-report-deletions', userId, deleteType, page, limit, searchTerm),
+
+    getCheckedReports: (userId, page = 1, limit = 10, searchTerm = "") =>
+        safeInvoke('get-checked-reports', userId, page, limit, searchTerm),
 
     handleCancelledReport: (reportId) => safeInvoke('handle-cancelled-report', reportId),
 

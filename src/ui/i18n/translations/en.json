@@ -154,7 +154,7 @@
                 "title": "Settings"
             },
             "deleteReport": {
-                "title": "Delete Report"
+                "title": "Delete Assets / Reports"
             },
             "adminConsole": {
                 "title": "Super Admin Console"
@@ -242,12 +242,12 @@
                 "description": "Review and manage packages and subscriptions."
             },
             "delete-report": {
-                "label": "Delete Report",
+                "label": "Delete Assets / Reports",
                 "description": "Delete reports and related assets safely."
             },
             "delete-assets": {
-                "label": "Delete Assets",
-                "description": "Delete assets safely."
+                "label": "Change / Check Status",
+                "description": "Change or check report status."
             },
             "submit-reports-quickly": {
                 "label": "Submit Reports Quickly",
@@ -315,7 +315,7 @@
             "admin-packages": "Packages",
             "valuation-system": "Valuation System",
             "word-copy": "Word Copy",
-            "delete-report": "Delete Report",
+            "delete-report": "Delete Assets / Reports",
             "system-status": "System Operating Status",
             "system-updates": "System Updates",
             "statics": "Statics",

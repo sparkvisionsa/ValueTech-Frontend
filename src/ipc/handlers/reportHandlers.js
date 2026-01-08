@@ -34,11 +34,11 @@ const reportHandlers = {
 
 
 
-async handleValidateReport(event, reportId) {
+async handleValidateReport(event, reportId, userId = null) {
   try {
     console.log('[MAIN] Received validate report request:', reportId);
 
-    const result = await pythonAPI.report.validateReport(reportId);
+    const result = await pythonAPI.report.validateReport(reportId, userId);
     console.log("Result at handler (FULL):", result);
 
     if (result.status === 'SUCCESS') {
@@ -642,11 +642,20 @@ async handleValidateReport(event, reportId) {
         }
     },
 
-    async getReportDeletions(event, userId, deleteType, page, limit) {
+    async getReportDeletions(event, userId, deleteType, page, limit, searchTerm = "") {
         try {
-            return await pythonAPI.report.getReportDeletions(userId, deleteType, page, limit);
+            return await pythonAPI.report.getReportDeletions(userId, deleteType, page, limit, searchTerm);
         } catch (err) {
             console.error('[MAIN] Get report deletions error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async getCheckedReports(event, userId, page, limit, searchTerm = "") {
+        try {
+            return await pythonAPI.report.getCheckedReports(userId, page, limit, searchTerm);
+        } catch (err) {
+            console.error('[MAIN] Get checked reports error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

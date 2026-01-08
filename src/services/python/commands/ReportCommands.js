@@ -10,10 +10,11 @@ class ReportCommands {
         return await this.worker.sendCommand(command);
     }
 
-    async validateReport(reportId) {
+    async validateReport(reportId, userId = null) {
         return this._sendCommand({
             action: 'validate-report',
-            reportId
+            reportId,
+            userId
         });
     }
 
@@ -359,13 +360,24 @@ class ReportCommands {
         });
     }
 
-    async getReportDeletions(userId, deleteType, page, limit) {
+    async getReportDeletions(userId, deleteType, page, limit, searchTerm = "") {
         return this._sendCommand({
             action: 'get-report-deletions',
             userId,
             deleteType,
             page,
-            limit
+            limit,
+            searchTerm
+        });
+    }
+
+    async getCheckedReports(userId, page, limit, searchTerm = "") {
+        return this._sendCommand({
+            action: 'get-checked-reports',
+            userId,
+            page,
+            limit,
+            searchTerm
         });
     }
 

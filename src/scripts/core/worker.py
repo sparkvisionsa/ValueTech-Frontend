@@ -541,6 +541,9 @@ async def handle_command(cmd):
                 query = {"user_id": str(user_id), "deleted": True}
                 if delete_type:
                     query["delete_type"] = delete_type
+                search_term = cmd.get("searchTerm")
+                if search_term:
+                    query["report_id"] = {"$regex": str(search_term), "$options": "i"}
                 skip = max(page - 1, 0) * limit
                 coll = mongo_db.report_deletions
                 total = await coll.count_documents(query)
@@ -556,6 +559,46 @@ async def handle_command(cmd):
                         "total_assets": d.get("total_assets"),
                         "updated_at": d.get("updated_at").isoformat() if d.get("updated_at") else None,
                         "deleted_at": d.get("deleted_at").isoformat() if d.get("deleted_at") else None
+                    })
+                result = {
+                    "status": "SUCCESS",
+                    "items": items,
+                    "total": total,
+                    "page": page,
+                    "limit": limit
+                }
+            except Exception as e:
+                result = {"status": "FAILED", "error": str(e)}
+
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "get-checked-reports":
+        user_id = cmd.get("userId")
+        page = int(cmd.get("page", 1))
+        limit = int(cmd.get("limit", 10))
+        if not user_id:
+            result = {"status": "FAILED", "error": "Missing userId"}
+        else:
+            try:
+                query = {"user_id": str(user_id)}
+                search_term = cmd.get("searchTerm")
+                if search_term:
+                    query["report_id"] = {"$regex": str(search_term), "$options": "i"}
+                skip = max(page - 1, 0) * limit
+                coll = mongo_db.check_report
+                total = await coll.count_documents(query)
+                cursor = coll.find(query).sort("last_status_check_at", -1).skip(skip).limit(limit)
+                docs = await cursor.to_list(length=limit)
+                items = []
+                for d in docs:
+                    items.append({
+                        "report_id": d.get("report_id"),
+                        "report_status": d.get("report_status"),
+                        "report_status_label": d.get("report_status_label"),
+                        "assets_exact": d.get("assets_exact"),
+                        "last_status_check_status": d.get("last_status_check_status"),
+                        "last_status_check_at": d.get("last_status_check_at").isoformat() if d.get("last_status_check_at") else None
                     })
                 result = {
                     "status": "SUCCESS",

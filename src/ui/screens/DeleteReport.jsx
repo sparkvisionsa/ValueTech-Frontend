@@ -24,7 +24,7 @@ const DeleteReport = () => {
     );
 
 
-const [reportSummaryRow, setReportSummaryRow] = useState([]);
+    const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
     // Error state
     const [error, setError] = useState("");
@@ -46,19 +46,91 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
     // Progress state
     const [deleteReportProgress, setDeleteReportProgress] = useState(null);
     const [deleteReportProgressById, setDeleteReportProgressById] = useState({});
+    const [deleteAssetsProgressById, setDeleteAssetsProgressById] = useState({});
+    const [rowActionById, setRowActionById] = useState({});
+    const [selectedActionById, setSelectedActionById] = useState({});
     const [deletedRows, setDeletedRows] = useState([]);
     const [deletedPage, setDeletedPage] = useState(1);
     const [deletedTotal, setDeletedTotal] = useState(0);
     const [deletedLoading, setDeletedLoading] = useState(false);
     const [deletedError, setDeletedError] = useState("");
+    const [checkedPage, setCheckedPage] = useState(1);
+    const [checkedTotal, setCheckedTotal] = useState(0);
+    const [checkedLoading, setCheckedLoading] = useState(false);
+    const [checkedError, setCheckedError] = useState("");
+    const [filterMode, setFilterMode] = useState("all");
+    const [searchTerm, setSearchTerm] = useState("");
     const deletedLimit = 10;
+    const checkedLimit = 10;
     const deletedTotalPages = useMemo(
         () => Math.max(1, Math.ceil(deletedTotal / deletedLimit)),
         [deletedTotal, deletedLimit]
     );
+    const checkedTotalPages = useMemo(
+        () => Math.max(1, Math.ceil(checkedTotal / checkedLimit)),
+        [checkedTotal, checkedLimit]
+    );
 
     // Selected reports state
     const [selectedReports, setSelectedReports] = useState(new Set());
+
+    const deletedById = useMemo(() => {
+        return deletedRows.reduce((acc, row) => {
+            if (row?.report_id) {
+                acc[row.report_id] = row;
+            }
+            return acc;
+        }, {});
+    }, [deletedRows]);
+
+    const tableRows = useMemo(() => {
+        const rows = reportSummaryRow.map((row) => {
+            const deletedInfo = deletedById[row.reportId];
+            const isDeleted = !!deletedInfo?.deleted;
+            const normalizedStatus = isDeleted
+                ? "Deleted"
+                : (row.lastStatus === "NOT_FOUND" ? "Not Found" : row.reportStatus);
+            return {
+                ...row,
+                reportStatus: normalizedStatus,
+                isDeleted,
+                deletedType: deletedInfo?.delete_type || null,
+                deletedTotalAssets: deletedInfo?.total_assets ?? null,
+                deletedRemainingAssets: deletedInfo?.remaining_assets ?? null
+            };
+        });
+
+        Object.values(deletedById).forEach((row) => {
+            if (!row?.report_id) return;
+            const exists = rows.some((r) => r.reportId === row.report_id);
+            if (!exists) {
+                rows.push({
+                    reportId: row.report_id,
+                    reportStatus: "Deleted",
+                    totalAssets: row.total_assets ?? 0,
+                    isDeleted: !!row.deleted,
+                    deletedType: row.delete_type || null,
+                    deletedTotalAssets: row.total_assets ?? null,
+                    deletedRemainingAssets: row.remaining_assets ?? null
+                });
+            }
+        });
+
+        return rows;
+    }, [reportSummaryRow, deletedById]);
+
+    const filteredRows = useMemo(() => {
+        if (filterMode === "checked") {
+            return tableRows.filter((row) => !row.isDeleted);
+        }
+        if (filterMode === "deleted-report") {
+            return tableRows.filter((row) => row.isDeleted && row.deletedType === "report");
+        }
+        if (filterMode === "deleted-asset") {
+            return tableRows.filter((row) => row.isDeleted && row.deletedType === "assets");
+        }
+        return tableRows;
+    }, [tableRows, filterMode]);
 
     // Progress listener effect
     useEffect(() => {
@@ -77,11 +149,31 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
     }, []);
 
     useEffect(() => {
+        const unsubscribe = window.electronAPI.onDeleteAssetsProgress((progressData) => {
+            console.log('Delete assets progress:', progressData);
+            const key =
+                progressData?.reportId ||
+                progressData?.report_id ||
+                (typeof progressData?.processId === "string"
+                    ? progressData.processId.replace("delete-incomplete-assets-", "")
+                    : null);
+            if (key) {
+                setDeleteAssetsProgressById(prev => ({
+                    ...prev,
+                    [key]: progressData
+                }));
+            }
+        });
+
+        return unsubscribe;
+    }, []);
+
+    useEffect(() => {
         let isMounted = true;
         if (!userId) return;
         setDeletedLoading(true);
         setDeletedError("");
-        window.electronAPI.getReportDeletions(userId, "report", deletedPage, deletedLimit)
+        window.electronAPI.getReportDeletions(userId, null, deletedPage, deletedLimit, searchTerm)
             .then((res) => {
                 if (!isMounted) return;
                 if (res?.status === "SUCCESS") {
@@ -99,7 +191,73 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
                 if (isMounted) setDeletedLoading(false);
             });
         return () => { isMounted = false; };
-    }, [userId, deletedPage, deletedLimit, deleteReportStatus]);
+    }, [userId, deletedPage, deletedLimit, deleteReportStatus, deleteAssetsStatus, searchTerm]);
+
+    const loadCheckedReports = async (page = checkedPage) => {
+        if (!userId) {
+            setReportSummaryRow([]);
+            setCheckedTotal(0);
+            return;
+        }
+        setCheckedLoading(true);
+        setCheckedError("");
+        try {
+            const res = await window.electronAPI.getCheckedReports(userId, page, checkedLimit, searchTerm);
+            if (res?.status === "SUCCESS") {
+                const items = (res.items || []).map((row) => {
+                    const assetsExact = Number(row.assets_exact);
+                    const assetsCount = Number.isFinite(assetsExact) ? assetsExact : 0;
+                    const lastStatus = row.last_status_check_status || "UNKNOWN";
+                    return {
+                        reportId: row.report_id,
+                        totalAssets: assetsCount,
+                        reportStatus: row.report_status || row.report_status_label || "Unknown",
+                        presentOrNot: Number.isFinite(assetsExact)
+                            ? (assetsExact > 0 ? "Present" : "Not Present")
+                            : "Unknown",
+                        exists: lastStatus !== "NOT_FOUND",
+                        lastCheckedAt: row.last_status_check_at || null,
+                        lastStatus
+                    };
+                });
+                setReportSummaryRow(items);
+                setCheckedTotal(res.total || 0);
+                setCheckedPage(res.page || page);
+            } else {
+                setCheckedError(res?.error || "Failed to load checked reports");
+            }
+        } catch (err) {
+            setCheckedError(err?.message || "Failed to load checked reports");
+        } finally {
+            setCheckedLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadCheckedReports(checkedPage);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [checkedPage, userId]);
+
+    useEffect(() => {
+        if (!userId) return;
+        setCheckedPage(1);
+        loadCheckedReports(1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchTerm, userId]);
+
+    useEffect(() => {
+        if (!userId) return;
+        setDeletedPage(1);
+        // getReportDeletions effect will run on deletedPage change
+    }, [searchTerm, userId]);
+
+    useEffect(() => {
+        if (deleteReportStatus === "success" || deleteReportStatus === "partial" ||
+            deleteAssetsStatus === "success" || deleteAssetsStatus === "partial") {
+            loadCheckedReports(checkedPage);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deleteReportStatus, deleteAssetsStatus]);
 
     // Clear selections when checking new reports
     useEffect(() => {
@@ -122,9 +280,8 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
     // Handle select all
     const handleSelectAll = (isSelected) => {
         if (isSelected) {
-            // Only select reports that are in "مسودة" or "Draft" status
-            const selectableReports = reportSummaryRow
-                .filter(row => row.reportStatus === "مسودة" || row.reportStatus === "Draft")
+            const selectableReports = filteredRows
+                .filter(row => !row.isDeleted)
                 .map(row => row.reportId);
             setSelectedReports(new Set(selectableReports));
         } else {
@@ -134,7 +291,7 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
     // Get selected report data
     const getSelectedReportData = () => {
-        return reportSummaryRow.filter(row => selectedReports.has(row.reportId));
+        return filteredRows.filter(row => selectedReports.has(row.reportId));
     };
 
     // Handle delete selected reports
@@ -145,29 +302,66 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             return;
         }
 
-        setError("");
-        setReportSummaryRow([]);
-        setSelectedReports(new Set());
-        setReportExists(null);
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { next[id] = "check-report"; });
+            return next;
+        });
+
+        const validationResults = await runWithConcurrency(selectedIds, 3, validateReportForDelete);
+        const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
+        const autoDeleted = validationResults.filter(r => r?.autoDeleted).map(r => r.id);
+        const validationFailed = validationResults.filter(r => r && !r.proceed && !r.autoDeleted);
+
+        await loadCheckedReports(checkedPage);
+
+        if (validationFailed.length) {
+            setError(`Validation failed for ${validationFailed.length} report(s)`);
+        } else {
+            setError("");
+        }
+
+        if (!idsToDelete.length) {
+            setStatusChangeResult({
+                status: autoDeleted.length ? "SUCCESS" : "FAILED",
+                message: autoDeleted.length
+                    ? `Report status set to Deleted for ${autoDeleted.length} report(s).`
+                    : "No reports eligible for deletion."
+            });
+            setRowActionById(prev => {
+                const next = { ...prev };
+                selectedIds.forEach(id => { delete next[id]; });
+                return next;
+            });
+            setSelectedReports(new Set());
+            return;
+        }
+
         setDeleteRequested(true);
         setStatusChangeResult(null);
         setDeleteReportStatus("running");
         setOperationResult(null);
         setDeleteReportProgress(null);
         setDeleteReportProgressById({});
+        setDeleteAssetsProgressById({});
+
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { delete next[id]; });
+            idsToDelete.forEach(id => { next[id] = "delete-report"; });
+            return next;
+        });
 
         const maxRounds = 10;
-        const concurrency = Math.min(10, selectedIds.length); // adjust safely
+        const concurrency = Math.min(10, idsToDelete.length);
 
-        // init UI state per id
         setOperationResult({
             mode: "batch",
-            items: Object.fromEntries(selectedIds.map(id => [id, { status: "queued" }]))
+            items: Object.fromEntries(idsToDelete.map(id => [id, { status: "queued" }]))
         });
 
         try {
-            const results = await runWithConcurrency(selectedIds, concurrency, async (id) => {
-                // mark running
+            const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
                 setOperationResult(prev => ({
                     ...prev,
                     items: { ...prev.items, [id]: { status: "running" } }
@@ -175,14 +369,12 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
 
                 try {
                     const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
-                    // mark success
                     setOperationResult(prev => ({
                         ...prev,
                         items: { ...prev.items, [id]: { status: "success", result: res } }
                     }));
                     return { id, ok: true, result: res };
                 } catch (err) {
-                    // mark failed
                     setOperationResult(prev => ({
                         ...prev,
                         items: { ...prev.items, [id]: { status: "failed", error: String(err) } }
@@ -194,8 +386,8 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             const failed = results.filter(r => !r?.ok).length;
 
             setStatusChangeResult({
-                total: selectedIds.length,
-                success: selectedIds.length - failed,
+                total: idsToDelete.length,
+                success: idsToDelete.length - failed,
                 failed,
                 results
             });
@@ -203,14 +395,23 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             setDeleteReportStatus(failed ? "partial" : "success");
             setDeleteReportProgress(null);
             setDeleteReportProgressById({});
-            
-            // Reset the text area after deletion
+            setRowActionById(prev => {
+                const next = { ...prev };
+                idsToDelete.forEach(id => { delete next[id]; });
+                return next;
+            });
+            setSelectedReports(new Set());
             setReportId("");
         } catch (err) {
             console.error("Error initiating batch deletion:", err);
             setDeleteReportStatus("stopped");
             setDeleteReportProgress(null);
             setDeleteReportProgressById({});
+            setRowActionById(prev => {
+                const next = { ...prev };
+                idsToDelete.forEach(id => { delete next[id]; });
+                return next;
+            });
         }
     };
 
@@ -222,17 +423,58 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             return;
         }
 
-        setError("");
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { next[id] = "check-report"; });
+            return next;
+        });
+
+        const validationResults = await runWithConcurrency(selectedIds, 3, validateReportForDelete);
+        const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
+        const autoDeleted = validationResults.filter(r => r?.autoDeleted).map(r => r.id);
+        const validationFailed = validationResults.filter(r => r && !r.proceed && !r.autoDeleted);
+
+        await loadCheckedReports(checkedPage);
+
+        if (validationFailed.length) {
+            setError(`Validation failed for ${validationFailed.length} report(s)`);
+        } else {
+            setError("");
+        }
+
+        if (!idsToDelete.length) {
+            setStatusChangeResult({
+                status: autoDeleted.length ? "SUCCESS" : "FAILED",
+                message: autoDeleted.length
+                    ? `Report status set to Deleted for ${autoDeleted.length} report(s).`
+                    : "No reports eligible for deletion."
+            });
+            setRowActionById(prev => {
+                const next = { ...prev };
+                selectedIds.forEach(id => { delete next[id]; });
+                return next;
+            });
+            setSelectedReports(new Set());
+            return;
+        }
+
         setDeleteAssetsRequested(true);
         setStatusChangeResult(null);
         setDeleteAssetsStatus("running");
         setOperationResult(null);
+        setDeleteAssetsProgressById({});
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { delete next[id]; });
+            idsToDelete.forEach(id => { next[id] = "delete-assets"; });
+            return next;
+        });
 
         const maxRounds = 10;
-        const concurrency = Math.min(5, selectedIds.length); // lower concurrency for asset deletion
+        const concurrency = Math.min(5, idsToDelete.length);
 
         try {
-            const results = await runWithConcurrency(selectedIds, concurrency, async (id) => {
+            const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
                 try {
                     const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
                     return { id, ok: true, result: res };
@@ -244,26 +486,262 @@ const [reportSummaryRow, setReportSummaryRow] = useState([]);
             const failed = results.filter(r => !r?.ok).length;
 
             setStatusChangeResult({
-                total: selectedIds.length,
-                success: selectedIds.length - failed,
+                total: idsToDelete.length,
+                success: idsToDelete.length - failed,
                 failed,
                 results
             });
 
             setDeleteAssetsStatus(failed ? "partial" : "success");
+            setRowActionById(prev => {
+                const next = { ...prev };
+                idsToDelete.forEach(id => { delete next[id]; });
+                return next;
+            });
+            setSelectedReports(new Set());
         } catch (err) {
             console.error("Error initiating batch asset deletion:", err);
             setDeleteAssetsStatus("stopped");
+            setRowActionById(prev => {
+                const next = { ...prev };
+                idsToDelete.forEach(id => { delete next[id]; });
+                return next;
+            });
+        }
+    };
+
+    const handleDeleteReportById = async (id) => {
+        if (!id) return;
+        setRowActionById(prev => ({ ...prev, [id]: "check-report" }));
+
+        const validation = await validateReportForDelete(id);
+        await loadCheckedReports(checkedPage);
+
+        if (!validation?.proceed) {
+            if (validation?.autoDeleted) {
+                setStatusChangeResult({
+                    status: "SUCCESS",
+                    message: "Report status set to Deleted."
+                });
+            } else if (validation?.error) {
+                setError(validation.error);
+            }
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            return;
+        }
+
+        setDeleteReportStatus("running");
+        setOperationResult(null);
+        setDeleteReportProgress(null);
+        setDeleteReportProgressById({});
+        setDeleteAssetsProgressById({});
+        setRowActionById(prev => ({ ...prev, [id]: "delete-report" }));
+        try {
+            const res = await window.electronAPI.deleteReport(id, 10, userId);
+            setDeleteReportStatus("success");
+            setOperationResult({
+                type: "delete-report",
+                status: res?.status || "SUCCESS",
+                message: res?.message || "Delete report completed"
+            });
+        } catch (err) {
+            setDeleteReportStatus("stopped");
+            setOperationResult({
+                type: "delete-report",
+                status: "FAILED",
+                message: err?.message || "Delete report failed"
+            });
+        } finally {
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        }
+    };
+
+    const handleDeleteAssetsById = async (id) => {
+        if (!id) return;
+        setRowActionById(prev => ({ ...prev, [id]: "check-report" }));
+
+        const validation = await validateReportForDelete(id);
+        await loadCheckedReports(checkedPage);
+
+        if (!validation?.proceed) {
+            if (validation?.autoDeleted) {
+                setStatusChangeResult({
+                    status: "SUCCESS",
+                    message: "Report status set to Deleted."
+                });
+            } else if (validation?.error) {
+                setError(validation.error);
+            }
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+            return;
+        }
+
+        setDeleteAssetsStatus("running");
+        setOperationResult(null);
+        setDeleteAssetsProgressById({});
+        setRowActionById(prev => ({ ...prev, [id]: "delete-assets" }));
+        try {
+            const res = await window.electronAPI.deleteIncompleteAssets(id, 10, userId);
+            setDeleteAssetsStatus("success");
+            setOperationResult({
+                type: "delete-incomplete-assets",
+                status: res?.status || "SUCCESS",
+                message: res?.message || "Delete assets completed"
+            });
+        } catch (err) {
+            setDeleteAssetsStatus("stopped");
+            setOperationResult({
+                type: "delete-incomplete-assets",
+                status: "FAILED",
+                message: err?.message || "Delete assets failed"
+            });
+        } finally {
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        }
+    };
+
+    const handleCheckSelectedReports = async () => {
+        const selectedIds = Array.from(selectedReports);
+        if (selectedIds.length === 0) {
+            setError("No reports selected");
+            return;
+        }
+
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { next[id] = "check-report"; });
+            return next;
+        });
+
+        await runWithConcurrency(selectedIds, 3, async (id) => {
+            try {
+                await window.electronAPI.validateReport(id, userId);
+            } catch (err) {
+                console.error("Check report failed:", err);
+            }
+        });
+
+        await loadCheckedReports(checkedPage);
+
+        setRowActionById(prev => {
+            const next = { ...prev };
+            selectedIds.forEach(id => { delete next[id]; });
+            return next;
+        });
+    };
+
+    const handleCheckReportById = async (id) => {
+        if (!id) return;
+        setRowActionById(prev => ({ ...prev, [id]: "check-report" }));
+        try {
+            await window.electronAPI.validateReport(id, userId);
+            await loadCheckedReports(checkedPage);
+        } catch (err) {
+            console.error("Check report failed:", err);
+        } finally {
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        }
+    };
+
+    const handleChangeReportStatusById = async (id) => {
+        if (!id) return;
+        setRowActionById(prev => ({ ...prev, [id]: "change-status" }));
+        setStatusChangeResult({
+            status: 'REQUEST_SENT',
+            message: 'Status change request sent'
+        });
+
+        try {
+            await window.electronAPI.handleCancelledReport(id);
+            await loadCheckedReports(checkedPage);
+        } catch (err) {
+            console.error('Status change encountered error:', err);
+        } finally {
+            setRowActionById(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        }
+    };
+
+    const handleRowAction = async (reportId, action) => {
+        const selectedAction = action || selectedActionById[reportId];
+        if (!reportId || !selectedAction) return;
+        try {
+            if (selectedAction === "delete-report") {
+                await handleDeleteReportById(reportId);
+            } else if (selectedAction === "delete-assets") {
+                await handleDeleteAssetsById(reportId);
+            } else if (selectedAction === "check-report") {
+                await handleCheckReportById(reportId);
+            } else if (selectedAction === "change-status") {
+                await handleChangeReportStatusById(reportId);
+            }
+        } finally {
+            setSelectedActionById(prev => {
+                const next = { ...prev };
+                delete next[reportId];
+                return next;
+            });
         }
     };
 
 
 
 
+const validateReportForDelete = async (id) => {
+  try {
+    if (userId) {
+      const deletedRes = await window.electronAPI.getReportDeletions(userId, null, 1, 1, id);
+      if (deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0) {
+        return { id, proceed: false, autoDeleted: true, alreadyDeleted: true };
+      }
+    }
+
+    const result = await window.electronAPI.validateReport(id, userId);
+    const status = result?.status;
+    const hasMacros = status === "MACROS_EXIST" || result?.hasMacros;
+    if (hasMacros) {
+      return { id, proceed: true, result };
+    }
+    if (status === "SUCCESS") {
+      await window.electronAPI.handleCancelledReport(id);
+      return { id, proceed: false, autoDeleted: true, result };
+    }
+    if (status === "NOT_FOUND") {
+      return { id, proceed: false, autoDeleted: false, error: "Report not found", result };
+    }
+    return { id, proceed: false, autoDeleted: false, error: result?.error || "Validation failed", result };
+  } catch (err) {
+    return { id, proceed: false, autoDeleted: false, error: err?.message || String(err) };
+  }
+};
+
 const parseReportIds = (input) => {
   return [...new Set(
     (input || "")
-      .split(" ")
+      .split(/\s+/)
       .map(s => s.trim())
       .filter(Boolean)
   )];
@@ -312,7 +790,7 @@ const handleCheckReportInTaqeem = async () => {
   try {
     const results = await runWithConcurrency(ids, concurrency, async (id) => {
       try {
-        const result = await window.electronAPI.validateReport(id);
+        const result = await window.electronAPI.validateReport(id, userId);
         console.log(`Full API response for ${id}:`, result);
 
         // Create table row
@@ -351,6 +829,8 @@ const handleCheckReportInTaqeem = async () => {
 
     // Reset the text area after successful check
     setReportId("");
+
+    await loadCheckedReports(1);
   } catch (err) {
     console.error("Error checking reports:", err);
     setReportExists(false);
@@ -359,35 +839,6 @@ const handleCheckReportInTaqeem = async () => {
     setIsCheckingReport(false);
   }
 };
-    // Handle report deletion - fire and forget
-    // const handleDeleteReport = async () => {
-    //     if (!reportId.trim()) {
-    //         setError("Report ID is required");
-    //         return;
-    //     }
-
-    //     setError("");
-    //     setDeleteRequested(true);
-    //     setStatusChangeResult(null);
-    //     setDeleteReportStatus('running');
-    //     setOperationResult(null);
-
-    //     try {
-    //         console.log(`Sending delete request for report: ${reportId}`);
-
-    //         // Fire the delete request
-    //         window.electronAPI.deleteReport(reportId, 10).then(result => {
-    //             console.log("Report deletion completed:", result);
-    //         }).catch(err => {
-    //             console.error("Report deletion encountered error:", err);
-    //             setDeleteReportStatus('stopped');
-    //         });
-
-    //     } catch (err) {
-    //         console.error("Error initiating report deletion:", err);
-    //         setDeleteReportStatus('stopped');
-    //     }
-    // };
 // ==========================================================================
 
 // Delete report Function With Batch Ids
@@ -398,32 +849,71 @@ const handleCheckReportInTaqeem = async () => {
 
 
 const handleDeleteReport = async () => {
-  const ids = parseReportIds(reportId); // reportId is the input string: "1215, 5888, ,6965"
+  const ids = parseReportIds(reportId);
   if (!ids.length) {
     setError("At least one Report ID is required (comma separated)");
     return;
   }
 
-  setError("");
+  setRowActionById(prev => {
+    const next = { ...prev };
+    ids.forEach(id => { next[id] = "check-report"; });
+    return next;
+  });
+
+  const validationResults = await runWithConcurrency(ids, 3, validateReportForDelete);
+  const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
+  const autoDeleted = validationResults.filter(r => r?.autoDeleted).map(r => r.id);
+  const validationFailed = validationResults.filter(r => r && !r.proceed && !r.autoDeleted);
+
+  await loadCheckedReports(checkedPage);
+
+  if (validationFailed.length) {
+    setError(`Validation failed for ${validationFailed.length} report(s)`);
+  } else {
+    setError("");
+  }
+
+  if (!idsToDelete.length) {
+    setStatusChangeResult({
+      status: autoDeleted.length ? "SUCCESS" : "FAILED",
+      message: autoDeleted.length
+        ? `Report status set to Deleted for ${autoDeleted.length} report(s).`
+        : "No reports eligible for deletion."
+    });
+    setRowActionById(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { delete next[id]; });
+      return next;
+    });
+    setReportId("");
+    return;
+  }
+
   setDeleteRequested(true);
   setStatusChangeResult(null);
-        setDeleteReportStatus("running");
-        setOperationResult(null);
-        setDeleteReportProgress(null); // Reset progress
-        setDeleteReportProgressById({});
+  setDeleteReportStatus("running");
+  setOperationResult(null);
+  setDeleteReportProgress(null);
+  setDeleteReportProgressById({});
 
   const maxRounds = 10;
-  const concurrency = 10; // adjust safely (2–4 recommended)
+  const concurrency = 10;
 
-  // init UI state per id (optional)
   setOperationResult({
     mode: "batch",
-    items: Object.fromEntries(ids.map(id => [id, { status: "queued" }]))
+    items: Object.fromEntries(idsToDelete.map(id => [id, { status: "queued" }]))
+  });
+
+  setRowActionById(prev => {
+    const next = { ...prev };
+    ids.forEach(id => { delete next[id]; });
+    idsToDelete.forEach(id => { next[id] = "delete-report"; });
+    return next;
   });
 
   try {
-    const results = await runWithConcurrency(ids, concurrency, async (id) => {
-      // mark running
+    const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
       setOperationResult(prev => ({
         ...prev,
         items: { ...prev.items, [id]: { status: "running" } }
@@ -431,14 +921,12 @@ const handleDeleteReport = async () => {
 
       try {
         const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
-        // mark success
         setOperationResult(prev => ({
           ...prev,
           items: { ...prev.items, [id]: { status: "success", result: res } }
         }));
         return { id, ok: true, result: res };
       } catch (err) {
-        // mark failed
         setOperationResult(prev => ({
           ...prev,
           items: { ...prev.items, [id]: { status: "failed", error: String(err) } }
@@ -450,20 +938,31 @@ const handleDeleteReport = async () => {
     const failed = results.filter(r => !r?.ok).length;
 
     setStatusChangeResult({
-      total: ids.length,
-      success: ids.length - failed,
+      total: idsToDelete.length,
+      success: idsToDelete.length - failed,
       failed,
       results
     });
 
     setDeleteReportStatus(failed ? "partial" : "success");
-    setDeleteReportProgress(null); // Clear progress on completion
+    setDeleteReportProgress(null);
     setDeleteReportProgressById({});
+    setRowActionById(prev => {
+      const next = { ...prev };
+      idsToDelete.forEach(id => { delete next[id]; });
+      return next;
+    });
+    setReportId("");
   } catch (err) {
     console.error("Error initiating batch deletion:", err);
     setDeleteReportStatus("stopped");
-    setDeleteReportProgress(null); // Clear progress on error
+    setDeleteReportProgress(null);
     setDeleteReportProgressById({});
+    setRowActionById(prev => {
+      const next = { ...prev };
+      idsToDelete.forEach(id => { delete next[id]; });
+      return next;
+    });
   }
 };
 
@@ -478,33 +977,92 @@ const handleDeleteReport = async () => {
 
 
 
-    // Handle delete only assets - fire and forget
+    // Handle delete only assets - batch
     const handleDeleteReportAssets = async () => {
-        if (!reportId.trim()) {
-            setError("Report ID is required");
+        const ids = parseReportIds(reportId);
+        if (!ids.length) {
+            setError("At least one Report ID is required");
             return;
         }
 
-        setError("");
+        setRowActionById(prev => {
+            const next = { ...prev };
+            ids.forEach(id => { next[id] = "check-report"; });
+            return next;
+        });
+
+        const validationResults = await runWithConcurrency(ids, 3, validateReportForDelete);
+        const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
+        const autoDeleted = validationResults.filter(r => r?.autoDeleted).map(r => r.id);
+        const validationFailed = validationResults.filter(r => r && !r.proceed && !r.autoDeleted);
+
+        await loadCheckedReports(checkedPage);
+
+        if (validationFailed.length) {
+            setError(`Validation failed for ${validationFailed.length} report(s)`);
+        } else {
+            setError("");
+        }
+
+        if (!idsToDelete.length) {
+            setStatusChangeResult({
+                status: autoDeleted.length ? "SUCCESS" : "FAILED",
+                message: autoDeleted.length
+                    ? `Report status set to Deleted for ${autoDeleted.length} report(s).`
+                    : "No reports eligible for deletion."
+            });
+            setRowActionById(prev => {
+                const next = { ...prev };
+                ids.forEach(id => { delete next[id]; });
+                return next;
+            });
+            setReportId("");
+            return;
+        }
+
         setDeleteAssetsRequested(true);
         setStatusChangeResult(null);
         setDeleteAssetsStatus('running');
         setOperationResult(null);
+        setDeleteAssetsProgressById({});
+        setRowActionById(prev => {
+            const next = { ...prev };
+            ids.forEach(id => { delete next[id]; });
+            idsToDelete.forEach(id => { next[id] = "delete-assets"; });
+            return next;
+        });
 
+        const maxRounds = 10;
+        const concurrency = Math.min(5, idsToDelete.length);
         try {
-            console.log(`Sending delete assets request for report: ${reportId}`);
-
-            // Fire the delete assets request
-            window.electronAPI.deleteIncompleteAssets(reportId, 10, userId).then(result => {
-                console.log("Report assets deletion completed:", result);
-            }).catch(err => {
-                console.error("Report assets deletion encountered error:", err);
-                setDeleteAssetsStatus('stopped');
+            const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
+                try {
+                    const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
+                    return { id, ok: true, result: res };
+                } catch (err) {
+                    return { id, ok: false, error: String(err) };
+                }
             });
 
+            const failed = results.filter(r => !r?.ok).length;
+
+            setStatusChangeResult({
+                total: idsToDelete.length,
+                success: idsToDelete.length - failed,
+                failed,
+                results
+            });
+
+            setDeleteAssetsStatus(failed ? "partial" : "success");
         } catch (err) {
             console.error("Error initiating report assets deletion:", err);
             setDeleteAssetsStatus('stopped');
+        } finally {
+            setRowActionById(prev => {
+                const next = { ...prev };
+                idsToDelete.forEach(id => { delete next[id]; });
+                return next;
+            });
         }
     };
 
@@ -806,11 +1364,11 @@ const handleDeleteReport = async () => {
 
                         {/* Completion Status */}
                         {deleteReportStatus === 'success' && (
-                            <div className="mt-4 flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                                <CheckCircle className="w-5 h-5 text-green-500" />
+                            <div className="mt-4  hidden ms-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <CheckCircle className="w-3 h-3 text-green-500" />
                                 <div>
-                                    <p className="font-medium text-green-800">Delete Completed Successfully</p>
-                                    <p className="text-sm text-green-600">Report ID: {reportId}</p>
+                                    <p className="font-sm text-green-800">Delete Completed Successfully</p>
+                                    {/* <p className="text-sm text-green-600">Report ID: {reportId}</p> */}
                                 </div>
                             </div>
                         )}
@@ -833,60 +1391,6 @@ const handleDeleteReport = async () => {
                                 </button>
                             </div>
                         )}
-                    </div>
-                )}
-
-                {deleteReportStatus === 'running' && Object.keys(deleteReportProgressById).length > 0 && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">
-                            Delete Report Progress
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                                <thead className="bg-white border-b">
-                                    <tr>
-                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
-                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Status</th>
-                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
-                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Remaining</th>
-                                        <th className="text-left px-4 py-2 font-semibold text-gray-600">Progress</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {Object.entries(deleteReportProgressById).map(([id, progress]) => {
-                                        const total = progress.total || 1;
-                                        const current = progress.current || 0;
-                                        const remaining = Math.max(total - current, 0);
-                                        const pct = Math.round((current / total) * 100);
-                                        return (
-                                            <tr key={id} className="border-b">
-                                                <td className="px-4 py-2 text-gray-800 font-medium">{id}</td>
-                                                <td className="px-4 py-2 text-gray-800">Deleting</td>
-                                                <td className="px-4 py-2 text-gray-800">{total}</td>
-                                                <td className="px-4 py-2 text-gray-800">{remaining}</td>
-                                                <td className="px-4 py-2">
-                                                    <div>
-                                                        <div className="flex justify-between text-xs text-gray-600 mb-1">
-                                                            <span>{pct}%</span>
-                                                            <span>{current}/{total}</span>
-                                                        </div>
-                                                        <div className="w-full bg-gray-200 rounded-full h-2">
-                                                            <div
-                                                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                                                                style={{ width: `${pct}%` }}
-                                                            ></div>
-                                                        </div>
-                                                        {progress?.message && (
-                                                            <p className="text-xs text-gray-500 mt-1">{progress.message}</p>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                 )}
 
@@ -1020,6 +1524,50 @@ const handleDeleteReport = async () => {
         return null;
     };
 
+    const renderProgressCell = (progress) => {
+        if (!progress) return <span className="text-xs text-gray-500">-</span>;
+        const total = progress.total || 1;
+        const current = progress.current || 0;
+        const remaining = Math.max(total - current, 0);
+        const pct = Math.round((current / total) * 100);
+        const isComplete = total > 0 && current >= total;
+        return (
+            <div>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>{isComplete ? "Completed" : `${pct}%`}</span>
+                    <span>{isComplete ? `${total}/${remaining}` : `${current}/${total}`}</span>
+                </div>
+                {!isComplete && (
+                    <>
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>Total: {total}</span>
+                            <span>Remaining: {remaining}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${pct}%` }}
+                            ></div>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
+    const getRowProgress = (reportId) => {
+        const live = deleteReportProgressById[reportId] || deleteAssetsProgressById[reportId];
+        if (live) return live;
+        const deleted = deletedById[reportId];
+        if (deleted && deleted.total_assets != null) {
+            const total = Number(deleted.total_assets) || 0;
+            const remaining = Number(deleted.remaining_assets) || 0;
+            const current = Math.max(total - remaining, 0);
+            return { total, current };
+        }
+        return null;
+    };
+
     return (
         <div className="max-h-screen bg-gradient-to-br from-red-50 to-orange-100 py-8">
             <div className="max-w-full mx-auto px-4">
@@ -1036,7 +1584,7 @@ const handleDeleteReport = async () => {
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Report IDs *
                                 </label>
-                                <div className="flex gap-3 mb-3">
+                                <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start">
                                     <textarea
                                         type="text"
                                         value={reportId}
@@ -1050,48 +1598,47 @@ const handleDeleteReport = async () => {
                                             setDeleteReportStatus(null);
                                             setDeleteAssetsStatus(null);
                                             setOperationResult(null);
-                                            setReportSummaryRow([]);
                                         }}
-                                        className="flex-1 w-56 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                        className="flex-1 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors sm:w-56"
                                         placeholder="Enter Report IDs (space separated)"
                                     />
-                                    
-
+                                    <div className="flex flex-col gap-3 sm:w-56">
                                         <button
-                                        onClick={handleDeleteReport}
-                                        disabled={selectedReports.size > 0 || deleteReportStatus === 'running'}
-                                        className=" px-4 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors mt-2 mb-2"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                        Delete Report
-                                    </button>
-
-                                     <button
-                                    onClick={handleChangeReportStatus}
-                                    className=" px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors mt-2 mb-2"
-                                >
-                                    <PlayCircle className="w-3 h-3" />
-                                    Change Status
-                                </button>
-
-                                   <button
-                                        onClick={handleCheckReportInTaqeem}
-                                        className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center gap-2 transition-colors whitespace-nowrap mt-2 mb-2"
-                                    >
-                                        <Search className="w-3 h-3" />
-                                        Check Report
-                                    </button>
-                                   
-
-                                    
-
-
-                                 
+                                            onClick={handleDeleteReport}
+                                            disabled={selectedReports.size > 0 || deleteReportStatus === 'running'}
+                                            className="px-4 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                            Delete Report
+                                        </button>
+                                        <button
+                                            onClick={handleDeleteReportAssets}
+                                            disabled={deleteAssetsStatus === 'running'}
+                                            className="px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            <Package className="w-3 h-3" />
+                                            Delete Assets
+                                        </button>
+                                        <button
+                                            onClick={handleChangeReportStatus}
+                                            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            <PlayCircle className="w-3 h-3" />
+                                            Change Status
+                                        </button>
+                                        <button
+                                            onClick={handleCheckReportInTaqeem}
+                                            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center gap-2 transition-colors whitespace-nowrap"
+                                        >
+                                            <Search className="w-3 h-3" />
+                                            Check Report
+                                        </button>
+                                    </div>
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {selectedReports.size > 0 
-                                        ? `${selectedReports.size} report(s) selected for batch operations. Use the buttons below the table.`
-                                        : "Enter the report IDs you wish to check. Separate multiple IDs with spaces."
+                                        ? `${selectedReports.size} report(s) selected for batch operations. Use the buttons above the table.`
+                                        : "Enter the report IDs you wish to check or delete. Separate multiple IDs with spaces."
                                     }
                                 </p>
 
@@ -1100,17 +1647,62 @@ const handleDeleteReport = async () => {
 
                               {/* ✅ Replace your current “Report Validation Status” blocks with this table UI */}
 
-{reportSummaryRow.length > 0 && (
+{filteredRows.length > 0 && (
   <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
     <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
       <div className="text-sm font-semibold text-gray-700">
-        Report Summary ({reportSummaryRow.length} reports, {reportSummaryRow.filter(row => row.reportStatus === "مسودة" || row.reportStatus === "Draft").length} selectable)
+        Report Summary ({filteredRows.length} reports, {filteredRows.filter(row => !row.isDeleted).length} selectable)
       </div>
       {selectedReports.size > 0 && (
         <div className="text-sm text-blue-600 font-medium">
           {selectedReports.size} selected
         </div>
       )}
+    </div>
+    <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
+      <select
+        value={filterMode}
+        onChange={(e) => setFilterMode(e.target.value)}
+        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+      >
+        <option value="all">All</option>
+        <option value="checked">Checked</option>
+        <option value="deleted-report">Deleted Report</option>
+        <option value="deleted-asset">Deleted Asset</option>
+      </select>
+      <input
+        type="text"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        placeholder="Search report ID"
+        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white w-48"
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={handleCheckSelectedReports}
+          disabled={selectedReports.size === 0}
+          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
+        >
+          <Search className="w-3 h-3" />
+          Check Selected
+        </button>
+        <button
+          onClick={handleDeleteSelectedReports}
+          disabled={selectedReports.size === 0 || deleteReportStatus === 'running'}
+          className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
+        >
+          <Trash2 className="w-3 h-3" />
+          Delete Selected Reports
+        </button>
+        <button
+          onClick={handleDeleteSelectedAssets}
+          disabled={selectedReports.size === 0 || deleteAssetsStatus === 'running'}
+          className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
+        >
+          <Package className="w-3 h-3" />
+          Delete Selected Assets
+        </button>
+      </div>
     </div>
 
     <div className="overflow-x-auto">
@@ -1119,9 +1711,7 @@ const handleDeleteReport = async () => {
           <tr>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">
               {(() => {
-                const selectableReports = reportSummaryRow.filter(row => 
-                  row.reportStatus === "مسودة" || row.reportStatus === "Draft"
-                );
+                const selectableReports = filteredRows.filter(row => !row.isDeleted);
                 const allSelectableSelected = selectableReports.length > 0 && 
                   selectableReports.every(row => selectedReports.has(row.reportId));
                 
@@ -1136,75 +1726,85 @@ const handleDeleteReport = async () => {
               })()}
             </th>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
-            <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Report Status</th>
-            <th className="text-left px-4 py-2 font-semibold text-gray-600">Present / Not</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Active Action</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Actions</th>
             <th className="text-left px-4 py-2 font-semibold text-gray-600">Progress</th>
+            <th className="text-left px-4 py-2 font-semibold text-gray-600">Deleted</th>
           </tr>
         </thead>
 
         <tbody>
-          {reportSummaryRow.map((row, index) => (
-            <tr key={index} className={`border-b ${selectedReports.has(row.reportId) ? 'bg-blue-50' : ''} ${row.reportStatus !== "مسودة" && row.reportStatus !== "Draft" ? 'opacity-60' : ''}`}>
+          {checkedLoading && filteredRows.length === 0 && (
+            <tr>
+              <td className="px-4 py-3 text-gray-500" colSpan={8}>Loading checked reports...</td>
+            </tr>
+          )}
+          {!checkedLoading && filteredRows.length === 0 && (
+            <tr>
+              <td className="px-4 py-3 text-gray-500" colSpan={8}>No checked reports found.</td>
+            </tr>
+          )}
+          {filteredRows.map((row, index) => (
+            <tr key={index} className={`border-b ${selectedReports.has(row.reportId) ? 'bg-blue-50' : ''} ${row.isDeleted ? 'opacity-60' : ''}`}>
               <td className="px-4 py-2">
                 <input
                   type="checkbox"
                   checked={selectedReports.has(row.reportId)}
                   onChange={(e) => handleReportSelect(row.reportId, e.target.checked)}
-                  disabled={row.reportStatus !== "مسودة" && row.reportStatus !== "Draft"}
+                  disabled={row.isDeleted}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={row.reportStatus !== "مسودة" && row.reportStatus !== "Draft" ? `Cannot select reports with status: ${row.reportStatus}` : ""}
+                  title={row.isDeleted ? "Cannot select deleted reports" : ""}
                 />
               </td>
               <td className="px-4 py-2 text-gray-800 font-medium">{row.reportId}</td>
-              <td className="px-4 py-2 text-gray-800">{row.totalAssets}</td>
               <td className="px-4 py-2 text-gray-800">
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  row.reportStatus === "مسودة" || row.reportStatus === "Draft"
+                  row.reportStatus === "U.O3U^O_Oc" || row.reportStatus === "Draft"
                     ? "bg-green-100 text-green-700"
                     : "bg-gray-100 text-gray-700"
                 }`}>
                   {row.reportStatus}
                 </span>
               </td>
-              <td className="px-4 py-2">
-                <span
-                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                    row.presentOrNot === "Present"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {row.presentOrNot}
-                </span>
+              <td className="px-4 py-2 text-gray-800">{row.totalAssets}</td>
+              <td className="px-4 py-2 text-gray-800 capitalize">
+                {(rowActionById[row.reportId] || "idle").replace("-", " ")}
               </td>
               <td className="px-4 py-2">
-                {(() => {
-                  const progress = deleteReportProgressById[row.reportId];
-                  if (!progress) return <span className="text-xs text-gray-500">—</span>;
-                  const pct = Math.round(((progress.current || 0) / (progress.total || 1)) * 100);
-                  const total = progress.total || 1;
-                  const current = progress.current || 0;
-                  const remaining = Math.max(total - current, 0);
-                  return (
-                    <div>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1">
-                        <span>{pct}%</span>
-                        <span>{current}/{total}</span>
-                      </div>
-                      <div className="flex justify-between text-xs text-gray-500 mb-1">
-                        <span>Total: {total}</span>
-                        <span>Remaining: {remaining}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${pct}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedActionById[row.reportId] || ""}
+                    onChange={(e) => {
+                      const action = e.target.value;
+                      setSelectedActionById(prev => ({ ...prev, [row.reportId]: action }));
+                    }}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                    disabled={row.isDeleted || !!rowActionById[row.reportId]}
+                  >
+                    <option value="" disabled>Actions</option>
+                    <option value="check-report">Check Report</option>
+                    <option value="delete-assets">Delete Assets</option>
+                    <option value="delete-report">Delete Report</option>
+                    <option value="change-status">Change Status</option>
+                  </select>
+                  <button
+                    onClick={() => handleRowAction(row.reportId)}
+                    disabled={row.isDeleted || !selectedActionById[row.reportId] || !!rowActionById[row.reportId]}
+                    className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded"
+                  >
+                    Go
+                  </button>
+                </div>
+              </td>
+              <td className="px-4 py-2">
+                {renderProgressCell(getRowProgress(row.reportId))}
+              </td>
+              <td className="px-4 py-2 text-gray-800">
+                {row.isDeleted
+                  ? (row.deletedType === "assets" ? "Asset" : row.deletedType === "report" ? "Report" : "Deleted")
+                  : "-"}
               </td>
             </tr>
           ))}
@@ -1212,28 +1812,28 @@ const handleDeleteReport = async () => {
       </table>
     </div>
 
-    {/* Action buttons for selected reports */}
-    {selectedReports.size > 0 && (
-      <div className="bg-gray-50 px-4 py-3 border-t flex gap-3">
-        <button
-          onClick={() => handleDeleteSelectedReports()}
-          disabled={deleteReportStatus === 'running'}
-          className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete Selected Reports ({selectedReports.size})
-        </button>
-        
-        {/* <button
-          onClick={() => handleDeleteSelectedAssets()}
-          disabled={deleteAssetsStatus === 'running'}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-        >
-          <Package className="w-4 h-4" />
-          Delete Assets Only ({selectedReports.size})
-        </button> */}
-      </div>
+    {checkedError && (
+      <div className="px-4 py-2 text-xs text-red-600">{checkedError}</div>
     )}
+    <div className="bg-gray-50 px-4 py-3 border-t flex items-center justify-between">
+      <button
+        onClick={() => setCheckedPage((p) => Math.max(p - 1, 1))}
+        disabled={checkedPage <= 1}
+        className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
+      >
+        Prev
+      </button>
+      <div className="text-xs text-gray-500">
+        Page {checkedPage} of {checkedTotalPages} - {checkedTotal} item(s)
+      </div>
+      <button
+        onClick={() => setCheckedPage((p) => Math.min(p + 1, checkedTotalPages))}
+        disabled={checkedPage >= checkedTotalPages}
+        className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
+      >
+        Next
+      </button>
+    </div>
 
     {/* Optional: small status note below the table */}
     <div
@@ -1252,78 +1852,6 @@ const handleDeleteReport = async () => {
 
                             </div>
 
-                            {userId && (
-                                <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-                                    <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
-                                        <div className="text-sm font-semibold text-gray-700">
-                                            Deleted Reports
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                            Page {deletedPage} of {deletedTotalPages}
-                                        </div>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead className="bg-white border-b">
-                                                <tr>
-                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Report ID</th>
-                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Delete Type</th>
-                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Deleted</th>
-                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Remaining Assets</th>
-                                                    <th className="text-left px-4 py-2 font-semibold text-gray-600">Total Assets</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {deletedLoading && (
-                                                    <tr>
-                                                        <td className="px-4 py-3 text-gray-500" colSpan={5}>Loading...</td>
-                                                    </tr>
-                                                )}
-                                                {!deletedLoading && deletedRows.length === 0 && (
-                                                    <tr>
-                                                        <td className="px-4 py-3 text-gray-500" colSpan={5}>No deleted reports found.</td>
-                                                    </tr>
-                                                )}
-                                                {deletedRows.map((row, index) => (
-                                                    <tr key={`${row.report_id}-${index}`} className="border-b">
-                                                        <td className="px-4 py-2 text-gray-800 font-medium">{row.report_id}</td>
-                                                        <td className="px-4 py-2 text-gray-800">{row.delete_type}</td>
-                                                        <td className="px-4 py-2 text-gray-800">
-                                                            <input type="checkbox" checked={!!row.deleted} readOnly />
-                                                        </td>
-                                                        <td className="px-4 py-2 text-gray-800">{row.remaining_assets ?? 0}</td>
-                                                        <td className="px-4 py-2 text-gray-800">{row.total_assets ?? 0}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {deletedError && (
-                                        <div className="px-4 py-2 text-xs text-red-600">{deletedError}</div>
-                                    )}
-                                    <div className="bg-gray-50 px-4 py-3 border-t flex items-center justify-between">
-                                        <button
-                                            onClick={() => setDeletedPage((p) => Math.max(p - 1, 1))}
-                                            disabled={deletedPage <= 1}
-                                            className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
-                                        >
-                                            Prev
-                                        </button>
-                                        <div className="text-xs text-gray-500">
-                                            {deletedTotal} item(s)
-                                        </div>
-                                        <button
-                                            onClick={() => setDeletedPage((p) => Math.min(p + 1, deletedTotalPages))}
-                                            disabled={deletedPage >= deletedTotalPages}
-                                            className="px-3 py-1 text-xs bg-white border rounded disabled:opacity-50"
-                                        >
-                                            Next
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Operation Status Section */}
                             {renderOperationStatus()}
 
                             {/* Status Change Section - ALWAYS VISIBLE */}
@@ -1401,9 +1929,7 @@ const handleDeleteReport = async () => {
                                         <FileText className="w-5 h-5 text-yellow-500" />
                                         <div>
                                             <p className="font-medium text-yellow-800">Warning: Irreversible Action</p>
-                                            <p className="text-sm text-yellow-600">
-                                                This action will permanently delete the report and all associated data. This cannot be undone.
-                                            </p>
+                                            
                                         </div>
                                     </div>
                                 </div>
@@ -1431,3 +1957,15 @@ const handleDeleteReport = async () => {
 };
 
 export default DeleteReport;
+
+
+
+
+
+
+
+
+
+
+
+

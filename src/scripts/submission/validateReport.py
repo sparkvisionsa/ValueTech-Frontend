@@ -1,10 +1,16 @@
 import asyncio, sys, traceback, json
+from datetime import datetime
 import re
 from html import unescape
 
 from scripts.core.browser import check_browser_status, new_window
 from scripts.core.utils import wait_for_table_rows
+from motor.motor_asyncio import AsyncIOMotorClient
 
+MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
+_mongo_client = AsyncIOMotorClient(MONGO_URI)
+_db = _mongo_client["test"]
+_check_report_coll = _db["check_report"]
 
 
 
@@ -228,8 +234,31 @@ async def calculate_total_assets(page) -> dict:
         return result
 
 
+async def _update_report_check_status(report_id: str, user_id: str | None, updates: dict) -> None:
+    if not report_id or not updates:
+        return
+    try:
+        payload = {
+            "report_id": str(report_id),
+            "user_id": str(user_id) if user_id else None,
+            **updates
+        }
+        await _check_report_coll.update_one(
+            {"report_id": str(report_id), "user_id": str(user_id) if user_id else None},
+            {"$set": payload},
+            upsert=True
+        )
+    except Exception as e:
+        print(json.dumps({
+            "event": "db_update_failed",
+            "reportId": report_id,
+            "error": str(e)
+        }), file=sys.stderr)
+
+
 async def validate_report(cmd):
     report_id = cmd.get("reportId")
+    user_id = cmd.get("userId")
     if not report_id:
         return {
             "status": "FAILED",
@@ -285,6 +314,11 @@ async def validate_report(cmd):
         error_text_2 = "هذه الصفحة غير موجودة!"
 
         if error_text_1 in html or error_text_2 in html:
+            await _update_report_check_status(report_id, user_id, {
+                "last_status_check_at": datetime.utcnow(),
+                "last_status_check_status": "NOT_FOUND",
+                "last_status_check_source": "validate_report"
+            })
             return {
                 "status": "NOT_FOUND",
                 "message": "Report not accessible or does not exist",
@@ -333,10 +367,19 @@ async def validate_report(cmd):
                 "assetsExact": assets_exact
             }), file=sys.stderr)
 
+            await _update_report_check_status(report_id, user_id, {
+                "report_status": report_status,
+                "report_status_label": report_status_label,
+                "assets_exact": assets_exact,
+                "last_status_check_at": datetime.utcnow(),
+                "last_status_check_status": "MACROS_EXIST",
+                "last_status_check_source": "validate_report"
+            })
+
             return {
                 "status": "MACROS_EXIST",
                 "message": (
-                    "Report has macros — "
+                    "Report has macros – "
                     f"last page #{int(last_page_num) if last_page_num else 'unknown'}, "
                     f"ids on last page: {len(last_page_ids) if isinstance(last_page_ids, list) else 'unknown'}, "
                     f"exact assets: {assets_exact if assets_exact is not None else 'unknown'}"
@@ -357,6 +400,15 @@ async def validate_report(cmd):
         print(json.dumps({
             "event": "report_empty_macros"
         }), file=sys.stderr)
+
+        await _update_report_check_status(report_id, user_id, {
+            "report_status": report_status,
+            "report_status_label": report_status_label,
+            "assets_exact": None,
+            "last_status_check_at": datetime.utcnow(),
+            "last_status_check_status": "SUCCESS",
+            "last_status_check_source": "validate_report"
+        })
 
         return {
             "status": "SUCCESS",

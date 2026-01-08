@@ -60,6 +60,7 @@ MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 _mongo_client = AsyncIOMotorClient(MONGO_URI)
 _mongo_db = _mongo_client["test"]
 _delete_status_coll = _mongo_db["report_deletions"]
+_check_report_coll = _mongo_db["check_report"]
 
 async def _record_delete_status(
     report_id: str,
@@ -89,6 +90,11 @@ async def _record_delete_status(
             {"$set": payload},
             upsert=True
         )
+        if deleted:
+            delete_query = {"report_id": str(report_id)}
+            if user_id:
+                delete_query["user_id"] = str(user_id)
+            await _check_report_coll.delete_many(delete_query)
     except Exception as e:
         log(f"[db] failed to update delete status: {e}", "WARN")
 
@@ -391,7 +397,13 @@ async def _open_new_tab(url: str, pause: float = 1.0, retries: int = 2):
     raise RuntimeError("new-tab-open-failed")
 
 
-async def _delete_assets_by_macro_list(page, to_delete_set: set | None, _unused_concurrency: int = 0, process_id: str = None):
+async def _delete_assets_by_macro_list(
+    page,
+    to_delete_set: set | None,
+    _unused_concurrency: int = 0,
+    process_id: str = None,
+    total_assets_state: dict | None = None
+):
     seen = set()
 
     rows = await _find_rows(page)
@@ -455,6 +467,25 @@ async def _delete_assets_by_macro_list(page, to_delete_set: set | None, _unused_
             await _try_click_inline_confirm(page2)
             await asyncio.sleep(0.8)
             deleted += 1
+            if total_assets_state and total_assets_state.get("remaining") is not None:
+                total_assets_state["remaining"] = max(
+                    int(total_assets_state["remaining"]) - 1,
+                    0
+                )
+                if process_id and total_assets_state.get("total") is not None:
+                    total_assets = int(total_assets_state["total"])
+                    remaining_assets = int(total_assets_state["remaining"])
+                    completed_assets = max(total_assets - remaining_assets, 0)
+                    await update_progress(
+                        process_id,
+                        completed=completed_assets,
+                        total=total_assets,
+                        emit=False
+                    )
+                    emit_progress(
+                        process_id,
+                        message=f"Deleted {completed_assets}/{total_assets} assets. Remaining {remaining_assets}."
+                    )
         except Exception as e:
             log(f"[deleter] delete url failed for {mid}: {e}", "WARN")
         finally:
@@ -470,7 +501,7 @@ async def _delete_assets_by_macro_list(page, to_delete_set: set | None, _unused_
     return deleted
 
 
-async def delete_incomplete_assets_and_leave_one(page, process_id: str = None):
+async def delete_incomplete_assets_and_leave_one(page, process_id: str = None, total_assets_state: dict | None = None):
     """
     Delete assets with 'غير مكتملة' on the CURRENT subpage.
     NEW BEHAVIOUR:
@@ -507,7 +538,12 @@ async def delete_incomplete_assets_and_leave_one(page, process_id: str = None):
     log(f"Deleting incomplete assets only: {to_delete}", "INFO")
 
     to_delete_set = set(to_delete) if len(to_delete) > 0 else None
-    deleted = await _delete_assets_by_macro_list(page, to_delete_set, process_id=process_id)
+    deleted = await _delete_assets_by_macro_list(
+        page,
+        to_delete_set,
+        process_id=process_id,
+        total_assets_state=total_assets_state
+    )
 
     return (kept, deleted, all_incomplete, total_assets)
 
@@ -718,30 +754,19 @@ async def _process_current_main_page_with_subpages(
                 break
 
         await _wait_for_rows(page, timeout=8.0)
-        kept, deleted, all_incomplete, page_asset_count = await delete_incomplete_assets_and_leave_one(page, process_id)
+        kept, deleted, all_incomplete, page_asset_count = await delete_incomplete_assets_and_leave_one(
+            page,
+            process_id,
+            total_assets_state
+        )
         # kept is always None with new behaviour, but keep structure for compatibility
         if kept:
             kept_ids.append(kept)
         deleted_total += deleted
         if total_assets_state and total_assets_state.get("remaining") is not None:
-            total_assets_state["remaining"] = max(
-                int(total_assets_state["remaining"]) - int(page_asset_count or 0),
-                0
-            )
             if process_id and total_assets_state.get("total") is not None:
                 total_assets = int(total_assets_state["total"])
                 remaining_assets = int(total_assets_state["remaining"])
-                completed_assets = max(total_assets - remaining_assets, 0)
-                await update_progress(
-                    process_id,
-                    completed=completed_assets,
-                    total=total_assets,
-                    emit=False
-                )
-                emit_progress(
-                    process_id,
-                    message=f"Deleted {completed_assets}/{total_assets} assets. Remaining {remaining_assets}."
-                )
                 await _record_delete_status(
                     report_id=report_id,
                     total_assets=total_assets,
