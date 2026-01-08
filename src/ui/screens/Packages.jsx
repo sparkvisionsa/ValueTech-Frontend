@@ -43,6 +43,7 @@ const Packages = () => {
     const [requestsPage, setRequestsPage] = useState(1);
     const [adminRequestsPage, setAdminRequestsPage] = useState(1);
     const [activeChatRequestId, setActiveChatRequestId] = useState(null);
+    const [highlightRequestId, setHighlightRequestId] = useState(null);
     const [chatMessagesByRequest, setChatMessagesByRequest] = useState({});
     const [chatLoadingByRequest, setChatLoadingByRequest] = useState({});
     const [chatInputByRequest, setChatInputByRequest] = useState({});
@@ -448,6 +449,7 @@ const Packages = () => {
         loadRequestMessages(requestId);
     };
 
+
     const handleSendRequestMessage = async (requestId) => {
         const input = chatInputRefs.current[requestId];
         const body = String((input?.value ?? chatInputByRequest[requestId] ?? '')).trim();
@@ -527,6 +529,39 @@ const Packages = () => {
         ? requests.filter((request) => resolveUserId(request.userId) === user._id)
         : requests;
     const pendingRequestsCount = requests.filter((request) => request.status === 'pending').length;
+
+    useEffect(() => {
+        if (!token) return;
+        const raw = localStorage.getItem('notification-target');
+        if (!raw) return;
+        let payload;
+        try {
+            payload = JSON.parse(raw);
+        } catch (err) {
+            console.warn('Failed to parse notification target', err);
+            localStorage.removeItem('notification-target');
+            return;
+        }
+        if (payload?.type !== 'package-request' || !payload?.id) return;
+        const list = isAdmin ? requests : myRequests;
+        if (!Array.isArray(list) || list.length === 0) return;
+        const targetIndex = list.findIndex((request) => request._id === payload.id);
+        if (targetIndex === -1) return;
+
+        const targetPage = Math.floor(targetIndex / REQUESTS_PAGE_SIZE) + 1;
+        if (isAdmin) {
+            setIsAdminRequestsOpen(true);
+            setAdminRequestsPage(targetPage);
+        } else {
+            setIsRequestsOpen(true);
+            setRequestsPage(targetPage);
+        }
+        setActiveChatRequestId(payload.id);
+        loadRequestMessages(payload.id);
+        setHighlightRequestId(payload.id);
+        setTimeout(() => setHighlightRequestId(null), 6000);
+        localStorage.removeItem('notification-target');
+    }, [token, requests, myRequests, isAdmin]);
 
     useEffect(() => {
         setRequestsPage(1);
@@ -965,9 +1000,10 @@ const Packages = () => {
                                                 const imageUrl = request.transferImagePath
                                                     ? `${API_BASE_URL}${request.transferImagePath}`
                                                     : null;
+                                                const isHighlighted = highlightRequestId === request._id;
                                                 return (
                                                     <React.Fragment key={request._id}>
-                                                        <tr className="hover:bg-blue-50/50">
+                                                        <tr className={`${isHighlighted ? 'bg-amber-100/60 ring-1 ring-amber-300/70' : 'hover:bg-blue-50/50'} transition`}>
                                                             <td className="px-3 py-2 text-[11px] font-semibold text-blue-950">
                                                                 {resolvePackageName(request)}
                                                             </td>
@@ -1276,9 +1312,10 @@ const Packages = () => {
                                                     : null;
                                                 const canApprove = status === 'pending' && Boolean(request.transferImagePath);
                                                 const isProcessing = processingRequestId === request._id;
+                                                const isHighlighted = highlightRequestId === request._id;
                                                 return (
                                                     <React.Fragment key={request._id}>
-                                                        <tr className="hover:bg-blue-50/50">
+                                                        <tr className={`${isHighlighted ? 'bg-amber-100/60 ring-1 ring-amber-300/70' : 'hover:bg-blue-50/50'} transition`}>
                                                             <td className="px-3 py-2 text-[11px] font-semibold text-blue-950">
                                                                 {request.userId?.phone || 'Unknown'}
                                                             </td>

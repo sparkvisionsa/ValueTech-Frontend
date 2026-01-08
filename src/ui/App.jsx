@@ -42,6 +42,7 @@ import Apps from './screens/Apps';
 import { ValueNavProvider } from './context/ValueNavContext';
 import ComingSoon from './screens/ComingSoon';
 import { useValueNav } from './context/ValueNavContext';
+import { NotificationProvider } from './context/NotificationContext';
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState('apps');
@@ -194,9 +195,11 @@ const App = () => {
                 <NavStatusProvider>
                     <RamProvider>
                         <ElrajhiUploadProvider>
-                            <ValueNavProvider>
-                                <AppContent />
-                            </ValueNavProvider>
+                            <NotificationProvider>
+                                <ValueNavProvider>
+                                    <AppContent />
+                                </ValueNavProvider>
+                            </NotificationProvider>
                         </ElrajhiUploadProvider>
                     </RamProvider>
                 </NavStatusProvider>

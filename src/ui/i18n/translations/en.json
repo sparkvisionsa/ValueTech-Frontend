@@ -32,6 +32,17 @@
             "applied": "Applied",
             "apply": "Apply update"
         },
+        "notifications": {
+            "title": "Notifications",
+            "empty": "You're all caught up.",
+            "loading": "Loading notifications...",
+            "markAll": "Mark all read",
+            "refresh": "Refresh",
+            "untitled": "Notification",
+            "loginRequired": "Login to view notifications",
+            "unread": "{{count}} unread",
+            "time": "Time"
+        },
         "modes": {
             "active": "active",
             "partial": "partial",

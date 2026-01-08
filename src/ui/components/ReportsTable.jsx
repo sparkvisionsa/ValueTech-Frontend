@@ -44,6 +44,7 @@ const ReportsTable = () => {
     const [pageSize, setPageSize] = useState(10);
     const [allReports, setAllReports] = useState([]);
     const [dropdownOpen, setDropdownOpen] = useState(null);
+    const [highlightReportId, setHighlightReportId] = useState(null);
 
     const [loadingActions, setLoadingActions] = useState({
         fullCheck: {},
@@ -250,6 +251,33 @@ const ReportsTable = () => {
     useEffect(() => {
         applyFilters();
     }, [searchQuery, statusFilter]);
+
+    useEffect(() => {
+        if (!allReports.length) return;
+        const raw = localStorage.getItem('notification-target');
+        if (!raw) return;
+        let payload;
+        try {
+            payload = JSON.parse(raw);
+        } catch (err) {
+            console.warn('Failed to parse notification target', err);
+            localStorage.removeItem('notification-target');
+            return;
+        }
+        if (payload?.type !== 'report' || !payload?.id) return;
+        const match = allReports.find(
+            (report) => report._id === payload.id || report.report_id === payload.id
+        );
+        if (!match) return;
+        if (match.report_id) {
+            setSearchQuery(match.report_id);
+        }
+        setExpandedReport(match._id);
+        setHighlightReportId(match._id);
+        setCurrentPage(1);
+        setTimeout(() => setHighlightReportId(null), 6000);
+        localStorage.removeItem('notification-target');
+    }, [allReports]);
 
     const toggleReportExpand = (reportId) => {
         setExpandedReport(expandedReport === reportId ? null : reportId);
@@ -511,6 +539,8 @@ const ReportsTable = () => {
                                         ) : (
                                             filteredReports.map((report) => {
                                                 const isExpanded = expandedReport === report._id;
+                                                const isHighlighted = highlightReportId
+                                                    && (highlightReportId === report._id || highlightReportId === report.report_id);
                                                 const assetData = getAssetData(report);
                                                 const status = getReportStatus(report);
                                                 const statusColor = getStatusColor(status);
@@ -524,7 +554,7 @@ const ReportsTable = () => {
 
                                                 return (
                                                     <React.Fragment key={report._id}>
-                                                        <tr className="hover:bg-gray-50 transition-colors">
+                                                        <tr className={`${isHighlighted ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-gray-50'} transition-colors`}>
                                                             <td className="px-3 py-2">
                                                                 <button
                                                                     type="button"

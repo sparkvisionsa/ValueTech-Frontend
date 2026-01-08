@@ -87,6 +87,7 @@ const Tickets = ({ onViewChange }) => {
     const [statusUpdate, setStatusUpdate] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [highlightTicketId, setHighlightTicketId] = useState(null);
 
     const socketRef = useRef(null);
     const selectedTicketIdRef = useRef(null);
@@ -229,6 +230,27 @@ const Tickets = ({ onViewChange }) => {
     }, [loadTickets]);
 
     useEffect(() => {
+        if (tickets.length === 0) return;
+        const raw = localStorage.getItem('notification-target');
+        if (!raw) return;
+        try {
+            const payload = JSON.parse(raw);
+            if (payload?.type === 'ticket' && payload?.id) {
+                const exists = tickets.some((ticket) => ticket._id === payload.id);
+                if (exists) {
+                    setSelectedTicketId(payload.id);
+                    setHighlightTicketId(payload.id);
+                    setTimeout(() => setHighlightTicketId(null), 6000);
+                    localStorage.removeItem('notification-target');
+                }
+            }
+        } catch (err) {
+            console.warn('Failed to parse notification target', err);
+            localStorage.removeItem('notification-target');
+        }
+    }, [tickets]);
+
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
@@ -297,7 +319,7 @@ const Tickets = ({ onViewChange }) => {
                 )
             );
             if (payload.ticketId === selectedTicketIdRef.current) {
-                setMessages((prev) => [...prev, payload]);
+                setMessages((prev) => (prev.some((msg) => msg._id === payload._id) ? prev : [...prev, payload]));
             }
         });
 
@@ -315,12 +337,12 @@ const Tickets = ({ onViewChange }) => {
 
     useEffect(() => {
         const socket = socketRef.current;
-        if (!socket || !selectedTicketId) return;
+        if (!socket || !selectedTicketId || socketStatus !== 'connected') return;
         socket.emit('ticket:join', { ticketId: selectedTicketId });
         return () => {
             socket.emit('ticket:leave', { ticketId: selectedTicketId });
         };
-    }, [selectedTicketId]);
+    }, [selectedTicketId, socketStatus]);
 
     useEffect(() => {
         if (selectedTicket?.status) {
@@ -428,6 +450,33 @@ const Tickets = ({ onViewChange }) => {
                     throw new Error(message);
                 }
 
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch (parseError) {
+                    payload = null;
+                }
+                const message = payload?.message;
+                if (message?.ticketId) {
+                    const preview = buildPreview(message);
+                    setTickets((prev) =>
+                        sortTickets(
+                            prev.map((ticket) =>
+                                ticket._id === message.ticketId
+                                    ? {
+                                        ...ticket,
+                                        lastMessageAt: message.createdAt,
+                                        lastMessagePreview: preview,
+                                        updatedAt: message.createdAt
+                                    }
+                                    : ticket
+                            )
+                        )
+                    );
+                    if (message.ticketId === selectedTicketId) {
+                        setMessages((prev) => (prev.some((msg) => msg._id === message._id) ? prev : [...prev, message]));
+                    }
+                }
                 setMessageInput('');
                 setChatAttachments([]);
             } catch (err) {
@@ -730,6 +779,7 @@ const Tickets = ({ onViewChange }) => {
                                 )}
                                 {filteredTickets.map((ticket) => {
                                     const isActive = ticket._id === selectedTicketId;
+                                    const isHighlighted = ticket._id === highlightTicketId;
                                     const statusClass = STATUS_STYLES[ticket.status] || STATUS_STYLES.waiting;
                                     const ownerLabel = ticket.createdBy?.phone || ticket.createdBy?.displayName;
                                     return (
@@ -739,7 +789,9 @@ const Tickets = ({ onViewChange }) => {
                                             className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                                                 isActive
                                                     ? 'border-sky-200 bg-sky-50/70'
-                                                    : 'border-transparent bg-white hover:border-slate-200'
+                                                    : isHighlighted
+                                                        ? 'border-amber-200 bg-amber-50/70'
+                                                        : 'border-transparent bg-white hover:border-slate-200'
                                             }`}
                                         >
                                             <div className="flex items-start justify-between gap-3">

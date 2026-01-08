@@ -32,6 +32,17 @@
             "applied": "تم التطبيق",
             "apply": "تطبيق التحديث"
         },
+        "notifications": {
+            "title": "الإشعارات",
+            "empty": "لا توجد إشعارات جديدة.",
+            "loading": "جاري تحميل الإشعارات...",
+            "markAll": "تحديد الكل كمقروء",
+            "refresh": "تحديث",
+            "untitled": "إشعار",
+            "loginRequired": "سجل الدخول لعرض الإشعارات",
+            "unread": "{{count}} غير مقروء",
+            "time": "الوقت"
+        },
         "modes": {
             "active": "نشط",
             "partial": "جزئي",

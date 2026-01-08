@@ -24,6 +24,7 @@ import { useValueNav } from '../context/ValueNavContext';
 import { useRam } from '../context/RAMContext'; // Updated import
 import navigation from '../constants/navigation';
 import LanguageToggle from './LanguageToggle';
+import NotificationBell from './NotificationBell';
 import { useTranslation } from 'react-i18next';
 const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards, isValueSystemView } = navigation;
 
@@ -645,6 +646,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end">
                                 <LanguageToggle />
+                                <NotificationBell onViewChange={onViewChange} />
                                 {userBadge}
                                 {statusBanner}
                                 <button
