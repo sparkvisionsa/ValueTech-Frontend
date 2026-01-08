@@ -72,4 +72,4 @@ async def public_login_flow(login_url, is_auth = False):
         return {"status": "CHECK", "user_id": user_id}
 
 
-    return {"status": "READY"}
+    return {"status": "SUCCESS"}

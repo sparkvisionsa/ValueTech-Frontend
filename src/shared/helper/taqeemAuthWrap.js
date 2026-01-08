@@ -31,10 +31,10 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
 
                 console.log("res:", res);
 
-                if (res?.status === "AUTHORIZED") {
+                if (res?.status === "BOOTSTRAP_GRANTED") {
                     setTaqeemStatus?.("success", "Taqeem login completed");
-                    login(res.user_id, res.token);
-                    return true;
+                    login(res.userId, res.token);
+                    return { success: true, token: res.token };
                 }
 
                 if (res?.status === "LOGIN_REQUIRED") {
@@ -56,7 +56,11 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
         );
 
         if (res?.status === "AUTHORIZED" && !isTaqeemLoggedIn) {
-            return await runPublicLogin(true);
+            const loginFlow = await runPublicLogin(true);
+            if (loginFlow.status === "SUCCESS") {
+                setTaqeemStatus?.("success", "Taqeem login completed");
+            }
+            return loginFlow;
         }
 
         if (res?.status === "INSUFFICIENT_POINTS") {
@@ -67,7 +71,7 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
 
         if (res?.status === "LOGIN_REQUIRED" || res?.data?.status === "LOGIN_REQUIRED") {
             onViewChange?.("login");
-            return false;
+            return res;
         }
 
         onViewChange?.("taqeem-login");

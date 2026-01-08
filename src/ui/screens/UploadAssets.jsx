@@ -5,19 +5,8 @@ import { useSession } from "../context/SessionContext";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
-    Upload,
-    AlertTriangle,
-    RefreshCw,
-    Table,
-    FileText,
-    X,
-    CheckCircle,
-    Calendar,
-    MapPin,
-    User,
-    Info,
-    CheckCircle2,
-    Loader2
+    Upload, AlertTriangle, Table, FileText, X, CheckCircle,
+    Calendar, MapPin, User, CheckCircle2, Loader2
 } from "lucide-react";
 import ReportsTable from "../components/ReportsTable";
 
@@ -32,7 +21,7 @@ const UploadAssets = ({ onViewChange }) => {
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
 
-    const { token, login } = useSession();
+    let { token, login } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
 
@@ -283,6 +272,14 @@ const UploadAssets = ({ onViewChange }) => {
             if (authStatus?.status === "INSUFFICIENT_POINTS") {
                 setShowInsufficientPointsModal(true);
                 return;
+            }
+
+            if (authStatus?.status === "LOGIN_REQUIRED") {
+                return;
+            }
+
+            if (authStatus?.token) {
+                token = authStatus.token
             }
 
             const result = await window.electronAPI.apiRequest(
