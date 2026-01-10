@@ -134,7 +134,7 @@
             "subtitle": "فتح البطاقات"
         },
         "settings": "الإعدادات",
-        "tickets": "???????",
+        "tickets": "تواصل مع الدعم الفني",
         "systemOnline": "النظام متصل"
     },
     "navigation": {
@@ -317,6 +317,7 @@
             "company-statics": "إحصائيات الشركة",
             "profile": "الملف الشخصي",
             "packages": "الباقات",
+            "tickets": "????? ?? ????? ?????",
             "admin-packages": "الباقات",
             "valuation-system": "نظام التقييم",
             "word-copy": "نسخ وورد",

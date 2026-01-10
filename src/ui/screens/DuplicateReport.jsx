@@ -25,7 +25,9 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  Download,
 } from "lucide-react";
+import { downloadTemplateFile } from "../utils/templateDownload";
 
 const InputField = ({
   label,
@@ -375,6 +377,7 @@ const DuplicateReport = ({ onViewChange }) => {
   const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [reportUsers, setReportUsers, resetReportUsers] = usePersistentState("duplicate:reportUsers", formData?.report_users || []);
   const [valuers, setValuers, resetValuers] = usePersistentState("duplicate:valuers", buildDefaultValuers());
   const [fileNotes, setFileNotes, resetFileNotes] = usePersistentState("duplicate:fileNotes", { excelName: null, pdfName: null });
@@ -1473,6 +1476,29 @@ const DuplicateReport = ({ onViewChange }) => {
     ? assetActionBusy[`${assetEdit.reportId}:${assetEdit.assetIndex}`]
     : false;
 
+  const handleDownloadTemplate = async () => {
+    if (downloadingTemplate) return;
+    setStatus({ type: "info", message: "Downloading Excel template..." });
+    setDownloadingTemplate(true);
+    try {
+      await downloadTemplateFile("upload-manual-report-template.xlsx");
+      setStatus({
+        type: "success",
+        message: "Excel template downloaded successfully.",
+      });
+    } catch (err) {
+      const message = err?.message || "Failed to download Excel template. Please try again.";
+      setStatus({
+        type: "error",
+        message: message.includes("not found")
+          ? "Template file not found. Please contact administrator to ensure the template file exists in the public folder."
+          : message,
+      });
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
   const headerAlert = status ? (
     <div
       className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${
@@ -1523,6 +1549,19 @@ const DuplicateReport = ({ onViewChange }) => {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              disabled={downloadingTemplate}
+              className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+            >
+              {downloadingTemplate ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+            </button>
             <button
               type="button"
               onClick={handleOpenCreateModal}

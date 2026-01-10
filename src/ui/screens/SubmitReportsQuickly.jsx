@@ -19,7 +19,7 @@ import {
     RefreshCw,
     Table,
     Info,
-    ShieldCheck,
+    Download,
 } from "lucide-react";
 import {
     submitReportsQuicklyUpload,
@@ -28,6 +28,7 @@ import {
     deleteSubmitReportsQuickly,
 } from "../../api/report";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import { downloadTemplateFile } from "../utils/templateDownload";
 
 const DUMMY_PDF_NAME = "dummy_placeholder.pdf";
 
@@ -44,19 +45,17 @@ const getReportStatus = (report) => {
 const reportStatusLabels = {
     approved: "Approved",
     complete: "Complete",
-    incomplete : "incomplete ",
+    incomplete: "Incomplete",
     sent: "Sent",
     new: "New",
-    incomplete : "incomplete ",
 };
 
 const reportStatusClasses = {
     approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
     complete: "border-blue-200 bg-blue-50 text-blue-700",
-    incomplete : "border-amber-200 bg-amber-50 text-amber-700",
+    incomplete: "border-amber-200 bg-amber-50 text-amber-700",
     sent: "border-purple-200 bg-purple-50 text-purple-700",
     new: "border-slate-200 bg-slate-50 text-slate-700",
-    incomplete : "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 // Helper functions for validation
@@ -236,6 +235,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [success, setSuccess] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [validating, setValidating] = useState(false);
+    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [validationItems, setValidationItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("assets");
@@ -303,6 +303,25 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const resetMessages = () => {
         setError("");
         setSuccess("");
+    };
+
+    const handleDownloadTemplate = async () => {
+        if (downloadingTemplate) return;
+        resetMessages();
+        setDownloadingTemplate(true);
+        try {
+            await downloadTemplateFile("quick submittion-template.xlsx");
+            setSuccess("Excel template downloaded successfully.");
+        } catch (err) {
+            const message = err?.message || "Failed to download Excel template. Please try again.";
+            setError(
+                message.includes("not found")
+                    ? "Template file not found. Please contact administrator to ensure the template file exists in the public folder."
+                    : message
+            );
+        } finally {
+            setDownloadingTemplate(false);
+        }
     };
 
     const resetValidation = () => {
@@ -1320,39 +1339,36 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     };
 
     const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
+    const filteredReportIds = useMemo(
+        () => filteredReports.map(getReportRecordId).filter(Boolean),
+        [filteredReports]
+    );
+    const allFilteredSelected = filteredReportIds.length > 0
+        && filteredReportIds.every((id) => selectedReportSet.has(id));
+
+    const handleToggleSelectAll = () => {
+        setSelectedReportIds((prev) => {
+            if (filteredReportIds.length === 0) return prev;
+            const next = new Set(prev);
+            const allSelected = filteredReportIds.every((id) => next.has(id));
+
+            if (allSelected) {
+                filteredReportIds.forEach((id) => next.delete(id));
+            } else {
+                filteredReportIds.forEach((id) => next.add(id));
+            }
+
+            return Array.from(next);
+        });
+    };
 
     return (
-        <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
-            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
-                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
-                <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-3">
-                    <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                            Quick Submission
-                        </p>
-                        <h2 className="text-lg md:text-xl font-display text-compact text-slate-900 font-bold">
-                            Submit Reports Quickly
-                        </h2>
-                        <div className="flex flex-wrap gap-2 text-xs text-slate-700">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <Files className="h-3 w-3 text-sky-600" />
-                                {wantsPdfUpload ? "PDF upload on" : "PDF upload optional"}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <ShieldCheck className="h-3 w-3 text-indigo-600" />
-                                Validation enabled
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
-                            <div className="flex items-center gap-2 text-xs text-slate-700">
+        <div className="relative p-2 space-y-2 page-animate overflow-x-hidden">
+            <div className="space-y-1.5">
+                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
+                            <div className="flex items-center gap-2 text-[10px] text-slate-700">
                                 <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
                                 <span className="font-semibold">
                                     {excelFiles.length
@@ -1363,10 +1379,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 </span>
                             </div>
                             <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
-                            <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
+                            <span className="text-[10px] font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-700">
                                 <input
                                     type="checkbox"
                                     className="h-3.5 w-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
@@ -1375,7 +1391,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 />
                                 <Files className="w-4 h-4 text-blue-600" />
                                 <span className="font-semibold">Upload PDFs</span>
-                                <span className="text-xs text-slate-600">
+                                <span className="text-[10px] text-slate-600">
                                     {pdfFiles.length
                                         ? `${pdfFiles.length} file(s) selected`
                                         : wantsPdfUpload ? "Choose PDF files" : `Will use ${DUMMY_PDF_NAME}`}
@@ -1389,7 +1405,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                         pdfInputRef.current.click();
                                     }
                                 }}
-                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
+                                className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
                             >
                                 Browse
                             </button>
@@ -1405,12 +1421,25 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
+                                onClick={handleDownloadTemplate}
+                                disabled={downloadingTemplate}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-2.5 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {downloadingTemplate ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Download className="w-3.5 h-3.5" />
+                                )}
+                                {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => {
                                     setExcelFiles([]);
                                     setPdfFiles([]);
                                     resetMessages();
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                             >
                                 <RefreshCw className="w-3.5 h-3.5" />
                                 Reset
@@ -1423,7 +1452,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             {/* Status Messages */}
             {(error || success) && (
                 <div
-                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
+                    className={`rounded-lg border px-2.5 py-1.5 flex items-start gap-2 shadow-sm card-animate ${error
                         ? "bg-rose-50 text-rose-700 border-rose-300"
                         : "bg-emerald-50 text-emerald-700 border-emerald-300"
                         }`}
@@ -1438,9 +1467,9 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             )}
 
             {/* Validation Console */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden card-animate">
-                    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 px-3 py-2.5 text-white">
+                    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 px-2.5 py-2 text-white">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="space-y-0.5">
                                 <p className="text-xs font-semibold">Validation Console</p>
@@ -1790,7 +1819,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             >
                                 <option value="all">All statuses</option>
                                 <option value="new">New</option>
-                                <option value="incomplete ">incomplete </option>
+                                <option value="incomplete">Incomplete</option>
                                 <option value="sent">Sent</option>
                                 <option value="complete">Complete</option>
                                 <option value="approved">Approved</option>
@@ -1819,9 +1848,18 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             </button>
                         </div>
                         {filteredReports.length > 0 && (
-                            <span className="text-xs text-slate-600 ml-auto font-medium">
-                                Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
-                            </span>
+                            <div className="flex items-center gap-2 ml-auto">
+                                <span className="text-xs text-slate-600 font-medium">
+                                    Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleToggleSelectAll}
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                                >
+                                    {allFilteredSelected ? "Clear all" : "Select all"}
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>

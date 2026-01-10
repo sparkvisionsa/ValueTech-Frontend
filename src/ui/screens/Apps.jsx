@@ -101,7 +101,7 @@ const Apps = ({ onViewChange }) => {
                                     key={card.id}
                                     type="button"
                                     onClick={() => handleCardClick(card)}
-                                    className={`group relative w-full max-w-[280px] aspect-square overflow-hidden rounded-3xl border bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-left transition-all shadow-[0_16px_30px_rgba(15,23,42,0.25)] ${theme.border} ${isActive
+                                    className={`group relative w-full max-w-[280px] aspect-square overflow-hidden rounded-3xl border bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-left transition-all shadow-[0_16px_30px_rgba(15,23,42,0.25)] mt-2 ${theme.border} ${isActive
                                         ? `ring-2 ${theme.ring} scale-[1.01]`
                                         : 'hover:-translate-y-1 hover:shadow-[0_22px_40px_rgba(15,23,42,0.35)]'
                                         }`}

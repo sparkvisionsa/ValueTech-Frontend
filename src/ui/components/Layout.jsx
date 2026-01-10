@@ -493,6 +493,26 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const heroTheme = heroThemes[resolvedGroupId] || heroThemes.default;
     const HeroIcon = heroIcons[resolvedGroupId] || AppWindow;
     const showHero = Boolean(resolvedGroupLabel || tabLabel);
+    const settingsRootTab = valueSystemGroups.settings?.tabs?.[0]?.id || 'profile';
+    const pageBreadcrumbs = (() => {
+        if (currentView === 'tickets') {
+            return [{ label: t('sidebar.tickets'), key: 'tickets', kind: 'view' }];
+        }
+        if (resolvedGroupId === 'settings') {
+            const items = [{ label: t('sidebar.settings'), key: 'settings', kind: 'settings' }];
+            if (currentTabInfo?.tab?.id) {
+                items.push({
+                    label: t(`navigation.tabs.${currentTabInfo.tab.id}.label`, {
+                        defaultValue: currentTabInfo.tab.label
+                    }),
+                    key: currentTabInfo.tab.id,
+                    kind: 'view'
+                });
+            }
+            return items;
+        }
+        return breadcrumbs || [];
+    })();
 
     const handleBreadcrumbClick = (item) => {
         switch (item.kind) {
@@ -544,32 +564,38 @@ const Layout = ({ children, currentView, onViewChange }) => {
             case 'tab':
                 onViewChange(item.key);
                 break;
+            case 'settings':
+                onViewChange(settingsRootTab);
+                break;
+            case 'view':
+                onViewChange(item.key);
+                break;
             default:
                 onViewChange('apps');
         }
     };
 
     const PageChrome = () => {
-        if (!breadcrumbs || breadcrumbs.length === 0) return null;
+        if (!pageBreadcrumbs || pageBreadcrumbs.length === 0) return null;
         return (
-            <div className="mb-5">
-                <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/50 to-white px-5 py-5 shadow-lg backdrop-blur-sm">
+            <div className="mb-0">
+                <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/50 to-white px-3 py-2 shadow-lg backdrop-blur-sm">
                     {/* Decorative background blobs */}
                     <div className="pointer-events-none absolute -top-20 right-8 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-300/30 to-teal-300/20 blur-3xl animate-pulse" />
                     <div className="pointer-events-none absolute -bottom-16 left-6 h-36 w-36 rounded-full bg-gradient-to-br from-blue-300/25 to-cyan-300/15 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
                     <div className="pointer-events-none absolute top-1/2 right-1/4 h-24 w-24 rounded-full bg-gradient-to-br from-purple-200/20 to-pink-200/15 blur-2xl" />
                     
-                    <div className="relative flex flex-col gap-3">
+                    <div className="relative flex flex-col gap-1">
                         {/* First Row: Breadcrumb Path */}
-                        <div className="flex flex-wrap items-center gap-1.5 px-1">
-                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                                {breadcrumbs.map((item, idx) => {
-                                    const isLast = idx === breadcrumbs.length - 1;
+                        <div className="flex flex-wrap items-center gap-0.5 px-0">
+                            <div className="flex flex-wrap items-center gap-0.5 text-[10px]">
+                                {pageBreadcrumbs.map((item, idx) => {
+                                    const isLast = idx === pageBreadcrumbs.length - 1;
                                     return (
                                         <React.Fragment key={item.key + idx}>
                                             <button
                                                 onClick={() => handleBreadcrumbClick(item)}
-                                                className={`inline-flex items-center px-1 py-0.5 font-medium transition-colors ${
+                                                className={`inline-flex items-center px-0.5 py-0 font-medium transition-colors ${
                                                     isLast
                                                         ? 'text-slate-900'
                                                         : 'text-slate-500 hover:text-slate-900'
@@ -577,8 +603,8 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                             >
                                                 {item.label}
                                             </button>
-                                            {idx < breadcrumbs.length - 1 && (
-                                                <span className="text-slate-300 text-[11px] mx-0.5">/</span>
+                                            {idx < pageBreadcrumbs.length - 1 && (
+                                                <span className="text-slate-300 text-[11px] mx-px">/</span>
                                             )}
                                         </React.Fragment>
                                     );
@@ -588,7 +614,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         
                         {/* Second Row: Tabs - Reduced Size */}
                         {showHeaderTabs && (
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-1">
                                 {groupTabs.map((tab) => {
                                     const isActive = currentView === tab.id;
                                     const isBlocked = isFeatureBlocked(tab.id);
@@ -599,7 +625,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                             onClick={() => !isBlocked && onViewChange(tab.id)}
                                             disabled={isBlocked}
                                             title={isBlocked && reason ? reason : undefined}
-                                            className={`relative inline-flex items-center justify-center rounded-lg border-2 px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95 ${
+                                            className={`relative inline-flex items-center justify-center rounded-lg border-2 px-2 py-1 text-[11px] font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95 ${
                                                 isBlocked
                                                     ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
                                                     : isActive
@@ -695,6 +721,13 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                     )}
                                 </div>
                             )}
+                            {ramInfo?.recommendedTabs != null && (
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] shadow-[0_6px_14px_rgba(2,6,23,0.35)] border-slate-600/40 bg-slate-900/50 text-slate-200">
+                                    <AppWindow className="w-3.5 h-3.5" />
+                                    <span className="font-semibold">Recommended Tabs:</span>
+                                    <span>{formatNumber(ramInfo.recommendedTabs)}</span>
+                                </div>
+                            )}
                         </div>
                         {isAuthenticated && !isAdmin && mode === 'inactive' && (
                             <div className="flex items-center gap-2 text-[10px] text-rose-200 bg-rose-500/15 border border-rose-400/30 px-3 py-1.5 rounded-xl">
@@ -743,7 +776,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 bg-transparent relative max-w-full">
+                <main className="flex-1 overflow-y-auto overflow-x-hidden px-6 pt-0 pb-5 bg-transparent relative max-w-full">
                     <div className="pointer-events-none absolute inset-0 z-0">
                         <div className="absolute -top-20 left-1/3 h-48 w-48 rounded-full bg-cyan-200/30 blur-3xl float-slow" />
                         <div className="absolute top-32 right-[-80px] h-56 w-56 rounded-full bg-emerald-200/20 blur-3xl float-slower" />

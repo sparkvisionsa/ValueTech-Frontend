@@ -6,9 +6,10 @@ import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
     Upload, AlertTriangle, Table, FileText, X, CheckCircle,
-    Calendar, MapPin, User, CheckCircle2, Loader2
+    Calendar, MapPin, User, CheckCircle2, Loader2, Download
 } from "lucide-react";
 import ReportsTable from "../components/ReportsTable";
+import { downloadTemplateFile } from "../utils/templateDownload";
 
 const UploadAssets = ({ onViewChange }) => {
     const [excelFileName, setExcelFileName] = useState(null);
@@ -20,6 +21,7 @@ const UploadAssets = ({ onViewChange }) => {
     const [success, setSuccess] = useState("");
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
+    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
     let { token, login } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
@@ -151,6 +153,26 @@ const UploadAssets = ({ onViewChange }) => {
             setPreviewData(null);
         } finally {
             setPreviewLoading(false);
+        }
+    };
+
+    const handleDownloadTemplate = async () => {
+        if (downloadingTemplate) return;
+        setError("");
+        setSuccess("");
+        setDownloadingTemplate(true);
+        try {
+            await downloadTemplateFile("upload-assets-template.xlsx");
+            setSuccess("Excel template downloaded successfully.");
+        } catch (err) {
+            const message = err?.message || "Failed to download Excel template. Please try again.";
+            setError(
+                message.includes("not found")
+                    ? "Template file not found. Please contact administrator to ensure the template file exists in the public folder."
+                    : message
+            );
+        } finally {
+            setDownloadingTemplate(false);
         }
     };
 
@@ -521,20 +543,34 @@ const UploadAssets = ({ onViewChange }) => {
                         </div>
                     </div>
 
-                    {/* Upload Button moved here - Always visible */}
-                    <button
-                        onClick={handleUploadToDB}
-                        disabled={!isUploadEnabled || uploadLoading}
-                        className="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white shadow-sm hover:shadow-md hover:scale-[1.02] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-sm"
-                        title={!isUploadEnabled ? "Please select a file first" : ""}
-                    >
-                        {uploadLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <CheckCircle className="w-4 h-4" />
-                        )}
-                        {uploadLoading ? "Uploading..." : "Upload & Submit"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleDownloadTemplate}
+                            disabled={downloadingTemplate}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {downloadingTemplate ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Download className="w-3.5 h-3.5" />
+                            )}
+                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                        </button>
+                        <button
+                            onClick={handleUploadToDB}
+                            disabled={!isUploadEnabled || uploadLoading}
+                            className="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white shadow-sm hover:shadow-md hover:scale-[1.02] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-sm"
+                            title={!isUploadEnabled ? "Please select a file first" : ""}
+                        >
+                            {uploadLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <CheckCircle className="w-4 h-4" />
+                            )}
+                            {uploadLoading ? "Uploading..." : "Upload & Submit"}
+                        </button>
+                    </div>
                 </div>
             </div>
 

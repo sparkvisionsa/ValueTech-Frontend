@@ -9,12 +9,12 @@ import { useRam } from "../context/RAMContext";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { downloadTemplateFile } from "../utils/templateDownload";
 
 import {
     FileSpreadsheet,
     Files,
     Loader2,
-    Upload,
     Edit2,
     CheckCircle2,
     AlertTriangle,
@@ -457,6 +457,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [editingReport, setEditingReport] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [downloadingValidationExcel, setDownloadingValidationExcel] = useState(false);
+    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [sendToConfirmerMain, setSendToConfirmerMain] = useState(false);
     const [sendToConfirmerValidation, setSendToConfirmerValidation] = useState(false);
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
@@ -1385,6 +1386,26 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
+    const handleDownloadTemplate = async () => {
+        if (downloadingTemplate) return;
+        setError("");
+        setSuccess("");
+        setDownloadingTemplate(true);
+        try {
+            await downloadTemplateFile("AlrajhiBank-template.xlsx");
+            setSuccess("Excel template downloaded successfully.");
+        } catch (err) {
+            const message = err?.message || "Failed to download Excel template. Please try again.";
+            setError(
+                message.includes("not found")
+                    ? "Template file not found. Please contact administrator to ensure the template file exists in the public folder."
+                    : message
+            );
+        } finally {
+            setDownloadingTemplate(false);
+        }
+    };
+
     const clearFileInput = (inputRef) => {
         if (inputRef?.current) {
             inputRef.current.value = null;
@@ -2226,11 +2247,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
 
     const validationContent = (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
             <div className="space-y-1">
-                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[170px] flex-[0.85]">
+                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border border-blue-900/15 bg-white/90 cursor-pointer hover:bg-blue-50 transition min-w-[170px] flex-[0.85]">
                             <div className="flex items-center gap-2 text-[10px] text-blue-900">
                                 <FolderOpen className="w-4 h-4" />
                                 <span className="font-semibold">
@@ -2253,7 +2274,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             />
                             <span className="text-[10px] font-semibold text-blue-900">Browse</span>
                         </label>
-                        <div className="flex items-center justify-between gap-2 px-2 py-2.5 rounded-lg border border-blue-900/15 bg-white/90 transition hover:bg-blue-50 min-w-[230px] flex-[1.35]">
+                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border border-blue-900/15 bg-white/90 transition hover:bg-blue-50 min-w-[230px] flex-[1.35]">
                             <div className="flex flex-wrap items-center gap-2 text-[10px] text-blue-900">
                                 <input
                                     type="checkbox"
@@ -2296,101 +2317,25 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                         <div className="flex items-center gap-1">
                             <button
                                 type="button"
+                                onClick={handleDownloadTemplate}
+                                disabled={downloadingTemplate}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-blue-900/20 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {downloadingTemplate ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4" />
+                                )}
+                                {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                            </button>
+                            <button
+                                type="button"
                                 onClick={resetValidationSection}
-                                className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2.5 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
                             >
                                 <RefreshCw className="w-4 h-4" />
                                 Reset
                             </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-3 shadow-sm">
-                    <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
-                    <div className="relative flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                                <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
-                                    <Send className="w-4 h-4" />
-                                </div>
-                                <div>
-                                    <p className="text-[11px] font-semibold text-blue-950">Send to Taqeem</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 rounded-full border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">
-                                <Table className="w-4 h-4 text-blue-900" />
-                                <span>Tabs auto</span>
-                                <span className="text-blue-900/70">
-                                    {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
-                                </span>
-                                <span className="text-blue-900/60">(RAM)</span>
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900">
-                                <input
-                                    type="checkbox"
-                                    className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
-                                    checked={sendToConfirmerValidation}
-                                    onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
-                                />
-                                <span>
-                                    Do you want to send the report to the confirmer? /هل تريد ارسال التقارير الي المعتمد مباشرة ؟
-                                </span>
-                            </label>
-                        </div>
-                        {validationReportIssues.length ? (
-                            <div className="flex items-center gap-2 text-[10px] text-rose-600">
-                                <AlertTriangle className="w-4 h-4" />
-                                Resolve the report info issues above to enable sending.
-                            </div>
-                        ) : null}
-                        <div className="flex flex-wrap gap-2 items-center">
-                            <button
-                                type="button"
-                                onClick={handleSubmitElrajhi}
-                                disabled={sendingValidation || !canSendReports}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                            >
-                                {sendingValidation ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Send className="w-4 h-4" />
-                                )}
-                                Send all reports
-                            </button>
-                            {sendingValidation && (
-                                <ControlButtons
-                                    isPaused={isPausedValidation}
-                                    isRunning={sendingValidation}
-                                    onPause={handlePauseValidation}
-                                    onResume={handleResumeValidation}
-                                    onStop={handleStopValidation}
-                                />
-                            )}
-                            <button
-                                type="button"
-                                onClick={handleSubmitPdfOnly}
-                                disabled={pdfOnlySending || !canSendPdfOnly}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-900 text-white text-[11px] font-semibold hover:bg-blue-800 disabled:opacity-50"
-                            >
-                                {pdfOnlySending ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Files className="w-4 h-4" />
-                                )}
-                                Send only reports with PDFs
-                            </button>
-                            {pdfOnlySending && (
-                                <ControlButtons
-                                    isPaused={isPausedPdfOnly}
-                                    isRunning={pdfOnlySending}
-                                    onPause={handlePausePdfOnly}
-                                    onResume={handleResumePdfOnly}
-                                    onStop={handleStopPdfOnly}
-                                />
-                            )}
                         </div>
                     </div>
                 </div>
@@ -2695,29 +2640,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     </div>
                 </div>
             </div>
-            <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-3 shadow-sm">
+            <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-2 shadow-sm">
                 <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
                 <div className="relative flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
-                                <Send className="w-4 h-4" />
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-semibold text-blue-950">Send to Taqeem</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 rounded-full border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900">
-                            <Table className="w-4 h-4 text-blue-900" />
-                            <span>Tabs auto</span>
-                            <span className="text-blue-900/70">
-                                {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""}
-                            </span>
-                            <span className="text-blue-900/60">(RAM)</span>
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900 flex-1 min-w-[240px]">
                             <input
                                 type="checkbox"
                                 className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
@@ -2728,19 +2655,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 Do you want to send the report to the confirmer? / هل تريد ارسال التقارير الي المعتمد مباشرة ؟
                             </span>
                         </label>
-                    </div>
-                    {validationReportIssues.length ? (
-                        <div className="flex items-center gap-2 text-[10px] text-rose-600">
-                            <AlertTriangle className="w-4 h-4" />
-                            Resolve the report info issues above to enable sending.
-                        </div>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2 items-center">
                         <button
                             type="button"
                             onClick={handleSubmitElrajhi}
                             disabled={sendingValidation || !canSendReports}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
                         >
                             {sendingValidation ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2762,7 +2681,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             type="button"
                             onClick={handleSubmitPdfOnly}
                             disabled={pdfOnlySending || !canSendPdfOnly}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-900 text-white text-[11px] font-semibold hover:bg-blue-800 disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-900 text-white text-[10px] font-semibold hover:bg-blue-800 disabled:opacity-50"
                         >
                             {pdfOnlySending ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2781,6 +2700,12 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             />
                         )}
                     </div>
+                    {validationReportIssues.length ? (
+                        <div className="flex items-center gap-2 text-[10px] text-rose-600">
+                            <AlertTriangle className="w-4 h-4" />
+                            Resolve the report info issues above to enable sending.
+                        </div>
+                    ) : null}
                 </div>
             </div>
         </div>
@@ -3078,30 +3003,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     );
 
     const checkReportsContent = (
-        <div className="space-y-2 text-[10px]">
-            <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-lg bg-blue-900 text-white flex items-center justify-center shadow-sm">
-                            <Table className="w-4 h-4" />
-                        </div>
-                        <div>
-                            <p className="text-[11px] font-semibold text-blue-950">Tabs Configuration</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 rounded-xl border border-blue-900/15 bg-blue-50 px-3 py-1.5 text-blue-900">
-                            <span className="text-[14px] font-bold">
-                                {recommendedTabs}
-                            </span>
-                            <span className="text-[10px] font-semibold">
-                                tab{recommendedTabs !== 1 ? "s" : ""}
-                            </span>
-                            <span className="text-[10px] text-blue-900/60">(auto)</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div className="space-y-1.5 text-[10px]">
             {batchMessage && (
                 <div
                     className={`rounded-xl border px-2 py-1 flex items-start gap-2 ${batchMessage.type === "error"
@@ -3133,12 +3035,12 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                         <table className="min-w-full text-[10px] leading-tight">
                             <thead className="bg-blue-900/95 text-white/90">
                                 <tr>
-                                    <th className="px-2 py-1 text-left">Local</th>
-                                    <th className="px-2 py-1 text-left">Batch ID</th>
-                                    <th className="px-2 py-1 text-left">Reports</th>
-                                    <th className="px-2 py-1 text-left">With report ID</th>
-                                    <th className="px-2 py-1 text-left">Complete</th>
-                                    <th className="px-2 py-1 text-left"></th>
+                                    <th className="px-1.5 py-0.5 text-left">Local</th>
+                                    <th className="px-1.5 py-0.5 text-left">Batch ID</th>
+                                    <th className="px-1.5 py-0.5 text-left">Reports</th>
+                                    <th className="px-1.5 py-0.5 text-left">With report ID</th>
+                                    <th className="px-1.5 py-0.5 text-left">Complete</th>
+                                    <th className="px-1.5 py-0.5 text-left"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -3154,8 +3056,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                     return (
                                         <React.Fragment key={batch.batchId}>
                                             <tr className="border-b border-blue-900/10 last:border-0">
-                                                <td className="px-2 py-1 text-blue-900/80">{localNumber}</td>
-                                                <td className="px-2 py-1">
+                                                <td className="px-1.5 py-0.5 text-blue-900/80">{localNumber}</td>
+                                                <td className="px-1.5 py-0.5">
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleBatchExpand(batch.batchId)}
@@ -3174,13 +3076,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                         </p>
                                                     ) : null}
                                                 </td>
-                                                <td className="px-2 py-1 text-blue-900/80">
+                                                <td className="px-1.5 py-0.5 text-blue-900/80">
                                                     {total}
                                                 </td>
-                                                <td className="px-2 py-1 text-blue-900/80">
+                                                <td className="px-1.5 py-0.5 text-blue-900/80">
                                                     {batch.withReportId || 0}/{total || 0}
                                                 </td>
-                                                <td className="px-2 py-1 text-blue-900/80">
+                                                <td className="px-1.5 py-0.5 text-blue-900/80">
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-900 border border-blue-100">
                                                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -3200,33 +3102,35 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                         ) : null}
                                                     </div>
                                                 </td>
-                                                <td className="px-2.5 py-1.5 text-right">
-                                                    <div className="flex gap-2 justify-end flex-wrap">
+                                                <td className="px-1.5 py-0.5 text-right">
+                                                    <div className="flex gap-1.5 justify-end flex-wrap">
                                                         <button
                                                             type="button"
                                                             onClick={() => runBatchCheck(batch.batchId)}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                                            title="Check status"
+                                                            aria-label="Check status"
+                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
                                                         >
                                                             {isCheckingThisBatch ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
                                                             ) : (
                                                                 <RefreshCw className="w-4 h-4" />
                                                             )}
-                                                            Check status
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => handleBatchDownloadCertificates(batch.batchId)}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch || downloadingCertificatesBatchId === batch.batchId}
-                                                            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                                            title="Download registration certificates"
+                                                            aria-label="Download registration certificates"
+                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
                                                         >
                                                             {downloadingCertificatesBatchId === batch.batchId ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
                                                             ) : (
                                                                 <Download className="w-4 h-4" />
                                                             )}
-                                                            Download Registration Certificates
                                                         </button>
                                                         {/* Removed pause buttons from check batch button */}
                                                         <button
@@ -3268,14 +3172,15 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                 }
                                                             }}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            className="inline-flex items-center gap-2 rounded-md bg-purple-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
+                                                            title="Retry batch"
+                                                            aria-label="Retry batch"
+                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60"
                                                         >
                                                             {isRetryingThisBatch ? (
                                                                 <Loader2 className="w-4 h-4 animate-spin" />
                                                             ) : (
                                                                 <RotateCw className="w-4 h-4" />
                                                             )}
-                                                            Retry
                                                         </button>
                                                         {isRetryingThisBatch && (
                                                             <ControlButtons
@@ -3710,23 +3615,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     );
 
     return (
-        <div className="p-6 space-y-5">
-            <div className="flex items-center justify-between gap-2 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
-                        <Upload className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
-                            Elrajhi Reports
-                        </div>
-                        <h2 className="text-lg font-bold text-blue-950">
-                            Upload Report Elrajhi
-                        </h2>
-                    </div>
-                </div>
-            </div>
-
+        <div className="p-2 space-y-2">
             {validationContent}
             {checkReportsContent}
         </div>

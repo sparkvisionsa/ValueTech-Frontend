@@ -158,7 +158,7 @@ const viewTitles = {
     'company-statics': 'Company Statics',
     profile: 'Profile',
     packages: 'Packages',
-    tickets: 'Tickets',
+    tickets: 'Contact technical support',
     'admin-packages': 'Packages',
     'valuation-system': 'Valuation System',
     'word-copy': 'Word Copy',
