@@ -34,13 +34,17 @@
         },
         "notifications": {
             "title": "الإشعارات",
-            "empty": "لا توجد إشعارات جديدة.",
+            "newTitle": "إشعارات جديدة",
+            "inboxTitle": "الوارد",
+            "emptyUnread": "لا توجد إشعارات جديدة.",
+            "emptyAll": "لا توجد إشعارات بعد.",
             "loading": "جاري تحميل الإشعارات...",
             "markAll": "تحديد الكل كمقروء",
             "refresh": "تحديث",
             "untitled": "إشعار",
             "loginRequired": "سجل الدخول لعرض الإشعارات",
             "unread": "{{count}} غير مقروء",
+            "total": "{{count}} الإجمالي",
             "time": "الوقت"
         },
         "modes": {
@@ -130,6 +134,7 @@
             "subtitle": "فتح البطاقات"
         },
         "settings": "الإعدادات",
+        "tickets": "???????",
         "systemOnline": "النظام متصل"
     },
     "navigation": {

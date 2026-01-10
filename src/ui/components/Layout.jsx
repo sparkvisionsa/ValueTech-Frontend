@@ -646,7 +646,8 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end">
                                 <LanguageToggle />
-                                <NotificationBell onViewChange={onViewChange} />
+                                <NotificationBell onViewChange={onViewChange} mode="unread" />
+                                <NotificationBell onViewChange={onViewChange} mode="all" />
                                 {userBadge}
                                 {statusBanner}
                                 <button

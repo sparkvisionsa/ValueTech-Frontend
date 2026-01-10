@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users, ShieldCheck, Building2, Database } from 'lucide-react';
+import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, MonitorDot, Settings, Package, BarChart3, Users, ShieldCheck, Building2, Database, MessageCircle } from 'lucide-react';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useSession } from '../context/SessionContext';
@@ -32,6 +32,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
     const isAppsActive = currentView === 'apps';
     const isSettingsActive = activeGroup === 'settings';
     const settingsBlocked = isFeatureBlocked('settings');
+    const ticketsBlocked = isFeatureBlocked('tickets');
     const isCompanyHead = user?.type === 'company' || user?.role === 'company-head';
     const clickDelayMs = 160;
     const delayViewChange = (nextView) => {
@@ -539,6 +540,28 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     className="px-2 py-1.5 sidebar-animate"
                     style={{ animationDelay: '300ms' }}
                 >
+                    <button
+                        onClick={() => {
+                            if (ticketsBlocked) return;
+                            setActiveGroup(null);
+                            setActiveTab(null);
+                            if (onViewChange) onViewChange('tickets');
+                        }}
+                        disabled={ticketsBlocked}
+                        className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${
+                            currentView === 'tickets'
+                                ? 'bg-gradient-to-r from-cyan-600/90 to-blue-600 text-white shadow-[0_8px_20px_rgba(14,116,144,0.35)]'
+                                : 'bg-slate-900/50 text-slate-100 hover:bg-slate-800/80'
+                        } ${ticketsBlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        <span
+                            className={`absolute left-1 top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full ${
+                                currentView === 'tickets' ? 'bg-cyan-200' : 'bg-transparent group-hover:bg-cyan-300/50'
+                            }`}
+                        />
+                        <MessageCircle className="w-3.5 h-3.5 opacity-90" />
+                        <span className="font-medium">{t('sidebar.tickets')}</span>
+                    </button>
                     <button
                         onClick={() => {
                             if (settingsBlocked) return;

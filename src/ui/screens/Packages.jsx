@@ -452,7 +452,7 @@ const Packages = () => {
 
     const handleSendRequestMessage = async (requestId) => {
         const input = chatInputRefs.current[requestId];
-        const body = String((input?.value ?? chatInputByRequest[requestId] ?? '')).trim();
+        const body = String((chatInputByRequest[requestId] ?? input?.value ?? '')).trim();
         const attachments = chatAttachmentsByRequest[requestId] || [];
         if (!body && attachments.length === 0) return;
         if (!token) {
@@ -497,9 +497,6 @@ const Packages = () => {
                 }));
             }
             setChatInputByRequest((prev) => ({ ...prev, [requestId]: '' }));
-            if (input) {
-                input.value = '';
-            }
             setChatAttachmentsByRequest((prev) => ({ ...prev, [requestId]: [] }));
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -590,7 +587,7 @@ const Packages = () => {
         return (
             <tr className="bg-blue-50/40">
                 <td colSpan={colSpan} className="px-3 py-3">
-                    <div className="rounded-xl border border-blue-900/15 bg-white/95 shadow-sm overflow-hidden">
+                    <div className="rounded-xl border border-blue-900/15 bg-white/95 shadow-sm overflow-hidden pointer-events-auto">
                         <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 text-white">
                             <div className="flex items-center gap-2 text-[10px] font-semibold">
                                 <MessageCircle className="h-4 w-4" />
@@ -657,6 +654,7 @@ const Packages = () => {
                                             chatInputRefs.current[request._id] = el;
                                         }
                                     }}
+                                    value={chatInputByRequest[request._id] || ''}
                                     onChange={(event) =>
                                         setChatInputByRequest((prev) => ({ ...prev, [request._id]: event.target.value }))
                                     }
@@ -667,7 +665,7 @@ const Packages = () => {
                                         }
                                     }}
                                     rows={2}
-                                    className="flex-1 rounded-lg border border-blue-900/20 bg-white px-2.5 py-1.5 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="flex-1 rounded-lg border border-blue-900/20 bg-white px-2.5 py-1.5 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 pointer-events-auto"
                                     placeholder="Write a short, professional reply..."
                                 />
                                 <button

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bell, FileText, MessageCircle, Package as PackageIcon, RefreshCcw } from 'lucide-react';
+import { Bell, FileText, Inbox, MessageCircle, Package as PackageIcon, RefreshCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNotifications } from '../context/NotificationContext';
 import { useSession } from '../context/SessionContext';
@@ -39,7 +39,7 @@ const formatTime = (value) => {
     return date.toLocaleString();
 };
 
-const NotificationBell = ({ onViewChange }) => {
+const NotificationBell = ({ onViewChange, mode = 'unread' }) => {
     const { isAuthenticated } = useSession();
     const { t } = useTranslation();
     const {
@@ -52,16 +52,26 @@ const NotificationBell = ({ onViewChange }) => {
     } = useNotifications();
     const [open, setOpen] = useState(false);
 
+    const isInbox = mode === 'all';
+    const listLimit = isInbox ? 50 : 20;
     const displayCount = useMemo(() => (unreadCount > 99 ? '99+' : unreadCount), [unreadCount]);
+    const visibleNotifications = useMemo(
+        () => (isInbox ? notifications : notifications.filter((item) => !item.readAt)),
+        [notifications, isInbox]
+    );
     const headerSubtitle = loading
         ? t('layout.notifications.loading')
-        : t('layout.notifications.unread', { count: unreadCount });
+        : isInbox
+            ? t('layout.notifications.total', { count: notifications.length })
+            : t('layout.notifications.unread', { count: unreadCount });
+    const buttonTitle = isInbox ? t('layout.notifications.inboxTitle') : t('layout.notifications.newTitle');
+    const ButtonIcon = isInbox ? Inbox : Bell;
 
     const handleToggle = () => {
         if (!isAuthenticated) return;
         setOpen((prev) => !prev);
         if (!open) {
-            refreshNotifications();
+            refreshNotifications(listLimit);
         }
     };
 
@@ -127,15 +137,15 @@ const NotificationBell = ({ onViewChange }) => {
                 type="button"
                 onClick={handleToggle}
                 disabled={!isAuthenticated}
-                title={isAuthenticated ? t('layout.notifications.title') : t('layout.notifications.loginRequired')}
+                title={isAuthenticated ? buttonTitle : t('layout.notifications.loginRequired')}
                 className={`relative inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-[0_10px_20px_rgba(2,6,23,0.5)] transition ${
                     open
                         ? 'border-rose-400/60 bg-rose-500/10 text-rose-100'
                         : 'border-slate-700/70 bg-slate-900/70 text-slate-100 hover:bg-slate-800'
                 } disabled:opacity-60`}
             >
-                <Bell className="h-4 w-4" />
-                {unreadCount > 0 && (
+                <ButtonIcon className="h-4 w-4" />
+                {!isInbox && unreadCount > 0 && (
                     <span className="absolute -right-1.5 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 py-0.5 text-[9px] font-bold text-white shadow">
                         {displayCount}
                     </span>
@@ -154,11 +164,11 @@ const NotificationBell = ({ onViewChange }) => {
                         <div className="flex items-center justify-between border-b border-slate-800/70 px-5 py-3">
                             <div className="flex items-center gap-2">
                                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-200">
-                                    <Bell className="h-4 w-4" />
+                                    <ButtonIcon className="h-4 w-4" />
                                 </span>
                                 <div>
                                     <div className="text-[12px] font-semibold text-slate-100">
-                                        {t('layout.notifications.title')}
+                                        {buttonTitle}
                                     </div>
                                     <div className="text-[9px] text-slate-400">
                                         {headerSubtitle}
@@ -168,7 +178,7 @@ const NotificationBell = ({ onViewChange }) => {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => refreshNotifications()}
+                                    onClick={() => refreshNotifications(listLimit)}
                                     className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-[9px] font-semibold text-slate-200 hover:border-slate-600"
                                 >
                                     <RefreshCcw className="h-3.5 w-3.5" />
@@ -197,13 +207,13 @@ const NotificationBell = ({ onViewChange }) => {
                                     {t('layout.notifications.loading')}
                                 </div>
                             )}
-                            {!loading && notifications.length === 0 && (
+                            {!loading && visibleNotifications.length === 0 && (
                                 <div className="py-10 text-center text-[10px] text-slate-400">
-                                    {t('layout.notifications.empty')}
+                                    {isInbox ? t('layout.notifications.emptyAll') : t('layout.notifications.emptyUnread')}
                                 </div>
                             )}
                             {!loading &&
-                                notifications.map((item) => {
+                                visibleNotifications.map((item) => {
                                     const levelClass = levelStyles[item.level] || levelStyles.info;
                                     const { Icon: TypeIcon, className: typeClass } = getTypeStyle(item.type);
                                     return (

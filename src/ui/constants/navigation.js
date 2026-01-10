@@ -88,8 +88,7 @@ const valueSystemGroups = {
         title: 'Settings',
         tabs: [
             { id: 'profile', label: 'Profile', description: 'Manage your profile, password, and account details.' },
-            { id: 'packages', label: 'Packages', description: 'Review and manage packages and subscriptions.' },
-            { id: 'tickets', label: 'Tickets', description: 'Create tickets and chat with the super admin.' }
+            { id: 'packages', label: 'Packages', description: 'Review and manage packages and subscriptions.' }
         ]
     },
     deleteReport: {

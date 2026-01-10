@@ -34,13 +34,17 @@
         },
         "notifications": {
             "title": "Notifications",
-            "empty": "You're all caught up.",
+            "newTitle": "New notifications",
+            "inboxTitle": "Inbox",
+            "emptyUnread": "No new notifications.",
+            "emptyAll": "No notifications yet.",
             "loading": "Loading notifications...",
             "markAll": "Mark all read",
             "refresh": "Refresh",
             "untitled": "Notification",
             "loginRequired": "Login to view notifications",
             "unread": "{{count}} unread",
+            "total": "{{count}} total",
             "time": "Time"
         },
         "modes": {
@@ -130,6 +134,7 @@
             "subtitle": "Open cards"
         },
         "settings": "Settings",
+        "tickets": "Tickets",
         "systemOnline": "System Online"
     },
     "navigation": {

@@ -1,13 +1,66 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LogOut, Phone, User, Calendar } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
 
+const API_BASE_URL = 'http://localhost:3000';
+
 const Profile = ({ onViewChange }) => {
-    const { user, logout } = useSession();
+    const { user, token, logout, updateUser } = useSession();
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState('');
 
     const handleLogout = () => {
         logout();
         onViewChange('login');
+    };
+
+    const profileImageUrl = user?.profileImagePath
+        ? user.profileImagePath.startsWith('http')
+            ? user.profileImagePath
+            : `${API_BASE_URL}${user.profileImagePath}`
+        : '';
+
+    const handleProfileImageChange = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        if (!token) {
+            alert('Login required to upload a profile image.');
+            return;
+        }
+        setUploading(true);
+        setUploadError('');
+        try {
+            const formData = new FormData();
+            formData.append('profileImage', file);
+
+            const response = await fetch(`${API_BASE_URL}/api/users/profile-image`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData
+            });
+
+            if (!response.ok) {
+                let message = 'Failed to upload profile image';
+                try {
+                    const payload = await response.json();
+                    message = payload?.message || message;
+                } catch (parseError) {
+                    const text = await response.text();
+                    if (text) message = text;
+                }
+                throw new Error(message);
+            }
+
+            const payload = await response.json();
+            if (payload?.user) {
+                updateUser(payload.user);
+            }
+        } catch (err) {
+            setUploadError(err.message || 'Failed to upload profile image');
+        } finally {
+            setUploading(false);
+        }
     };
 
     if (!user) {
@@ -27,8 +80,12 @@ const Profile = ({ onViewChange }) => {
                 {/* Profile Header */}
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8">
                     <div className="flex items-center space-x-4">
-                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md">
-                            <User className="w-8 h-8 text-blue-600" />
+                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                            {profileImageUrl ? (
+                                <img src={profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
+                            ) : (
+                                <User className="w-8 h-8 text-blue-600" />
+                            )}
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold text-white">User Profile</h1>
@@ -39,6 +96,21 @@ const Profile = ({ onViewChange }) => {
 
                 {/* Profile Content */}
                 <div className="p-6 space-y-6">
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                        <div className="text-sm font-medium text-blue-900">Profile photo</div>
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleProfileImageChange}
+                                disabled={uploading}
+                                className="hidden"
+                            />
+                            {uploading ? 'Uploading...' : 'Change photo'}
+                        </label>
+                        {uploadError && <span className="text-xs font-semibold text-red-600">{uploadError}</span>}
+                    </div>
+
                     {/* Phone Information */}
                     <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
                         <Phone className="w-6 h-6 text-blue-600" />
