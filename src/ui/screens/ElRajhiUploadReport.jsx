@@ -10,6 +10,8 @@ import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
 import { downloadTemplateFile } from "../utils/templateDownload";
+import { useAuthAction } from "../hooks/useAuthAction";
+import InsufficientPointsModal from "../components/InsufficientPointsModal";
 
 import {
     FileSpreadsheet,
@@ -438,6 +440,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setLoadingValuers,
     } = useElrajhiUpload();
 
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
+    const { executeWithAuth } = useAuthAction();
+
     const refreshAfterEdit = async (batchId) => {
         if (batchId) {
             await loadBatchReports(batchId);
@@ -730,115 +735,133 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
     const { taqeemStatus } = useNavStatus();
 
-    const isTaqeemLoggedIn = taqeemStatus?.state === "success";
 
     const handleSubmitElrajhi = async () => {
-        try {
-            const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
-            if (!ok) return;
-            setSendingValidation(true);
-            setIsPausedValidation(false);
-            setValidationMessage({
-                type: "info",
-                text: "Saving reports to database..."
-            });
-
-            if (!validationExcelFile) {
-                throw new Error("Select an Excel file before sending.");
-            }
-
-            if (validationReportIssues.length) {
-                throw new Error("Resolve the report info validation issues before sending.");
-            }
-            if (wantsPdfUpload && !validationPdfFiles.length) {
-                throw new Error("Add PDF files or turn off PDF upload to use temporary PDFs.");
-            }
-            // Upload to backend
-            const data = await uploadElrajhiBatch(
-                validationExcelFile,
-                wantsPdfUpload ? validationPdfFiles : []
-            );
-
-            console.log("ELRAJHI BATCH:", data);
-
-            const batchIdFromData = data.batchId;
-            setCurrentOperationBatchId(batchIdFromData);
-            const insertedCount = data.inserted || 0;
-            const reportsFromApi = Array.isArray(data.reports) ? data.reports : [];
-            if (reportsFromApi.length) {
-                setValidationReports((prev) => {
-                    const byAsset = new Map();
-                    reportsFromApi.forEach((r) => {
-                        const key = (r.asset_name || "").toLowerCase();
-                        if (!byAsset.has(key)) byAsset.set(key, []);
-                        byAsset.get(key).push(r);
+        await executeWithAuth(
+            async (params) => {
+                try {
+                    const { token: authToken } = params;
+                    setSendingValidation(true);
+                    setIsPausedValidation(false);
+                    setValidationMessage({
+                        type: "info",
+                        text: "Saving reports to database..."
                     });
-                    return prev.map((r) => {
-                        const list = byAsset.get((r.asset_name || "").toLowerCase()) || [];
-                        const next = list.shift();
-                        if (next) {
-                            return {
-                                ...r,
-                                record_id: next._id || next.id || next.record_id,
-                                report_id: next.report_id || r.report_id,
-                                batchId: batchIdFromData,
-                            };
-                        }
-                        return r;
-                    });
-                });
-            }
-            setValidationDownloadPath(`/elrajhi-upload/export/${batchIdFromData}`);
 
-            setValidationMessage({
-                type: "success",
-                text: `Reports saved (${insertedCount} assets). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
-            });
+                    if (!validationExcelFile) {
+                        throw new Error("Select an Excel file before sending.");
+                    }
 
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, recommendedTabs, false, sendToConfirmerValidation);
-
-            if (electronResult?.status === "SUCCESS") {
-                const resultMap = (electronResult.results || []).reduce((acc, res) => {
-                    const key = res.record_id || res.recordId;
-                    const reportId = res.report_id || res.reportId;
-                    if (key && reportId) acc[key] = reportId;
-                    return acc;
-                }, {});
-
-                if (Object.keys(resultMap).length || (electronResult.results || []).length) {
-                    setValidationReports((prev) =>
-                        prev.map((r, idx) => {
-                            const key = r.record_id || r.recordId || r._id;
-                            const fallback = (electronResult.results || [])[idx]?.report_id
-                                || (electronResult.results || [])[idx]?.reportId;
-                            const reportId = resultMap[key] || r.report_id || fallback;
-                            return { ...r, report_id: reportId };
-                        })
+                    if (validationReportIssues.length) {
+                        throw new Error("Resolve the report info validation issues before sending.");
+                    }
+                    if (wantsPdfUpload && !validationPdfFiles.length) {
+                        throw new Error("Add PDF files or turn off PDF upload to use temporary PDFs.");
+                    }
+                    // Upload to backend
+                    const data = await uploadElrajhiBatch(
+                        validationExcelFile,
+                        wantsPdfUpload ? validationPdfFiles : []
                     );
+
+                    console.log("ELRAJHI BATCH:", data);
+
+                    const batchIdFromData = data.batchId;
+                    setCurrentOperationBatchId(batchIdFromData);
+                    const insertedCount = data.inserted || 0;
+                    const reportsFromApi = Array.isArray(data.reports) ? data.reports : [];
+                    if (reportsFromApi.length) {
+                        setValidationReports((prev) => {
+                            const byAsset = new Map();
+                            reportsFromApi.forEach((r) => {
+                                const key = (r.asset_name || "").toLowerCase();
+                                if (!byAsset.has(key)) byAsset.set(key, []);
+                                byAsset.get(key).push(r);
+                            });
+                            return prev.map((r) => {
+                                const list = byAsset.get((r.asset_name || "").toLowerCase()) || [];
+                                const next = list.shift();
+                                if (next) {
+                                    return {
+                                        ...r,
+                                        record_id: next._id || next.id || next.record_id,
+                                        report_id: next.report_id || r.report_id,
+                                        batchId: batchIdFromData,
+                                    };
+                                }
+                                return r;
+                            });
+                        });
+                    }
+                    setValidationDownloadPath(`/elrajhi-upload/export/${batchIdFromData}`);
+
+                    setValidationMessage({
+                        type: "success",
+                        text: `Reports saved (${insertedCount} assets). ${sendToConfirmerValidation ? "Sending to Taqeem..." : "Final submission skipped."}`
+                    });
+
+                    const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromData, recommendedTabs, false, sendToConfirmerValidation);
+
+                    if (electronResult?.status === "SUCCESS") {
+                        const resultMap = (electronResult.results || []).reduce((acc, res) => {
+                            const key = res.record_id || res.recordId;
+                            const reportId = res.report_id || res.reportId;
+                            if (key && reportId) acc[key] = reportId;
+                            return acc;
+                        }, {});
+
+                        if (Object.keys(resultMap).length || (electronResult.results || []).length) {
+                            setValidationReports((prev) =>
+                                prev.map((r, idx) => {
+                                    const key = r.record_id || r.recordId || r._id;
+                                    const fallback = (electronResult.results || [])[idx]?.report_id
+                                        || (electronResult.results || [])[idx]?.reportId;
+                                    const reportId = resultMap[key] || r.report_id || fallback;
+                                    return { ...r, report_id: reportId };
+                                })
+                            );
+                        }
+
+                        setValidationMessage({
+                            type: "success",
+                            text: `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
+                        });
+
+                        await loadBatchList();
+                    } else {
+                        throw new Error(electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company.");
+                    }
+                } catch (err) {
+                    console.error("Upload failed", err);
+                    setValidationMessage({
+                        type: "error",
+                        text: err.message || "Failed to upload reports"
+                    });
+                    throw err;
+                } finally {
+                    setSendingValidation(false);
+                    setCurrentOperationBatchId(null);
                 }
-
-                setValidationMessage({
-                    type: "success",
-                    text: `Upload succeeded. ${insertedCount} assets saved and sent to Taqeem browser.`
-                });
-
-                await loadBatchList();
-            } else {
-                setValidationMessage({
-                    type: "error",
-                    text: electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company."
-                });
+            },
+            { token, validationExcelFile, validationPdfFiles, wantsPdfUpload, validationReportIssues, sendToConfirmerValidation },
+            {
+                requiredPoints: validationReports.length || 0,
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onViewChange,
+                onAuthSuccess: () => {
+                    console.log('Upload authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Upload authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setValidationMessage({
+                            type: "error",
+                            text: reason?.message || "Authentication failed"
+                        });
+                    }
+                }
             }
-        } catch (err) {
-            console.error("Upload failed", err);
-            setValidationMessage({
-                type: "error",
-                text: err.message || "Failed to upload reports"
-            });
-        } finally {
-            setSendingValidation(false);
-            setCurrentOperationBatchId(null);
-        }
+        );
     };
 
     const handleSubmitPdfOnly = async () => {
@@ -946,9 +969,6 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
-    const uploadPdfsOnly = async () => {
-        throw new Error("uploadPdfsOnly is deprecated in this flow.");
-    };
 
     const loadBatchList = async () => {
         try {
@@ -1184,104 +1204,76 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     };
 
     const runBatchCheck = async (batchId = null) => {
-        if (!window?.electronAPI?.checkElrajhiBatches) {
-            setBatchMessage({
-                type: "error",
-                text: "Desktop integration unavailable. Restart the app.",
-            });
-            return;
-        }
-        if (batchId) {
-            setCheckingBatchId(batchId);
-            setCurrentOperationBatchId(batchId);
-        } else {
-            setCheckingAllBatches(true);
-        }
-        setIsPausedBatchCheck(false);
-        setBatchMessage({
-            type: "info",
-            text: batchId ? `Checking batch ${batchId}...` : "Checking all batches...",
-        });
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken } = params;
 
-        try {
-            const result = await window.electronAPI.checkElrajhiBatches(batchId || null, recommendedTabs);
-            if (result?.status !== "SUCCESS") {
-                throw new Error(result?.error || "Check failed");
+                if (!window?.electronAPI?.checkElrajhiBatches) {
+                    throw new Error("Desktop integration unavailable. Restart the app.");
+                }
+                if (batchId) {
+                    setCheckingBatchId(batchId);
+                    setCurrentOperationBatchId(batchId);
+                } else {
+                    setCheckingAllBatches(true);
+                }
+                setIsPausedBatchCheck(false);
+                setBatchMessage({
+                    type: "info",
+                    text: batchId ? `Checking batch ${batchId}...` : "Checking all batches...",
+                });
+
+                try {
+                    const result = await window.electronAPI.checkElrajhiBatches(batchId || null, recommendedTabs);
+                    if (result?.status !== "SUCCESS") {
+                        throw new Error(result?.error || "Check failed");
+                    }
+
+                    setBatchMessage({
+                        type: "success",
+                        text: batchId ? `Check finished for ${batchId}` : "Completed check for all batches",
+                    });
+
+                    await loadBatchList();
+                    if (batchId) {
+                        await loadBatchReports(batchId);
+                    } else if (expandedBatch) {
+                        await loadBatchReports(expandedBatch);
+                    }
+                    applyBatchCheckResults(result?.batches);
+                } catch (err) {
+                    setBatchMessage({
+                        type: "error",
+                        text: err.message || "Failed to check reports",
+                    });
+                    throw err;
+                } finally {
+                    setCheckingBatchId(null);
+                    setCheckingAllBatches(false);
+                    setCurrentOperationBatchId(null);
+                }
+            },
+            { token },
+            {
+                requiredPoints: 0, // Check doesn't cost points
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onViewChange,
+                onAuthSuccess: () => {
+                    console.log('Batch check authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Batch check authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setBatchMessage({
+                            type: "error",
+                            text: reason?.message || "Authentication failed for batch check"
+                        });
+                    }
+                }
             }
-
-            setBatchMessage({
-                type: "success",
-                text: batchId ? `Check finished for ${batchId}` : "Completed check for all batches",
-            });
-
-            await loadBatchList();
-            if (batchId) {
-                await loadBatchReports(batchId);
-            } else if (expandedBatch) {
-                await loadBatchReports(expandedBatch);
-            }
-            applyBatchCheckResults(result?.batches);
-        } catch (err) {
-            setBatchMessage({
-                type: "error",
-                text: err.message || "Failed to check reports",
-            });
-        } finally {
-            setCheckingBatchId(null);
-            setCheckingAllBatches(false);
-            setCurrentOperationBatchId(null);
-        }
+        );
     };
 
-    const handleDeleteReport = async (reportId, batchId) => {
-        if (!reportId) return;
-        try {
-            setCheckingBatchId(batchId || reportId);
-            // Use the new deleteMultipleReports function
-            const result = await window.electronAPI.deleteMultipleReports([reportId], 10);
-            if (result?.status !== "SUCCESS") {
-                throw new Error(result?.error || "Delete failed");
-            }
-            await loadBatchReports(batchId);
-            await loadBatchList();
-            setBatchMessage({
-                type: "success",
-                text: `Deleted report ${reportId}`,
-            });
-        } catch (err) {
-            setBatchMessage({
-                type: "error",
-                text: err.message || "Failed to delete report",
-            });
-        } finally {
-            setCheckingBatchId(null);
-        }
-    };
-
-    const handleReuploadReport = async (reportId, batchId) => {
-        if (!reportId) return;
-        try {
-            setCheckingBatchId(batchId || reportId);
-            // Use the new function for consistency
-            const result = await window.electronAPI.retryElrajhiReportReportIds([reportId], recommendedTabs);
-            if (result?.status !== "SUCCESS") {
-                throw new Error(result?.error || "Reupload failed");
-            }
-            await loadBatchReports(batchId);
-            await loadBatchList();
-            setBatchMessage({
-                type: "success",
-                text: `Reupload completed for report ${reportId}`,
-            });
-        } catch (err) {
-            setBatchMessage({
-                type: "error",
-                text: err.message || "Failed to reupload report",
-            });
-        } finally {
-            setCheckingBatchId(null);
-        }
-    };
 
     const resetMessages = () => {
         setError("");
@@ -1590,113 +1582,134 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     };
 
     const sendToTaqeem = async () => {
-        try {
-            resetMessages();
-            setSendingTaqeem(true);
-            setIsPausedMain(false);
+        await executeWithAuth(
+            async (params) => {
+                try {
+                    const { token: authToken } = params;
+                    resetMessages();
+                    setSendingTaqeem(true);
+                    setIsPausedMain(false);
 
-            if (!excelFile) {
-                throw new Error("Please select an Excel file before sending.");
-            }
-            if (!pdfFiles.length) {
-                throw new Error("Please select PDF files before sending.");
-            }
-
-            const mainValidation = await runReportValidationForFile(excelFile, "main");
-            if (mainValidation?.issues?.length) {
-                throw new Error(`Found ${mainValidation.issues.length} validation issue(s) in the Excel file. Review the table below.`);
-            }
-            // ---- Build multipart/form-data ----
-            const formData = new FormData();
-            formData.append("excel", excelFile);
-            pdfFiles.forEach((file) => {
-                formData.append("pdfs", file);
-            });
-
-            const response = await axios.post(
-                "http://localhost:3000/api/upload",
-                formData,
-                {
-                    headers: {
-                        "Content-Type": "multipart/form-data",
-                    },
-                }
-            );
-
-            const payloadFromApi = response.data;
-
-            if (payloadFromApi.status !== "success") {
-                throw new Error(
-                    payloadFromApi.error || "Upload API returned non-success status."
-                );
-            }
-
-            const insertedCount = payloadFromApi.inserted || 0;
-            const docs = payloadFromApi.data || [];
-            const batchIdFromApi = payloadFromApi.batchId || "urgent-upload";
-
-            setBatchId(batchIdFromApi);
-            setCurrentOperationBatchId(batchIdFromApi);
-            setExcelResult({
-                batchId: batchIdFromApi,
-                reports: docs.map((d) => ({
-                    asset_name: d.asset_name,
-                    client_name: d.client_name,
-                    path_pdf: d.pdf_path,
-                    record_id: d._id || d.id || d.record_id || null,
-                })),
-                source: "system",
-            });
-            setDownloadPath(`/elrajhi-upload/export/${batchIdFromApi}`);
-
-            setSuccess(
-                `Upload complete. Inserted ${insertedCount} urgent assets into DB. ${sendToConfirmerMain ? "Sending to Taqeem..." : "Final submission skipped."}`
-            );
-
-            const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, recommendedTabs, false, sendToConfirmerMain);
-
-            if (electronResult?.status === "SUCCESS") {
-                const resultMap = (electronResult.results || []).reduce((acc, res) => {
-                    const key = res.record_id || res.recordId;
-                    const reportId = res.report_id || res.reportId;
-                    if (key && reportId) {
-                        acc[key] = reportId;
+                    if (!excelFile) {
+                        throw new Error("Please select an Excel file before sending.");
                     }
-                    return acc;
-                }, {});
+                    if (!pdfFiles.length) {
+                        throw new Error("Please select PDF files before sending.");
+                    }
 
-                if (Object.keys(resultMap).length || (electronResult.results || []).length) {
-                    setExcelResult((prev) => {
-                        if (!prev) return prev;
-                        const reports = (prev.reports || []).map((r, idx) => {
-                            const key = r.record_id || r.recordId || r._id;
-                            const fallbackFromOrder = (electronResult.results || [])[idx]?.report_id
-                                || (electronResult.results || [])[idx]?.reportId;
-                            const reportId = resultMap[key] || r.report_id || fallbackFromOrder;
-                            return { ...r, report_id: reportId };
-                        });
-                        return { ...prev, reports };
+                    const mainValidation = await runReportValidationForFile(excelFile, "main");
+                    if (mainValidation?.issues?.length) {
+                        throw new Error(`Found ${mainValidation.issues.length} validation issue(s) in the Excel file. Review the table below.`);
+                    }
+                    // ---- Build multipart/form-data ----
+                    const formData = new FormData();
+                    formData.append("excel", excelFile);
+                    pdfFiles.forEach((file) => {
+                        formData.append("pdfs", file);
                     });
+
+                    const response = await axios.post(
+                        "http://localhost:3000/api/upload",
+                        formData,
+                        {
+                            headers: {
+                                "Content-Type": "multipart/form-data",
+                            },
+                        }
+                    );
+
+                    const payloadFromApi = response.data;
+
+                    if (payloadFromApi.status !== "success") {
+                        throw new Error(
+                            payloadFromApi.error || "Upload API returned non-success status."
+                        );
+                    }
+
+                    const insertedCount = payloadFromApi.inserted || 0;
+                    const docs = payloadFromApi.data || [];
+                    const batchIdFromApi = payloadFromApi.batchId || "urgent-upload";
+
+                    setBatchId(batchIdFromApi);
+                    setCurrentOperationBatchId(batchIdFromApi);
+                    setExcelResult({
+                        batchId: batchIdFromApi,
+                        reports: docs.map((d) => ({
+                            asset_name: d.asset_name,
+                            client_name: d.client_name,
+                            path_pdf: d.pdf_path,
+                            record_id: d._id || d.id || d.record_id || null,
+                        })),
+                        source: "system",
+                    });
+                    setDownloadPath(`/elrajhi-upload/export/${batchIdFromApi}`);
+
+                    setSuccess(
+                        `Upload complete. Inserted ${insertedCount} urgent assets into DB. ${sendToConfirmerMain ? "Sending to Taqeem..." : "Final submission skipped."}`
+                    );
+
+                    const electronResult = await window.electronAPI.elrajhiUploadReport(batchIdFromApi, recommendedTabs, false, sendToConfirmerMain);
+
+                    if (electronResult?.status === "SUCCESS") {
+                        const resultMap = (electronResult.results || []).reduce((acc, res) => {
+                            const key = res.record_id || res.recordId;
+                            const reportId = res.report_id || res.reportId;
+                            if (key && reportId) {
+                                acc[key] = reportId;
+                            }
+                            return acc;
+                        }, {});
+
+                        if (Object.keys(resultMap).length || (electronResult.results || []).length) {
+                            setExcelResult((prev) => {
+                                if (!prev) return prev;
+                                const reports = (prev.reports || []).map((r, idx) => {
+                                    const key = r.record_id || r.recordId || r._id;
+                                    const fallbackFromOrder = (electronResult.results || [])[idx]?.report_id
+                                        || (electronResult.results || [])[idx]?.reportId;
+                                    const reportId = resultMap[key] || r.report_id || fallbackFromOrder;
+                                    return { ...r, report_id: reportId };
+                                });
+                                return { ...prev, reports };
+                            });
+                        }
+
+                        setSuccess(
+                            `Upload succeeded. ${insertedCount} assets saved and dispatched to Taqeem tabs${sendToConfirmerMain ? "" : " (final submit skipped)"}.`
+                        );
+                    } else {
+                        const errMsg = electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+                        throw new Error(errMsg);
+                    }
+
+                } catch (err) {
+                    const msg =
+                        err?.response?.data?.message ||
+                        err.message ||
+                        "Failed to send to Taqeem";
+                    setError(msg);
+                    throw err;
+                } finally {
+                    setSendingTaqeem(false);
+                    setCurrentOperationBatchId(null);
                 }
-
-                setSuccess(
-                    `Upload succeeded. ${insertedCount} assets saved and dispatched to Taqeem tabs${sendToConfirmerMain ? "" : " (final submit skipped)"}.`
-                );
-            } else {
-                const errMsg = electronResult?.error || "Upload to Taqeem failed. Make sure you selected a company.";
-                setError(errMsg);
+            },
+            { token, excelFile, pdfFiles, sendToConfirmerMain },
+            {
+                requiredPoints: pdfFiles.length || 0,
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onViewChange,
+                onAuthSuccess: () => {
+                    console.log('Taqeem upload authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Taqeem upload authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed");
+                    }
+                }
             }
-
-        } catch (err) {
-            const msg =
-                err?.response?.data?.message ||
-                err.message ||
-                "Failed to send to Taqeem";
-            setError(msg);
-        } finally {
-            setSendingTaqeem(false);
-            setCurrentOperationBatchId(null);
-        }
+        );
     };
 
     const handleValidationExcelChange = (e) => {
@@ -1927,6 +1940,16 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
         return (
             <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+                {showInsufficientPointsModal && (
+                    <div className="fixed inset-0 z-[9999]">
+                        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
+                            <InsufficientPointsModal
+                                viewChange={onViewChange}
+                                onClose={() => setShowInsufficientPointsModal(false)}
+                            />
+                        </div>
+                    </div>
+                )}
                 <div className="px-4 py-3 border-b flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Table className="w-4 h-4 text-blue-600" />
@@ -2049,6 +2072,35 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                 ? "Approve"
                                 : "Download certificates";
 
+        // Common function for actions that require authentication
+        const executeAuthenticatedAction = async (actionFunc, actionName, requiredPoints = 1) => {
+            return await executeWithAuth(
+                async (params) => {
+                    const { token: authToken } = params;
+                    return await actionFunc(authToken);
+                },
+                { token },
+                {
+                    requiredPoints: requiredPoints,
+                    showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                    onViewChange,
+                    onAuthSuccess: () => {
+                        console.log(`${actionName} authentication successful`);
+                    },
+                    onAuthFailure: (reason) => {
+                        console.warn(`${actionName} authentication failed:`, reason);
+                        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                            setBatchMessage({
+                                type: "error",
+                                text: reason?.message || `Authentication failed for ${actionName.toLowerCase()}`
+                            });
+                        }
+                        throw reason;
+                    }
+                }
+            );
+        };
+
         setBulkActionBusy(action);
         setBatchMessage({
             type: "info",
@@ -2057,55 +2109,44 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
         try {
             if (action === "retry-submit") {
-                const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
-                if (authStatus?.status === "INSUFFICIENT_POINTS") {
-                    setBatchMessage({
-                        type: "error",
-                        text: "Insufficient points to submit reports. Please recharge and try again.",
-                    });
-                    return;
-                }
-                if (!authStatus) {
-                    setBatchMessage({
-                        type: "error",
-                        text: "Taqeem login required. Finish login and choose a company to continue.",
-                    });
-                    return;
-                }
-                if (!window?.electronAPI?.createReportById) {
-                    throw new Error("Desktop integration unavailable. Restart the app.");
-                }
+                await executeAuthenticatedAction(async (authToken) => {
+                    if (!window?.electronAPI?.createReportById) {
+                        throw new Error("Desktop integration unavailable. Restart the app.");
+                    }
 
-                const recordIds = Array.from(
-                    new Set(
-                        selected
-                            .map((report) => report.id || report._id || report.record_id || report.recordId)
-                            .filter((id) => id && String(id).trim() !== "")
-                    )
-                );
+                    const recordIds = Array.from(
+                        new Set(
+                            selected
+                                .map((report) => report.id || report._id || report.record_id || report.recordId)
+                                .filter((id) => id && String(id).trim() !== "")
+                        )
+                    );
 
-                if (recordIds.length === 0) {
-                    throw new Error("No valid report record IDs found in selected reports");
-                }
+                    if (recordIds.length === 0) {
+                        throw new Error("No valid report record IDs found in selected reports");
+                    }
 
-                if (!window?.electronAPI?.retryElrajhiReportRecordIds) {
-                    throw new Error("Desktop integration unavailable. Restart the app.");
-                }
+                    if (!window?.electronAPI?.retryElrajhiReportRecordIds) {
+                        throw new Error("Desktop integration unavailable. Restart the app.");
+                    }
 
-                const result = await window.electronAPI.retryElrajhiReportRecordIds(
-                    recordIds,
-                    recommendedTabs
-                );
-                if (result?.status !== "SUCCESS") {
-                    throw new Error(result?.error || "Retry submit failed");
-                }
+                    const result = await window.electronAPI.retryElrajhiReportRecordIds(
+                        recordIds,
+                        recommendedTabs
+                    );
+                    if (result?.status !== "SUCCESS") {
+                        throw new Error(result?.error || "Retry submit failed");
+                    }
 
-                await loadBatchReports(batchId);
-                await loadBatchList();
+                    await loadBatchReports(batchId);
+                    await loadBatchList();
+
+                    return `Retry submit completed for ${recordIds.length} report(s).`;
+                }, "Retry submit", selected.length);
 
                 setBatchMessage({
                     type: "success",
-                    text: `Retry submit completed for ${recordIds.length} report(s).`,
+                    text: `Retry submit completed for ${selected.length} report(s).`,
                 });
             } else if (action === "delete") {
                 // Extract report IDs for the selected reports
@@ -2133,59 +2174,70 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 });
 
             } else if (action === "retry") {
-                const reportIds = selected
-                    .map((report) => report.report_id || report.reportId)
-                    .filter((id) => id && String(id).trim() !== "");
+                await executeAuthenticatedAction(async (authToken) => {
+                    const reportIds = selected
+                        .map((report) => report.report_id || report.reportId)
+                        .filter((id) => id && String(id).trim() !== "");
 
-                if (reportIds.length === 0) {
-                    throw new Error("No valid report IDs found in selected reports");
-                }
+                    if (reportIds.length === 0) {
+                        throw new Error("No valid report IDs found in selected reports");
+                    }
 
-                // Use the new retryElrajhiReportReportIds function
-                const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, recommendedTabs);
-                if (result?.status !== "SUCCESS") {
-                    throw new Error(result?.error || "Retry multiple reports failed");
-                }
+                    // Use the new retryElrajhiReportReportIds function
+                    const result = await window.electronAPI.retryElrajhiReportReportIds(reportIds, recommendedTabs);
+                    if (result?.status !== "SUCCESS") {
+                        throw new Error(result?.error || "Retry multiple reports failed");
+                    }
 
-                // Refresh data
-                await loadBatchReports(batchId);
-                await loadBatchList();
+                    // Refresh data
+                    await loadBatchReports(batchId);
+                    await loadBatchList();
+
+                    return `Retry completed for ${reportIds.length} report(s)`;
+                }, "Retry", selected.length);
 
                 setBatchMessage({
                     type: "success",
-                    text: `Retry completed for ${reportIds.length} report(s)`,
+                    text: `Retry completed for ${selected.length} report(s)`,
                 });
 
             } else if (action === "send") {
-                const reportIds = selected
-                    .map((report) => report.report_id || report.reportId)
-                    .filter((id) => id && String(id).trim() !== "");
+                await executeAuthenticatedAction(async (authToken) => {
+                    const reportIds = selected
+                        .map((report) => report.report_id || report.reportId)
+                        .filter((id) => id && String(id).trim() !== "");
 
-                if (reportIds.length === 0) {
-                    throw new Error("No valid report IDs found in selected reports");
-                }
+                    if (reportIds.length === 0) {
+                        throw new Error("No valid report IDs found in selected reports");
+                    }
 
-                // Use the new finalizeMultipleReports function
-                const result = await window.electronAPI.finalizeMultipleReports(reportIds);
-                if (result?.status !== "SUCCESS") {
-                    throw new Error(result?.error || "Finalize multiple reports failed");
-                }
+                    // Use the new finalizeMultipleReports function
+                    const result = await window.electronAPI.finalizeMultipleReports(reportIds);
+                    if (result?.status !== "SUCCESS") {
+                        throw new Error(result?.error || "Finalize multiple reports failed");
+                    }
 
-                // Refresh data
-                await loadBatchReports(batchId);
-                await loadBatchList();
+                    // Refresh data
+                    await loadBatchReports(batchId);
+                    await loadBatchList();
+
+                    return `Finalized ${reportIds.length} report(s) successfully`;
+                }, "Finalize", selected.length);
 
                 setBatchMessage({
                     type: "success",
-                    text: `Finalized ${reportIds.length} report(s) successfully`,
+                    text: `Finalized ${selected.length} report(s) successfully`,
                 });
 
             } else if (action === "approve") {
-                setBatchMessage({
-                    type: "error",
-                    text: "Approve via single-report automation is not wired to desktop integration yet.",
-                });
+                // Approve requires authentication
+                await executeAuthenticatedAction(async (authToken) => {
+                    // Implement approve logic here
+                    throw new Error("Approve via single-report automation is not wired to desktop integration yet.");
+                }, "Approve", selected.length);
+
             } else if (action === "certificate") {
+                // Certificate download doesn't require authentication, but we'll wrap it anyway
                 const reportIds = selected
                     .map((report) => report.report_id || report.reportId)
                     .filter((id) => id && String(id).trim() !== "");
@@ -2196,10 +2248,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 await downloadCertificatesForReports(batchId, selected, "selected reports");
             }
         } catch (err) {
-            setBatchMessage({
-                type: "error",
-                text: err?.message || `Failed to ${readableAction.toLowerCase()} selected report(s).`,
-            });
+            // Only show error if it's not an auth failure (those are handled in onAuthFailure)
+            if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+                setBatchMessage({
+                    type: "error",
+                    text: err?.message || `Failed to ${readableAction.toLowerCase()} selected report(s).`,
+                });
+            }
         } finally {
             setBulkActionBusy(null);
             setActionMenuOpen(false);
@@ -3143,33 +3198,59 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                     });
                                                                     return;
                                                                 }
-                                                                setRetryingBatchId(batch.batchId);
-                                                                setCurrentOperationBatchId(batch.batchId);
-                                                                setIsPausedBatchRetry(false);
-                                                                setBatchMessage({
-                                                                    type: "info",
-                                                                    text: `Retrying batch ${batch.batchId}...`
-                                                                });
-                                                                try {
-                                                                    const result = await window.electronAPI.retryElrajhiReport(batch.batchId, recommendedTabs);
-                                                                    if (result?.status !== "SUCCESS") {
-                                                                        throw new Error(result?.error || "Retry failed");
+
+                                                                await executeWithAuth(
+                                                                    async (params) => {
+                                                                        const { token: authToken } = params;
+
+                                                                        setRetryingBatchId(batch.batchId);
+                                                                        setCurrentOperationBatchId(batch.batchId);
+                                                                        setIsPausedBatchRetry(false);
+                                                                        setBatchMessage({
+                                                                            type: "info",
+                                                                            text: `Retrying batch ${batch.batchId}...`
+                                                                        });
+                                                                        try {
+                                                                            const result = await window.electronAPI.retryElrajhiReport(batch.batchId, recommendedTabs);
+                                                                            if (result?.status !== "SUCCESS") {
+                                                                                throw new Error(result?.error || "Retry failed");
+                                                                            }
+                                                                            setBatchMessage({
+                                                                                type: "success",
+                                                                                text: `Retry completed for batch ${batch.batchId}`
+                                                                            });
+                                                                            await loadBatchReports(batch.batchId);
+                                                                            await loadBatchList();
+                                                                        } catch (err) {
+                                                                            setBatchMessage({
+                                                                                type: "error",
+                                                                                text: err.message || "Failed to retry batch"
+                                                                            });
+                                                                            throw err;
+                                                                        } finally {
+                                                                            setRetryingBatchId(null);
+                                                                            setCurrentOperationBatchId(null);
+                                                                        }
+                                                                    },
+                                                                    { token },
+                                                                    {
+                                                                        requiredPoints: 1, // Retry costs 1 point per batch
+                                                                        showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                                                                        onViewChange,
+                                                                        onAuthSuccess: () => {
+                                                                            console.log('Batch retry authentication successful');
+                                                                        },
+                                                                        onAuthFailure: (reason) => {
+                                                                            console.warn('Batch retry authentication failed:', reason);
+                                                                            if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                                                                                setBatchMessage({
+                                                                                    type: "error",
+                                                                                    text: reason?.message || "Authentication failed for batch retry"
+                                                                                });
+                                                                            }
+                                                                        }
                                                                     }
-                                                                    setBatchMessage({
-                                                                        type: "success",
-                                                                        text: `Retry completed for batch ${batch.batchId}`
-                                                                    });
-                                                                    await loadBatchReports(batch.batchId);
-                                                                    await loadBatchList();
-                                                                } catch (err) {
-                                                                    setBatchMessage({
-                                                                        type: "error",
-                                                                        text: err.message || "Failed to retry batch"
-                                                                    });
-                                                                } finally {
-                                                                    setRetryingBatchId(null);
-                                                                    setCurrentOperationBatchId(null);
-                                                                }
+                                                                );
                                                             }}
                                                             disabled={isCheckingThisBatch || isRetryingThisBatch}
                                                             title="Retry batch"
@@ -3459,7 +3540,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             {totalBatchPages > 1 && (() => {
                                 const getPageNumbers = () => {
                                     const pages = [];
-                                    
+
                                     if (totalBatchPages <= 6) {
                                         // Show all pages if 6 or fewer
                                         for (let i = 1; i <= totalBatchPages; i++) {
@@ -3467,13 +3548,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                         }
                                         return pages;
                                     }
-                                    
+
                                     // Always show first 3 pages
                                     pages.push(1, 2, 3);
-                                    
+
                                     const lastThree = [totalBatchPages - 2, totalBatchPages - 1, totalBatchPages];
                                     const lastThreeStart = totalBatchPages - 2;
-                                    
+
                                     // If current page is in first 3 or overlaps with last 3
                                     if (currentPageSafe <= 3) {
                                         // Show: 1, 2, 3, 4, 5, ..., last 3
@@ -3490,7 +3571,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                         // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
                                         const showBefore = currentPageSafe - 1;
                                         const showAfter = currentPageSafe + 1;
-                                        
+
                                         // Check if we need ellipsis before current page
                                         if (showBefore > 4) {
                                             pages.push('ellipsis');
@@ -3498,9 +3579,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                         } else if (showBefore > 3) {
                                             pages.push(showBefore);
                                         }
-                                        
+
                                         pages.push(currentPageSafe);
-                                        
+
                                         // Check if we need ellipsis after current page
                                         if (showAfter < lastThreeStart - 1) {
                                             pages.push(showAfter);
@@ -3509,18 +3590,18 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                             }
                                         }
                                     }
-                                    
+
                                     // Always show last 3 pages (avoid duplicates)
                                     lastThree.forEach(page => {
                                         if (!pages.includes(page)) {
                                             pages.push(page);
                                         }
                                     });
-                                    
+
                                     // Clean up and ensure proper order
                                     const cleaned = [];
                                     let prevNum = 0;
-                                    
+
                                     for (let i = 0; i < pages.length; i++) {
                                         const item = pages[i];
                                         if (item === 'ellipsis') {
@@ -3537,12 +3618,12 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                             }
                                         }
                                     }
-                                    
+
                                     return cleaned;
                                 };
-                                
+
                                 const pageNumbers = getPageNumbers();
-                                
+
                                 return (
                                     <div className="flex items-center gap-2">
                                         <button

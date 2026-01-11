@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useRam } from "../context/RAMContext";
 import { useSession } from "../context/SessionContext";
+import { useAuthAction } from "../hooks/useAuthAction"; // Add this import
 import EditAssetModal from "./EditAssetModal";
 
 const ReportsTable = () => {
@@ -45,6 +46,7 @@ const ReportsTable = () => {
     const [allReports, setAllReports] = useState([]);
     const [dropdownOpen, setDropdownOpen] = useState(null);
     const [highlightReportId, setHighlightReportId] = useState(null);
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false); // Add this state
 
     const [loadingActions, setLoadingActions] = useState({
         fullCheck: {},
@@ -54,6 +56,7 @@ const ReportsTable = () => {
     });
 
     const { token } = useSession();
+    const { executeWithAuth } = useAuthAction(); // Add this hook
 
     const { ramInfo } = useRam();
     const tabsNum = ramInfo?.recommendedTabs || 1;
@@ -78,84 +81,176 @@ const ReportsTable = () => {
         return loadingActions[actionType]?.[reportId] || false;
     };
 
-    const handleFullCheck = async (reportId) => {
+    // Helper function to count pending assets for retry action
+    const getPendingAssetsCount = (report) => {
+        const assetData = getAssetData(report);
+        return assetData.filter(asset => asset.submitState !== 1).length;
+    };
+
+    const handleFullCheck = async (reportId, report) => {
         if (isActionLoading('fullCheck', reportId)) return;
 
-        setActionLoading('fullCheck', reportId, true);
-        setDropdownOpen(null);
-        try {
-            await window.electronAPI?.fullCheck?.(reportId, tabsNum);
-            setTimeout(() => {
-                fetchAllReports();
-            }, 1000);
-        } catch (error) {
-            console.error('Full check error:', error);
-            setError('Failed to perform full check');
-        } finally {
-            setTimeout(() => {
-                setActionLoading('fullCheck', reportId, false);
-            }, 500);
-        }
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken, reportId: id, tabsNum: tabs } = params;
+
+                setActionLoading('fullCheck', reportId, true);
+                setDropdownOpen(null);
+                try {
+                    await window.electronAPI?.fullCheck?.(id, tabs);
+                    setTimeout(() => {
+                        fetchAllReports();
+                    }, 1000);
+                } catch (error) {
+                    console.error('Full check error:', error);
+                    setError('Failed to perform full check');
+                    throw error;
+                } finally {
+                    setTimeout(() => {
+                        setActionLoading('fullCheck', reportId, false);
+                    }, 500);
+                }
+            },
+            { token, reportId, tabsNum },
+            {
+                requiredPoints: 1, // Full check costs 1 point
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onAuthSuccess: () => {
+                    console.log('Full check authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Full check authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed for full check");
+                    }
+                }
+            }
+        );
     };
 
-    const handleHalfCheck = async (reportId) => {
+    const handleHalfCheck = async (reportId, report) => {
         if (isActionLoading('halfCheck', reportId)) return;
 
-        setActionLoading('halfCheck', reportId, true);
-        setDropdownOpen(null);
-        try {
-            await window.electronAPI?.halfCheck?.(reportId, tabsNum);
-            setTimeout(() => {
-                fetchAllReports();
-            }, 1000);
-        } catch (error) {
-            console.error('Half check error:', error);
-            setError('Failed to perform half check');
-        } finally {
-            setTimeout(() => {
-                setActionLoading('halfCheck', reportId, false);
-            }, 500);
-        }
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken, reportId: id, tabsNum: tabs } = params;
+
+                setActionLoading('halfCheck', reportId, true);
+                setDropdownOpen(null);
+                try {
+                    await window.electronAPI?.halfCheck?.(id, tabs);
+                    setTimeout(() => {
+                        fetchAllReports();
+                    }, 1000);
+                } catch (error) {
+                    console.error('Half check error:', error);
+                    setError('Failed to perform half check');
+                    throw error;
+                } finally {
+                    setTimeout(() => {
+                        setActionLoading('halfCheck', reportId, false);
+                    }, 500);
+                }
+            },
+            { token, reportId, tabsNum },
+            {
+                requiredPoints: 1, // Half check costs 1 point
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onAuthSuccess: () => {
+                    console.log('Half check authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Half check authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed for half check");
+                    }
+                }
+            }
+        );
     };
 
-    const handleRetry = async (reportId) => {
+    const handleRetry = async (reportId, report) => {
         if (isActionLoading('retry', reportId)) return;
 
-        setActionLoading('retry', reportId, true);
-        setDropdownOpen(null);
-        try {
-            await window.electronAPI?.macroFillRetry?.(reportId, tabsNum);
-            setTimeout(() => {
-                fetchAllReports();
-            }, 1000);
-        } catch (error) {
-            console.error('Retry error:', error);
-            setError('Failed to retry macro fill');
-        } finally {
-            setTimeout(() => {
-                setActionLoading('retry', reportId, false);
-            }, 500);
-        }
+        const pendingAssetsCount = getPendingAssetsCount(report);
+
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken, reportId: id, tabsNum: tabs } = params;
+
+                setActionLoading('retry', reportId, true);
+                setDropdownOpen(null);
+                try {
+                    await window.electronAPI?.macroFillRetry?.(id, tabs);
+                    setTimeout(() => {
+                        fetchAllReports();
+                    }, 1000);
+                } catch (error) {
+                    console.error('Retry error:', error);
+                    setError('Failed to retry macro fill');
+                    throw error;
+                } finally {
+                    setTimeout(() => {
+                        setActionLoading('retry', reportId, false);
+                    }, 500);
+                }
+            },
+            { token, reportId, tabsNum },
+            {
+                requiredPoints: pendingAssetsCount, // Retry costs pending assets count
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onAuthSuccess: () => {
+                    console.log('Retry authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Retry authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed for retry");
+                    }
+                }
+            }
+        );
     };
 
-    const handleSend = async (reportId) => {
+    const handleSend = async (reportId, report) => {
         if (isActionLoading('send', reportId)) return;
 
-        setActionLoading('send', reportId, true);
-        setDropdownOpen(null);
-        try {
-            await window.electronAPI?.finalizeMultipleReports?.([reportId]);
-            setTimeout(() => {
-                fetchAllReports();
-            }, 1000);
-        } catch (error) {
-            console.error('Send error:', error);
-            setError('Failed to send report');
-        } finally {
-            setTimeout(() => {
-                setActionLoading('send', reportId, false);
-            }, 500);
-        }
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken, reportId: id } = params;
+
+                setActionLoading('send', reportId, true);
+                setDropdownOpen(null);
+                try {
+                    await window.electronAPI?.finalizeMultipleReports?.([id]);
+                    setTimeout(() => {
+                        fetchAllReports();
+                    }, 1000);
+                } catch (error) {
+                    console.error('Send error:', error);
+                    setError('Failed to send report');
+                    throw error;
+                } finally {
+                    setTimeout(() => {
+                        setActionLoading('send', reportId, false);
+                    }, 500);
+                }
+            },
+            { token, reportId },
+            {
+                requiredPoints: 1, // Send costs 1 point
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onAuthSuccess: () => {
+                    console.log('Send authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Send authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed for send");
+                    }
+                }
+            }
+        );
     };
 
     const fetchAllReports = async () => {
@@ -335,6 +430,9 @@ const ReportsTable = () => {
     };
 
     const getReportStatus = (report) => {
+        const assetData = getAssetData(report);
+        if (allCompleted) return capitalizeStatus("completed");
+        const allCompleted = assetData.every(asset => asset.submitState === 1);
         if (report.report_status) {
             return capitalizeStatus(report.report_status);
         }
@@ -343,13 +441,11 @@ const ReportsTable = () => {
             return capitalizeStatus(report.status);
         }
 
-        const assetData = getAssetData(report);
+
         if (assetData.length === 0) return capitalizeStatus("draft");
 
-        const allCompleted = assetData.every(asset => asset.submitState === 1);
         const anyCompleted = assetData.some(asset => asset.submitState === 1);
 
-        if (allCompleted) return capitalizeStatus("completed");
         if (anyCompleted) return capitalizeStatus("in progress");
         return capitalizeStatus("pending");
     };
@@ -605,7 +701,7 @@ const ReportsTable = () => {
                                                                         <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 z-10 overflow-hidden">
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleFullCheck(report.report_id)}
+                                                                                onClick={() => handleFullCheck(report.report_id, report)}
                                                                                 disabled={isFullCheckLoading}
                                                                                 className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-emerald-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
                                                                             >
@@ -619,7 +715,7 @@ const ReportsTable = () => {
 
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleHalfCheck(report.report_id)}
+                                                                                onClick={() => handleHalfCheck(report.report_id, report)}
                                                                                 disabled={isHalfCheckLoading}
                                                                                 className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-amber-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
                                                                             >
@@ -633,7 +729,7 @@ const ReportsTable = () => {
 
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleRetry(report.report_id)}
+                                                                                onClick={() => handleRetry(report.report_id, report)}
                                                                                 disabled={isRetryLoading}
                                                                                 className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-blue-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
                                                                             >
@@ -647,7 +743,7 @@ const ReportsTable = () => {
 
                                                                             <button
                                                                                 type="button"
-                                                                                onClick={() => handleSend(report.report_id)}
+                                                                                onClick={() => handleSend(report.report_id, report)}
                                                                                 disabled={isSendLoading}
                                                                                 className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-indigo-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                             >

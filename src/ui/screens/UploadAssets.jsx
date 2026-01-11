@@ -3,6 +3,7 @@ import { useRam } from "../context/RAMContext";
 import { useNavStatus } from "../context/NavStatusContext";
 import { useSession } from "../context/SessionContext";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
+import { useAuthAction } from "../hooks/useAuthAction";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
     Upload, AlertTriangle, Table, FileText, X, CheckCircle,
@@ -23,6 +24,7 @@ const UploadAssets = ({ onViewChange }) => {
     const [reportId, setReportId] = useState("");
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
+    const { executeWithAuth } = useAuthAction();
     let { token, login } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
@@ -266,116 +268,164 @@ const UploadAssets = ({ onViewChange }) => {
     };
 
     const handleUploadToDB = async () => {
+        // Validation
+        if (!reportId.trim()) {
+            setError("Report ID could not be extracted from file name. Please check the file name.");
+            return;
+        }
+
+        if (!previewData || previewData.length === 0) {
+            setError("No data to upload");
+            return;
+        }
+
+        setError("");
+        setSuccess("");
+        setUploadLoading(true);
+
         try {
-            setError("");
-            setSuccess("");
-            setUploadLoading(true);
+            // Use auth wrapper
+            const result = await executeWithAuth(
+                // Action function
+                async (params) => {
+                    const {
+                        token: authToken,
+                        previewData,
+                        reportId,
+                        region,
+                        city,
+                        inspectionDate,
+                        ownerName
+                    } = params;
 
-            if (!reportId.trim()) {
-                setError("Report ID could not be extracted from file name. Please check the file name.");
-                return;
-            }
+                    console.log("[UploadAssets] Uploading to backend with token:", !!authToken);
 
-            if (!previewData || previewData.length === 0) {
-                setError("No data to upload");
-                return;
-            }
+                    // 1. Upload report to backend
+                    const uploadResult = await window.electronAPI.apiRequest(
+                        "POST",
+                        "/api/report/createReportWithCommonFields",
+                        {
+                            reportId: reportId.trim(),
+                            reportData: previewData,
+                            commonFields: {
+                                region: region || undefined,
+                                city: city || undefined,
+                                inspectionDate: inspectionDate || undefined,
+                                ownerName: ownerName || undefined
+                            }
+                        },
+                        {
+                            Authorization: `Bearer ${authToken}`
+                        }
+                    );
 
-            console.log("[UploadAssets] Uploading to backend:", {
-                reportId,
-                commonFields: { region, city, inspectionDate, ownerName },
-                recordCount: previewData.length,
-                data: previewData
-            });
+                    console.log("[UploadAssets] Upload response:", uploadResult);
 
-            const isTaqeemLoggedIn = taqeemStatus?.state === "success";
-            const authStatus = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, previewData.length || 0, login, setTaqeemStatus);
-
-            if (authStatus?.status === "INSUFFICIENT_POINTS") {
-                setShowInsufficientPointsModal(true);
-                return;
-            }
-
-            if (authStatus?.status === "LOGIN_REQUIRED") {
-                return;
-            }
-
-            if (authStatus?.token) {
-                token = authStatus.token
-            }
-
-            const result = await window.electronAPI.apiRequest(
-                "POST",
-                "/api/report/createReportWithCommonFields",
-                {
-                    reportId: reportId.trim(),
-                    reportData: previewData,
-                    commonFields: {
-                        region: region || undefined,
-                        city: city || undefined,
-                        inspectionDate: inspectionDate || undefined,
-                        ownerName: ownerName || undefined
+                    if (!uploadResult.success) {
+                        throw new Error(uploadResult.message || "Failed to create report");
                     }
-                },
-                {
-                    Authorization: `Bearer ${token}`
-                }
-            );
 
-            console.log("[UploadAssets] Upload response:", result);
-
-            if (result.success) {
-                const successMessage = `✅ Successfully created report "${reportId}" with ${previewData.length} assets`;
-
-                const commonFieldsInfo = [];
-                if (inspectionDate) commonFieldsInfo.push(`Inspection Date: ${inspectionDate}`);
-                if (region) commonFieldsInfo.push(`Region: ${region}`);
-                if (city) commonFieldsInfo.push(`City: ${city}`);
-                if (ownerName) commonFieldsInfo.push(`Owner: ${ownerName}`);
-
-                if (commonFieldsInfo.length > 0) {
-                    setSuccess(`${successMessage}\n\nCommon fields applied:\n• ${commonFieldsInfo.join('\n• ')}`);
-                } else {
-                    setSuccess(successMessage);
-                }
-
-                try {
+                    // 2. Complete the flow (automation)
                     const tabsNum = getTabsCount();
                     console.log("[UploadAssets] Calling completeFlow for report:", reportId, "tabsNum:", tabsNum);
+
                     const flowResult = await window.electronAPI.completeFlow(reportId.trim(), tabsNum);
                     console.log("[UploadAssets] completeFlow result:", flowResult);
 
-                    if (flowResult?.status === "SUCCESS") {
-                        setSuccess(prev => prev + `\n\n✅ Flow completed successfully`);
+                    if (flowResult?.status !== "SUCCESS") {
+                        throw new Error(`Flow completion failed: ${flowResult?.message || 'Unknown error'}`);
+                    }
 
-                        const completedAssets = flowResult?.summary?.complete_macros
-                        console.log("[UploadAssets] Completed assets:", flowResult?.summary?.complete_macros);
-                        if (completedAssets) {
-                            try {
-                                await window.electronAPI.apiRequest(
-                                    "PATCH",
-                                    `/api/packages/deduct`,
-                                    { amount: completedAssets },
-                                    { Authorization: `Bearer ${token}` }
-                                );
+                    // 3. Deduct points if assets were completed
+                    const completedAssets = flowResult?.summary?.complete_macros;
+                    console.log("[UploadAssets] Completed assets:", completedAssets);
 
-                                console.log("[UploadAssets] Deducting assets:", completedAssets);
-                            } catch (err) {
-                                console.error("[UploadAssets] Error deducting assets:", err);
-                            }
+                    if (completedAssets && completedAssets > 0) {
+                        try {
+                            await window.electronAPI.apiRequest(
+                                "PATCH",
+                                `/api/packages/deduct`,
+                                { amount: completedAssets },
+                                { Authorization: `Bearer ${authToken}` }
+                            );
+                            console.log("[UploadAssets] Deducted assets:", completedAssets);
+                        } catch (deductError) {
+                            console.error("[UploadAssets] Error deducting assets:", deductError);
+                            // Don't throw here - deduction failure shouldn't fail the whole upload
                         }
                     }
-                } catch (flowError) {
-                    console.error("[UploadAssets] Error calling completeFlow:", flowError);
+
+                    // Build success message
+                    const successMessage = `✅ Successfully created report "${reportId}" with ${previewData.length} assets`;
+
+                    // Add common fields info if any were set
+                    const commonFieldsInfo = [];
+                    if (inspectionDate) commonFieldsInfo.push(`Inspection Date: ${inspectionDate}`);
+                    if (region) commonFieldsInfo.push(`Region: ${region}`);
+                    if (city) commonFieldsInfo.push(`City: ${city}`);
+                    if (ownerName) commonFieldsInfo.push(`Owner: ${ownerName}`);
+
+                    let fullMessage = successMessage;
+                    if (commonFieldsInfo.length > 0) {
+                        fullMessage += `\n\nCommon fields applied:\n• ${commonFieldsInfo.join('\n• ')}`;
+                    }
+
+                    if (flowResult?.summary) {
+                        fullMessage += `\n\n✅ Flow completed: ${completedAssets || 0} assets processed`;
+                    }
+
+                    return {
+                        success: true,
+                        message: fullMessage,
+                        reportId: reportId.trim(),
+                        completedAssets: completedAssets || 0
+                    };
+                },
+                // Action parameters
+                {
+                    token,
+                    previewData,
+                    reportId: reportId.trim(),
+                    region,
+                    city,
+                    inspectionDate,
+                    ownerName
+                },
+                // Auth options
+                {
+                    requiredPoints: previewData.length || 0,
+                    showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                    onViewChange,
+                    onAuthSuccess: () => {
+                        console.log("[UploadAssets] Authentication successful");
+                    },
+                    onAuthFailure: (reason) => {
+                        console.warn("[UploadAssets] Authentication failed:", reason);
+                        // Only show error if it's not one of the handled auth cases
+                        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                            setError(reason?.message || "Authentication failed");
+                        }
+                    }
                 }
+            );
 
-            } else {
-                setError(result.message || "Failed to create report");
+            // Handle the result
+            if (result?.success) {
+                setSuccess(result.message);
+
+                // Clear form if upload was successful
+                if (result.completedAssets > 0) {
+                    setTimeout(() => {
+                        removeFile();
+                    }, 2000);
+                }
+            } else if (!result && error === "") {
+                // Auth failed but error already handled in onAuthFailure
+                console.log("[UploadAssets] Upload cancelled due to auth failure");
             }
-
-        } catch (err) {
-            console.error("[UploadAssets] error uploading to DB:", err);
-            setError(err?.message || "Failed to upload data to database");
+        } catch (error) {
+            console.error("[UploadAssets] Error in handleUploadToDB:", error);
+            setError(error?.message || "An unexpected error occurred");
         } finally {
             setUploadLoading(false);
         }
