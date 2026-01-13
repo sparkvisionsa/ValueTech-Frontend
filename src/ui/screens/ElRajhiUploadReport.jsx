@@ -441,6 +441,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     } = useElrajhiUpload();
 
     const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
+    const [batchActionDropdown, setBatchActionDropdown] = useState({});
+    const [batchActionLoading, setBatchActionLoading] = useState({});
+    const [selectedBulkActions, setSelectedBulkActions] = useState({});
     const { executeWithAuth } = useAuthAction();
 
     const refreshAfterEdit = async (batchId) => {
@@ -510,6 +513,104 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [isPausedBatchCheck, setIsPausedBatchCheck] = useState(false);
     const [isPausedBatchRetry, setIsPausedBatchRetry] = useState(false);
     const [currentOperationBatchId, setCurrentOperationBatchId] = useState(null);
+
+    const handleBatchAction = async (batchId, action) => {
+        const batch = batchList.find(b => b.batchId === batchId);
+        if (!batch) return;
+
+        setBatchActionLoading(prev => ({ ...prev, [batchId]: true }));
+
+        try {
+            switch (action) {
+                case 'check-status':
+                    await runBatchCheck(batchId);
+                    break;
+
+                case 'download-certificates':
+                    await handleBatchDownloadCertificates(batchId);
+                    break;
+
+                case 'retry-batch':
+                    if (!window?.electronAPI?.retryElrajhiReport) {
+                        throw new Error("Desktop integration unavailable. Restart the app.");
+                    }
+
+                    await executeWithAuth(
+                        async (params) => {
+                            const { token: authToken } = params;
+
+                            setRetryingBatchId(batchId);
+                            setCurrentOperationBatchId(batchId);
+                            setIsPausedBatchRetry(false);
+                            setBatchMessage({
+                                type: "info",
+                                text: `Retrying batch ${batchId}...`
+                            });
+
+                            try {
+                                const result = await window.electronAPI.retryElrajhiReport(batchId, recommendedTabs);
+                                if (result?.status !== "SUCCESS") {
+                                    throw new Error(result?.error || "Retry failed");
+                                }
+                                setBatchMessage({
+                                    type: "success",
+                                    text: `Retry completed for batch ${batchId}`
+                                });
+                                await loadBatchReports(batchId);
+                                await loadBatchList();
+                            } catch (err) {
+                                setBatchMessage({
+                                    type: "error",
+                                    text: err.message || "Failed to retry batch"
+                                });
+                                throw err;
+                            } finally {
+                                setRetryingBatchId(null);
+                                setCurrentOperationBatchId(null);
+                            }
+                        },
+                        { token },
+                        {
+                            requiredPoints: 1,
+                            showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                            onViewChange,
+                            onAuthSuccess: () => {
+                                console.log('Batch retry authentication successful');
+                            },
+                            onAuthFailure: (reason) => {
+                                console.warn('Batch retry authentication failed:', reason);
+                                if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                                    setBatchMessage({
+                                        type: "error",
+                                        text: reason?.message || "Authentication failed for batch retry"
+                                    });
+                                }
+                            }
+                        }
+                    );
+                    break;
+
+                default:
+                    console.warn(`Unknown batch action: ${action}`);
+            }
+        } catch (err) {
+            console.error(`Batch action ${action} failed:`, err);
+            if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+                setBatchMessage({
+                    type: "error",
+                    text: err?.message || `Failed to execute ${action} for batch ${batchId}`
+                });
+            }
+        } finally {
+            setBatchActionLoading(prev => ({ ...prev, [batchId]: false }));
+            // Clear the dropdown selection
+            setBatchActionDropdown(prev => {
+                const next = { ...prev };
+                delete next[batchId];
+                return next;
+            });
+        }
+    };
 
     const { ramInfo } = useRam();
 
@@ -2395,6 +2496,76 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     </div>
                 </div>
 
+                <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 mb-2 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-2 shadow-sm">
+                    <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
+                    <div className="relative flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handleSubmitElrajhi}
+                                disabled={sendingValidation || !canSendReports}
+                                className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                                {sendingValidation ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Send className="w-4 h-4" />
+                                )}
+                                Send all reports
+                            </button>
+                            {sendingValidation && (
+                                <ControlButtons
+                                    isPaused={isPausedValidation}
+                                    isRunning={sendingValidation}
+                                    onPause={handlePauseValidation}
+                                    onResume={handleResumeValidation}
+                                    onStop={handleStopValidation}
+                                />
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleSubmitPdfOnly}
+                                disabled={pdfOnlySending || !canSendPdfOnly}
+                                className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-900 text-white text-[10px] font-semibold hover:bg-blue-800 disabled:opacity-50"
+                            >
+                                {pdfOnlySending ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Files className="w-4 h-4" />
+                                )}
+                                Send only reports with PDFs
+                            </button>
+                            {pdfOnlySending && (
+                                <ControlButtons
+                                    isPaused={isPausedPdfOnly}
+                                    isRunning={pdfOnlySending}
+                                    onPause={handlePausePdfOnly}
+                                    onResume={handleResumePdfOnly}
+                                    onStop={handleStopPdfOnly}
+                                />
+                            )}
+
+                            <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900 flex min-w-[240px]">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
+                                    checked={sendToConfirmerValidation}
+                                    onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
+                                />
+                                <span>
+                                    Do you want to send the report to the confirmer? / هل تريد ارسال التقارير الي المعتمد مباشرة ؟
+                                </span>
+                            </label>
+                        </div>
+                        {validationReportIssues.length ? (
+                            <div className="flex items-center gap-2 text-[10px] text-rose-600">
+                                <AlertTriangle className="w-4 h-4" />
+                                Resolve the report info issues above to enable sending.
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+
                 <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
                     <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900 px-2 py-2 text-white">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2695,74 +2866,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     </div>
                 </div>
             </div>
-            <div className="relative overflow-hidden rounded-2xl border border-blue-900/15 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/40 p-2 shadow-sm">
-                <div className="absolute -right-10 -top-8 h-24 w-24 rounded-full bg-blue-900/10 blur-2xl" />
-                <div className="relative flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-blue-900/15 bg-white/80 text-[10px] font-semibold text-blue-900 flex-1 min-w-[240px]">
-                            <input
-                                type="checkbox"
-                                className="h-4 w-4 text-blue-900 border-blue-500 focus:ring-blue-600"
-                                checked={sendToConfirmerValidation}
-                                onChange={(e) => setSendToConfirmerValidation(e.target.checked)}
-                            />
-                            <span>
-                                Do you want to send the report to the confirmer? / هل تريد ارسال التقارير الي المعتمد مباشرة ؟
-                            </span>
-                        </label>
-                        <button
-                            type="button"
-                            onClick={handleSubmitElrajhi}
-                            disabled={sendingValidation || !canSendReports}
-                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                            {sendingValidation ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Send className="w-4 h-4" />
-                            )}
-                            Send all reports
-                        </button>
-                        {sendingValidation && (
-                            <ControlButtons
-                                isPaused={isPausedValidation}
-                                isRunning={sendingValidation}
-                                onPause={handlePauseValidation}
-                                onResume={handleResumeValidation}
-                                onStop={handleStopValidation}
-                            />
-                        )}
-                        <button
-                            type="button"
-                            onClick={handleSubmitPdfOnly}
-                            disabled={pdfOnlySending || !canSendPdfOnly}
-                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-blue-900 text-white text-[10px] font-semibold hover:bg-blue-800 disabled:opacity-50"
-                        >
-                            {pdfOnlySending ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Files className="w-4 h-4" />
-                            )}
-                            Send only reports with PDFs
-                        </button>
-                        {pdfOnlySending && (
-                            <ControlButtons
-                                isPaused={isPausedPdfOnly}
-                                isRunning={pdfOnlySending}
-                                onPause={handlePausePdfOnly}
-                                onResume={handleResumePdfOnly}
-                                onStop={handleStopPdfOnly}
-                            />
-                        )}
-                    </div>
-                    {validationReportIssues.length ? (
-                        <div className="flex items-center gap-2 text-[10px] text-rose-600">
-                            <AlertTriangle className="w-4 h-4" />
-                            Resolve the report info issues above to enable sending.
-                        </div>
-                    ) : null}
-                </div>
-            </div>
+
         </div>
     );
 
@@ -3158,111 +3262,52 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                     </div>
                                                 </td>
                                                 <td className="px-1.5 py-0.5 text-right">
-                                                    <div className="flex gap-1.5 justify-end flex-wrap">
+                                                    <div className="flex gap-1.5 justify-end items-center">
+                                                        {/* Batch Actions Dropdown */}
+                                                        <div className="relative">
+                                                            <select
+                                                                value={batchActionDropdown[batch.batchId] || ""}
+                                                                onChange={(e) => {
+                                                                    const action = e.target.value;
+                                                                    setBatchActionDropdown(prev => ({
+                                                                        ...prev,
+                                                                        [batch.batchId]: action
+                                                                    }));
+                                                                }}
+                                                                disabled={batchActionLoading[batch.batchId] || isCheckingThisBatch || isRetryingThisBatch}
+                                                                className="px-2 py-1 border border-gray-300 rounded-md text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer appearance-none bg-white min-w-[130px]"
+                                                            >
+                                                                <option value="">Select Action</option>
+                                                                <option value="check-status">Check Status</option>
+                                                                <option value="download-certificates">Download Certificates</option>
+                                                                <option value="retry-batch">Retry Batch</option>
+                                                            </select>
+
+                                                            {/* Dropdown arrow */}
+                                                            <div className="absolute inset-y-0 right-0 flex items-center pr-1 pointer-events-none">
+                                                                <ChevronDown className="w-3 h-3 text-gray-400" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Go Button */}
                                                         <button
-                                                            type="button"
-                                                            onClick={() => runBatchCheck(batch.batchId)}
-                                                            disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            title="Check status"
-                                                            aria-label="Check status"
-                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                                                        >
-                                                            {isCheckingThisBatch ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                <RefreshCw className="w-4 h-4" />
-                                                            )}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleBatchDownloadCertificates(batch.batchId)}
-                                                            disabled={isCheckingThisBatch || isRetryingThisBatch || downloadingCertificatesBatchId === batch.batchId}
-                                                            title="Download registration certificates"
-                                                            aria-label="Download registration certificates"
-                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                                                        >
-                                                            {downloadingCertificatesBatchId === batch.batchId ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                            ) : (
-                                                                <Download className="w-4 h-4" />
-                                                            )}
-                                                        </button>
-                                                        {/* Removed pause buttons from check batch button */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={async () => {
-                                                                if (!window?.electronAPI?.retryElrajhiReport) {
-                                                                    setBatchMessage({
-                                                                        type: "error",
-                                                                        text: "Desktop integration unavailable. Restart the app.",
-                                                                    });
-                                                                    return;
+                                                            onClick={() => {
+                                                                const action = batchActionDropdown[batch.batchId];
+                                                                if (action) {
+                                                                    handleBatchAction(batch.batchId, action);
                                                                 }
-
-                                                                await executeWithAuth(
-                                                                    async (params) => {
-                                                                        const { token: authToken } = params;
-
-                                                                        setRetryingBatchId(batch.batchId);
-                                                                        setCurrentOperationBatchId(batch.batchId);
-                                                                        setIsPausedBatchRetry(false);
-                                                                        setBatchMessage({
-                                                                            type: "info",
-                                                                            text: `Retrying batch ${batch.batchId}...`
-                                                                        });
-                                                                        try {
-                                                                            const result = await window.electronAPI.retryElrajhiReport(batch.batchId, recommendedTabs);
-                                                                            if (result?.status !== "SUCCESS") {
-                                                                                throw new Error(result?.error || "Retry failed");
-                                                                            }
-                                                                            setBatchMessage({
-                                                                                type: "success",
-                                                                                text: `Retry completed for batch ${batch.batchId}`
-                                                                            });
-                                                                            await loadBatchReports(batch.batchId);
-                                                                            await loadBatchList();
-                                                                        } catch (err) {
-                                                                            setBatchMessage({
-                                                                                type: "error",
-                                                                                text: err.message || "Failed to retry batch"
-                                                                            });
-                                                                            throw err;
-                                                                        } finally {
-                                                                            setRetryingBatchId(null);
-                                                                            setCurrentOperationBatchId(null);
-                                                                        }
-                                                                    },
-                                                                    { token },
-                                                                    {
-                                                                        requiredPoints: 1, // Retry costs 1 point per batch
-                                                                        showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
-                                                                        onViewChange,
-                                                                        onAuthSuccess: () => {
-                                                                            console.log('Batch retry authentication successful');
-                                                                        },
-                                                                        onAuthFailure: (reason) => {
-                                                                            console.warn('Batch retry authentication failed:', reason);
-                                                                            if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
-                                                                                setBatchMessage({
-                                                                                    type: "error",
-                                                                                    text: reason?.message || "Authentication failed for batch retry"
-                                                                                });
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                );
                                                             }}
-                                                            disabled={isCheckingThisBatch || isRetryingThisBatch}
-                                                            title="Retry batch"
-                                                            aria-label="Retry batch"
-                                                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60"
+                                                            disabled={!batchActionDropdown[batch.batchId] || batchActionLoading[batch.batchId] || isCheckingThisBatch || isRetryingThisBatch}
+                                                            className="px-2 py-1 bg-blue-600 text-white text-[10px] font-semibold rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-[40px]"
                                                         >
-                                                            {isRetryingThisBatch ? (
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                            {batchActionLoading[batch.batchId] ? (
+                                                                <Loader2 className="w-3 h-3 animate-spin mx-auto" />
                                                             ) : (
-                                                                <RotateCw className="w-4 h-4" />
+                                                                "Go"
                                                             )}
                                                         </button>
+
+                                                        {/* Control buttons for retry action */}
                                                         {isRetryingThisBatch && (
                                                             <ControlButtons
                                                                 isPaused={isPausedBatchRetry}
@@ -3312,76 +3357,57 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                             />
                                                                                             <span className="text-[10px] text-white/90">Select all</span>
                                                                                         </div>
-                                                                                        <div className="relative">
+                                                                                        <div className="flex items-center gap-1">
+                                                                                            {/* Bulk Actions Dropdown */}
+                                                                                            <div className="relative">
+                                                                                                <select
+                                                                                                    value={selectedBulkActions[batch.batchId] || ""}
+                                                                                                    onChange={(e) => {
+                                                                                                        setSelectedBulkActions(prev => ({
+                                                                                                            ...prev,
+                                                                                                            [batch.batchId]: e.target.value
+                                                                                                        }));
+                                                                                                    }}
+                                                                                                    disabled={bulkActionBusy}
+                                                                                                    className="px-2 py-1 text-black border border-gray-300 rounded-md text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer appearance-none bg-white min-w-[140px]"
+                                                                                                >
+                                                                                                    <option value="">Select Bulk Action</option>
+                                                                                                    <option value="retry-submit">Retry Submit</option>
+                                                                                                    <option value="delete">Delete Reports</option>
+                                                                                                    <option value="retry">Retry</option>
+                                                                                                    <option value="send">Send to Approver</option>
+                                                                                                    <option value="approve">Approve</option>
+                                                                                                    <option value="certificate">Download Certificate</option>
+                                                                                                </select>
+
+                                                                                                {/* Dropdown arrow */}
+                                                                                                <div className="absolute inset-y-0 right-0 flex items-center pr-1 pointer-events-none">
+                                                                                                    <ChevronDown className="w-3 h-3 text-gray-400" />
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Go Button for Bulk Actions */}
                                                                                             <button
-                                                                                                type="button"
                                                                                                 onClick={() => {
-                                                                                                    setActionMenuBatch(
-                                                                                                        actionMenuBatch === batch.batchId ? null : batch.batchId
-                                                                                                    );
-                                                                                                    setActionMenuOpen(actionMenuBatch !== batch.batchId ? true : !actionMenuOpen);
+                                                                                                    const selectedAction = selectedBulkActions[batch.batchId];
+                                                                                                    if (selectedAction) {
+                                                                                                        handleBulkAction(selectedAction, batch.batchId, batchReports[batch.batchId] || []);
+                                                                                                        // Clear the selection after action is triggered
+                                                                                                        setSelectedBulkActions(prev => ({
+                                                                                                            ...prev,
+                                                                                                            [batch.batchId]: ""
+                                                                                                        }));
+                                                                                                    }
                                                                                                 }}
-                                                                                                className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[10px] font-semibold text-white border border-white/20 hover:bg-white/20"
+                                                                                                disabled={!selectedBulkActions[batch.batchId] || bulkActionBusy}
+                                                                                                className="px-2 py-1 bg-blue-600 text-white text-[10px] font-semibold rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-[40px]"
                                                                                             >
-                                                                                                Actions
-                                                                                                {actionMenuOpen && actionMenuBatch === batch.batchId ? (
-                                                                                                    <ChevronUp className="w-3 h-3" />
+                                                                                                {bulkActionBusy ? (
+                                                                                                    <Loader2 className="w-3 h-3 animate-spin mx-auto" />
                                                                                                 ) : (
-                                                                                                    <ChevronDown className="w-3 h-3" />
+                                                                                                    "Go"
                                                                                                 )}
                                                                                             </button>
-                                                                                            {actionMenuOpen && actionMenuBatch === batch.batchId && (
-                                                                                                <div className="absolute right-0 mt-1 w-44 rounded-md border border-blue-900/20 bg-white shadow-lg z-10">
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-indigo-700 hover:bg-indigo-50"
-                                                                                                        onClick={() => handleBulkAction("retry-submit", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <Send className="w-4 h-4" />
-                                                                                                        Retry submit
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-red-700 hover:bg-red-50"
-                                                                                                        onClick={() => handleBulkAction("delete", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <Trash2 className="w-4 h-4" />
-                                                                                                        Delete
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-blue-700 hover:bg-blue-50"
-                                                                                                        onClick={() => handleBulkAction("retry", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <RotateCw className="w-4 h-4" />
-                                                                                                        Retry
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-emerald-700 hover:bg-emerald-50"
-                                                                                                        onClick={() => handleBulkAction("send", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <Send className="w-4 h-4" />
-                                                                                                        Send
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-purple-700 hover:bg-purple-50"
-                                                                                                        onClick={() => handleBulkAction("approve", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <CheckCircle2 className="w-4 h-4" />
-                                                                                                        Approve
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        type="button"
-                                                                                                        className="w-full flex items-center gap-2 px-2 py-1 text-left text-[10px] text-indigo-700 hover:bg-indigo-50"
-                                                                                                        onClick={() => handleBulkAction("certificate", batch.batchId, batchReports[batch.batchId] || [])}
-                                                                                                    >
-                                                                                                        <Download className="w-4 h-4" />
-                                                                                                        Download Certificate
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            )}
                                                                                         </div>
                                                                                     </div>
                                                                                 </th>

@@ -42,9 +42,8 @@ const InputField = ({
     </label>
     <input
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
-        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-      }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+        }`}
     />
     {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
@@ -64,9 +63,8 @@ const SelectField = ({
     </label>
     <select
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
-        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-      }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+        }`}
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -91,9 +89,8 @@ const TextAreaField = ({
     </label>
     <textarea
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${
-        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-      }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+        }`}
     />
     {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
@@ -372,6 +369,9 @@ const DuplicateReport = ({ onViewChange }) => {
   const { taqeemStatus } = useNavStatus();
   const [formData, setFormData, resetFormData] = usePersistentState("duplicate:formData", buildDefaultFormData());
   const [errors, setErrors] = useState({});
+  const [selectedReportActions, setSelectedReportActions] = useState({});
+  const [selectedAssetActions, setSelectedAssetActions] = useState({});
+  const [selectedAssetBulkActions, setSelectedAssetBulkActions] = useState({});
   const [excelFile, setExcelFile] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
   const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
@@ -600,8 +600,8 @@ const DuplicateReport = ({ onViewChange }) => {
     } catch (err) {
       setReportsError(
         err?.response?.data?.message ||
-          err?.message ||
-          "Failed to load duplicate reports."
+        err?.message ||
+        "Failed to load duplicate reports."
       );
     } finally {
       setReportsLoading(false);
@@ -1501,15 +1501,14 @@ const DuplicateReport = ({ onViewChange }) => {
 
   const headerAlert = status ? (
     <div
-      className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${
-        status.type === "error"
-          ? "border-rose-200 bg-rose-50 text-rose-700"
-          : status.type === "warning"
+      className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${status.type === "error"
+        ? "border-rose-200 bg-rose-50 text-rose-700"
+        : status.type === "warning"
           ? "border-amber-200 bg-amber-50 text-amber-700"
           : status.type === "info"
-          ? "border-sky-200 bg-sky-50 text-sky-700"
-          : "border-emerald-200 bg-emerald-50 text-emerald-700"
-      }`}
+            ? "border-sky-200 bg-sky-50 text-sky-700"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+        }`}
     >
       {status.type === "success" ? (
         <CheckCircle2 className="w-4 h-4 mt-0.5" />
@@ -1526,59 +1525,62 @@ const DuplicateReport = ({ onViewChange }) => {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
-              <Upload className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
-                Reports
-              </div>
-              <h2 className="text-lg font-bold text-blue-950">
-                Upload Manual Report
-              </h2>
-              <p className="text-[11px] text-slate-600">
-                Fill report info, attach the Excel, and add the report to the list.
-              </p>
-              {user?.phone && (
-                <p className="text-[10px] text-blue-900/60 mt-1">
-                  Signed in as {user.phone}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              disabled={downloadingTemplate}
-              className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-            >
-              {downloadingTemplate ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
-            </button>
+
+      {/* Enhanced button bar with better presentation */}
+      <div className="rounded-xl border border-blue-900/10 bg-gradient-to-r from-white to-blue-50/30 shadow-sm p-3 mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Primary Action Section */}
+          <div className="space-y-1">
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800"
+              className="group inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-blue-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg hover:from-blue-700 hover:via-blue-800 hover:to-blue-900 transition-all duration-200 transform hover:-translate-y-0.5"
             >
-              <Plus className="w-4 h-4" />
-              Create new report
-            </button>
-            <button
-              type="button"
-              onClick={loadReports}
-              className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
+              <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-white/20 backdrop-blur-sm">
+                <Plus className="w-3.5 h-3.5" />
+              </div>
+              <span className="tracking-tight">Create New Report</span>
+              <ChevronRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
+
+          {/* Utility Actions Section */}
+          <div className="space-y-1">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-blue-900/50">
+              Quick Actions
+            </h3>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                disabled={downloadingTemplate}
+                className="group inline-flex items-center gap-2 rounded-lg border border-blue-900/[0.08] bg-white/80 px-3 py-2 text-xs font-semibold text-blue-900/80 shadow-xs hover:shadow-sm hover:bg-white hover:border-blue-900/20 hover:text-blue-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 backdrop-blur-sm"
+              >
+                <div className="flex items-center justify-center w-5 h-5 rounded-md bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 group-hover:from-blue-100 group-hover:to-blue-200 transition-colors">
+                  {downloadingTemplate ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3" />
+                  )}
+                </div>
+                <span className="font-medium">
+                  {downloadingTemplate ? "Downloading..." : "Excel Template"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={loadReports}
+                className="group inline-flex items-center gap-2 rounded-lg border border-blue-900/[0.08] bg-white/80 px-3 py-2 text-xs font-semibold text-blue-900/80 shadow-xs hover:shadow-sm hover:bg-white hover:border-blue-900/20 hover:text-blue-900 transition-all duration-200 backdrop-blur-sm"
+              >
+                <div className="flex items-center justify-center w-5 h-5 rounded-md bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 group-hover:from-blue-100 group-hover:to-blue-200 transition-colors">
+                  <RefreshCw className="w-3 h-3" />
+                </div>
+                <span className="font-medium">Refresh</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {!showCreateModal && headerAlert}
@@ -1595,8 +1597,8 @@ const DuplicateReport = ({ onViewChange }) => {
                 {excelValidationLoading
                   ? "Reading Excel..."
                   : excelValidation.counts.total
-                  ? `Assets: ${excelValidation.counts.total} (market ${excelValidation.counts.market}, cost ${excelValidation.counts.cost})`
-                  : "Upload an Excel file to validate"}
+                    ? `Assets: ${excelValidation.counts.total} (market ${excelValidation.counts.market}, cost ${excelValidation.counts.cost})`
+                    : "Upload an Excel file to validate"}
               </div>
               <button
                 type="button"
@@ -1787,24 +1789,25 @@ const DuplicateReport = ({ onViewChange }) => {
                         </td>
                         <td className="px-2 py-1">
                           <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                              reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
-                            }`}
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
+                              }`}
                           >
                             {reportStatusLabels[statusKey] || statusKey}
                           </span>
                         </td>
                         <td className="px-2 py-1">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1">
                             <select
-                              defaultValue=""
+                              value={selectedReportActions[recordId] || ""}
                               disabled={!recordId || submitting || !!reportBusy}
                               onChange={(e) => {
                                 const action = e.target.value;
-                                handleReportAction(report, action);
-                                e.target.value = "";
+                                setSelectedReportActions((prev) => ({
+                                  ...prev,
+                                  [recordId]: action,
+                                }));
                               }}
-                              className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
+                              className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] flex-1"
                             >
                               <option value="">Actions</option>
                               <option value="retry">Retry submit</option>
@@ -1816,12 +1819,22 @@ const DuplicateReport = ({ onViewChange }) => {
                             </select>
                             <button
                               type="button"
-                              disabled={!recordId || submitting || !!reportBusy}
-                              onClick={() => handleReportAction(report, "send")}
-                              className="inline-flex items-center gap-1 rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+                              onClick={() => {
+                                const action = selectedReportActions[recordId];
+                                if (action) {
+                                  handleReportAction(report, action);
+                                  // Clear selection after action
+                                  setSelectedReportActions((prev) => {
+                                    const next = { ...prev };
+                                    delete next[recordId];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              disabled={!recordId || !selectedReportActions[recordId] || submitting || !!reportBusy}
+                              className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                              <Send className="w-3.5 h-3.5" />
-                              Submit to Taqeem
+                              Go
                             </button>
                           </div>
                           {reportBusy && (
@@ -1848,13 +1861,15 @@ const DuplicateReport = ({ onViewChange }) => {
                                 <div className="text-[10px] text-blue-900/70">
                                   Assets: {assetList.length}
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
                                   <select
-                                    defaultValue=""
+                                    value={selectedAssetBulkActions[recordId] || ""}
                                     onChange={(e) => {
                                       const action = e.target.value;
-                                      handleBulkAssetAction(report, action);
-                                      e.target.value = "";
+                                      setSelectedAssetBulkActions((prev) => ({
+                                        ...prev,
+                                        [recordId]: action,
+                                      }));
                                     }}
                                     className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
                                   >
@@ -1862,6 +1877,25 @@ const DuplicateReport = ({ onViewChange }) => {
                                     <option value="delete">Delete</option>
                                     <option value="retry">Retry submission</option>
                                   </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const action = selectedAssetBulkActions[recordId];
+                                      if (action) {
+                                        handleBulkAssetAction(report, action);
+                                        // Clear selection after action
+                                        setSelectedAssetBulkActions((prev) => {
+                                          const next = { ...prev };
+                                          delete next[recordId];
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                    disabled={!selectedAssetBulkActions[recordId]}
+                                    className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                  >
+                                    Go
+                                  </button>
                                 </div>
                               </div>
                               <div className="rounded-xl border border-blue-900/10 overflow-hidden">
@@ -1937,29 +1971,52 @@ const DuplicateReport = ({ onViewChange }) => {
                                             <td className="px-2 py-1">{getAssetApproach(asset)}</td>
                                             <td className="px-2 py-1">
                                               <span
-                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                                  assetStatusClasses[assetStatus] || "border-rose-200 bg-rose-50 text-rose-700"
-                                                }`}
+                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${assetStatusClasses[assetStatus] || "border-rose-200 bg-rose-50 text-rose-700"
+                                                  }`}
                                               >
                                                 {assetStatusLabels[assetStatus] || assetStatus}
                                               </span>
                                             </td>
+                                            {/* REPLACE THE EXISTING INDIVIDUAL ASSET ACTIONS SELECT */}
                                             <td className="px-2 py-1">
-                                              <select
-                                                defaultValue=""
-                                                disabled={!!assetBusy}
-                                                onChange={(e) => {
-                                                  const action = e.target.value;
-                                                  handleAssetAction(report, assetIndex, action);
-                                                  e.target.value = "";
-                                                }}
-                                                className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
-                                              >
-                                                <option value="">Actions</option>
-                                                <option value="delete">Delete</option>
-                                                <option value="retry">Retry submission</option>
-                                                <option value="edit">Edit</option>
-                                              </select>
+                                              <div className="flex items-center gap-1">
+                                                <select
+                                                  value={selectedAssetActions[`${recordId}:${assetIndex}`] || ""}
+                                                  disabled={!!assetBusy}
+                                                  onChange={(e) => {
+                                                    const action = e.target.value;
+                                                    setSelectedAssetActions((prev) => ({
+                                                      ...prev,
+                                                      [`${recordId}:${assetIndex}`]: action,
+                                                    }));
+                                                  }}
+                                                  className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] flex-1"
+                                                >
+                                                  <option value="">Actions</option>
+                                                  <option value="delete">Delete</option>
+                                                  <option value="retry">Retry submission</option>
+                                                  <option value="edit">Edit</option>
+                                                </select>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const action = selectedAssetActions[`${recordId}:${assetIndex}`];
+                                                    if (action) {
+                                                      handleAssetAction(report, assetIndex, action);
+                                                      // Clear selection after action
+                                                      setSelectedAssetActions((prev) => {
+                                                        const next = { ...prev };
+                                                        delete next[`${recordId}:${assetIndex}`];
+                                                        return next;
+                                                      });
+                                                    }
+                                                  }}
+                                                  disabled={!!assetBusy || !selectedAssetActions[`${recordId}:${assetIndex}`]}
+                                                  className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                >
+                                                  Go
+                                                </button>
+                                              </div>
                                             </td>
                                             <td className="px-2 py-1">
                                               <input
@@ -1996,24 +2053,24 @@ const DuplicateReport = ({ onViewChange }) => {
       >
         {headerAlert}
         <div className="space-y-4">
-      <Section title="Report Information">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
-            <InputField
-              label="Report Title"
-              required
-              type="text"
-              value={formData.title}
-              onChange={(e) => handleFieldChange("title", e.target.value)}
-              error={errors.title}
-              placeholder="Enter a descriptive title for this report"
-              className="bg-white p-1.5"
-            />
-            <SelectField
-              label="Report Type"
-              required
-              value={formData.report_type}
-              onChange={(e) => handleFieldChange("report_type", e.target.value)}
-              options={[
+          <Section title="Report Information">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
+              <InputField
+                label="Report Title"
+                required
+                type="text"
+                value={formData.title}
+                onChange={(e) => handleFieldChange("title", e.target.value)}
+                error={errors.title}
+                placeholder="Enter a descriptive title for this report"
+                className="bg-white p-1.5"
+              />
+              <SelectField
+                label="Report Type"
+                required
+                value={formData.report_type}
+                onChange={(e) => handleFieldChange("report_type", e.target.value)}
+                options={[
                   { value: "تقرير مفصل", label: "Detailed Report" },
                   { value: "ملخص التقرير", label: "Report Summary" },
                   {
@@ -2025,349 +2082,311 @@ const DuplicateReport = ({ onViewChange }) => {
                     label: "Review without New Value",
                   },
                 ]}
-              error={errors.report_type}
-              className="bg-white p-1.5"
-            />
-            <SelectField
-              label="Valuation Purpose"
-              required
-              value={formData.purpose_id}
-              onChange={(e) => handleFieldChange("purpose_id", e.target.value)}
-              options={[
-                { value: "to set", label: "Select" },
-                { value: "1", label: "Selling" },
-                { value: "2", label: "Buying" },
-                { value: "5", label: "Rent Value" },
-                { value: "6", label: "Insurance" },
-                { value: "8", label: "Accounting Purposes" },
-                { value: "9", label: "Financing" },
-                { value: "10", label: "Disputes and Litigation" },
-                { value: "12", label: "Tax Related Valuations" },
-                { value: "14", label: "Other" },
-              ]}
-              error={errors.purpose_id}
-              className="bg-white p-1.5"
-            />
-            <SelectField
-              label="Value Premise"
-              required
-              value={formData.value_premise_id}
-              onChange={(e) =>
-                handleFieldChange("value_premise_id", e.target.value)
-              }
-              options={[
-                { value: "to set", label: "Select" },
-                { value: "1", label: "Highest and Best Use" },
-                { value: "2", label: "Current Use" },
-                { value: "3", label: "Orderly Liquidation" },
-                { value: "4", label: "Forced Sale" },
-                { value: "5", label: "Other" },
-              ]}
-              error={errors.value_premise_id}
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Valued At"
-              required
-              type="date"
-              value={formData.valued_at}
-              onChange={(e) => handleFieldChange("valued_at", e.target.value)}
-              error={errors.valued_at}
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Submitted At"
-              required
-              type="date"
-              value={formData.submitted_at}
-              onChange={(e) =>
-                handleFieldChange("submitted_at", e.target.value)
-              }
-              error={errors.submitted_at}
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Inspection Date"
-              required
-              type="date"
-              value={formData.inspection_date}
-              onChange={(e) =>
-                handleFieldChange("inspection_date", e.target.value)
-              }
-              error={errors.inspection_date}
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Value"
-              required
-              type="text"
-              value={formData.value}
-              onChange={(e) => handleFieldChange("value", e.target.value)}
-              error={errors.value}
-              placeholder="Enter final value"
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Assumptions"
-              value={formData.assumptions}
-              onChange={(e) => handleFieldChange("assumptions", e.target.value)}
-              placeholder="Enter general assumptions for the valuation"
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Special Assumptions"
-              value={formData.special_assumptions}
-              onChange={(e) =>
-                handleFieldChange("special_assumptions", e.target.value)
-              }
-              placeholder="Enter any special assumptions or conditions"
-              className="bg-white p-1.5"
-            />
-          </div>
-        </Section>
-
-        <Section title="Client Information">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
-            <InputField
-              label="Client Name"
-              required
-              type="text"
-              value={formData.client_name || ""}
-              onChange={(e) => {
-                const value = e.target.value;
-                handleFieldChange("client_name", value);
-                handleFieldChange("owner_name", value);
-              }}
-              error={errors["client_name"]}
-              placeholder="Enter client name"
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Telephone"
-              required
-              type="tel"
-              value={formData.telephone || ""}
-              onChange={(e) => handleFieldChange("telephone", e.target.value)}
-              error={errors["telephone"]}
-              placeholder="e.g. +966500000000"
-              className="bg-white p-1.5"
-            />
-            <InputField
-              label="Email"
-              required
-              type="email"
-              value={formData.email || ""}
-              onChange={(e) => handleFieldChange("email", e.target.value)}
-              error={errors["email"]}
-              placeholder="e.g. example@domain.com"
-              className="bg-white p-1.5"
-            />
-            <div className="bg-white p-1.5 flex items-center">
-              <label
-                htmlFor="has-other-users"
-                className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70"
-              >
-                <input
-                  id="has-other-users"
-                  type="checkbox"
-                  checked={!!formData.has_other_users}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    handleFieldChange("has_other_users", checked);
-                    if (checked && reportUsers.length === 0) {
-                      addReportUser();
-                    }
-                    if (!checked) {
-                      setReportUsers([]);
-                      setFormData((prev) => ({ ...prev, report_users: [] }));
-                    }
-                  }}
-                  className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
-                />
-                Has other users
-              </label>
+                error={errors.report_type}
+                className="bg-white p-1.5"
+              />
+              <SelectField
+                label="Valuation Purpose"
+                required
+                value={formData.purpose_id}
+                onChange={(e) => handleFieldChange("purpose_id", e.target.value)}
+                options={[
+                  { value: "to set", label: "Select" },
+                  { value: "1", label: "Selling" },
+                  { value: "2", label: "Buying" },
+                  { value: "5", label: "Rent Value" },
+                  { value: "6", label: "Insurance" },
+                  { value: "8", label: "Accounting Purposes" },
+                  { value: "9", label: "Financing" },
+                  { value: "10", label: "Disputes and Litigation" },
+                  { value: "12", label: "Tax Related Valuations" },
+                  { value: "14", label: "Other" },
+                ]}
+                error={errors.purpose_id}
+                className="bg-white p-1.5"
+              />
+              <SelectField
+                label="Value Premise"
+                required
+                value={formData.value_premise_id}
+                onChange={(e) =>
+                  handleFieldChange("value_premise_id", e.target.value)
+                }
+                options={[
+                  { value: "to set", label: "Select" },
+                  { value: "1", label: "Highest and Best Use" },
+                  { value: "2", label: "Current Use" },
+                  { value: "3", label: "Orderly Liquidation" },
+                  { value: "4", label: "Forced Sale" },
+                  { value: "5", label: "Other" },
+                ]}
+                error={errors.value_premise_id}
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Valued At"
+                required
+                type="date"
+                value={formData.valued_at}
+                onChange={(e) => handleFieldChange("valued_at", e.target.value)}
+                error={errors.valued_at}
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Submitted At"
+                required
+                type="date"
+                value={formData.submitted_at}
+                onChange={(e) =>
+                  handleFieldChange("submitted_at", e.target.value)
+                }
+                error={errors.submitted_at}
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Inspection Date"
+                required
+                type="date"
+                value={formData.inspection_date}
+                onChange={(e) =>
+                  handleFieldChange("inspection_date", e.target.value)
+                }
+                error={errors.inspection_date}
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Value"
+                required
+                type="text"
+                value={formData.value}
+                onChange={(e) => handleFieldChange("value", e.target.value)}
+                error={errors.value}
+                placeholder="Enter final value"
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Assumptions"
+                value={formData.assumptions}
+                onChange={(e) => handleFieldChange("assumptions", e.target.value)}
+                placeholder="Enter general assumptions for the valuation"
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Special Assumptions"
+                value={formData.special_assumptions}
+                onChange={(e) =>
+                  handleFieldChange("special_assumptions", e.target.value)
+                }
+                placeholder="Enter any special assumptions or conditions"
+                className="bg-white p-1.5"
+              />
             </div>
-          </div>
+          </Section>
 
-          {formData.has_other_users && (
-            <Section title="المستخدمون الآخرون للتقرير">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-[12px] font-semibold text-blue-950">
-                  المستخدمون الآخرون للتقرير
-                </h4>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={addReportUser}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
-                  >
-                    اضافة مستخدم اخر
-                  </button>
-                  <button
-                    type="button"
-                    onClick={deleteLastReportUser}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50"
-                  >
-                    حذف اخر مستخدم
-                  </button>
-                </div>
+          <Section title="Client Information">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-px rounded-xl border border-blue-900/15 bg-blue-900/10 overflow-hidden">
+              <InputField
+                label="Client Name"
+                required
+                type="text"
+                value={formData.client_name || ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  handleFieldChange("client_name", value);
+                  handleFieldChange("owner_name", value);
+                }}
+                error={errors["client_name"]}
+                placeholder="Enter client name"
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Telephone"
+                required
+                type="tel"
+                value={formData.telephone || ""}
+                onChange={(e) => handleFieldChange("telephone", e.target.value)}
+                error={errors["telephone"]}
+                placeholder="e.g. +966500000000"
+                className="bg-white p-1.5"
+              />
+              <InputField
+                label="Email"
+                required
+                type="email"
+                value={formData.email || ""}
+                onChange={(e) => handleFieldChange("email", e.target.value)}
+                error={errors["email"]}
+                placeholder="e.g. example@domain.com"
+                className="bg-white p-1.5"
+              />
+              <div className="bg-white p-1.5 flex items-center">
+                <label
+                  htmlFor="has-other-users"
+                  className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70"
+                >
+                  <input
+                    id="has-other-users"
+                    type="checkbox"
+                    checked={!!formData.has_other_users}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      handleFieldChange("has_other_users", checked);
+                      if (checked && reportUsers.length === 0) {
+                        addReportUser();
+                      }
+                      if (!checked) {
+                        setReportUsers([]);
+                        setFormData((prev) => ({ ...prev, report_users: [] }));
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                  />
+                  Has other users
+                </label>
               </div>
-              <div className="space-y-2">
-                {reportUsers.map((userName, idx) => (
-                  <div key={idx} className="w-full">
-                    <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
-                      اسم مستخدم التقرير *
-                    </label>
-                    <input
-                      type="text"
-                      value={userName}
-                      onChange={(e) => updateReportUser(idx, e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                      placeholder="اسم مستخدم التقرير"
-                    />
+            </div>
+
+            {formData.has_other_users && (
+              <Section title="المستخدمون الآخرون للتقرير">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[12px] font-semibold text-blue-950">
+                    المستخدمون الآخرون للتقرير
+                  </h4>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={addReportUser}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                    >
+                      اضافة مستخدم اخر
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteLastReportUser}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50"
+                    >
+                      حذف اخر مستخدم
+                    </button>
                   </div>
-                ))}
-                {reportUsers.length === 0 && (
-                  <div className="text-[10px] text-blue-900/60">
-                    اضغط على "اضافة مستخدم اخر" لإضافة مستخدمين.
-                  </div>
-                )}
-              </div>
-            </Section>
-          )}
-        </Section>
-
-        <Section title="Valuers">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-[12px] font-semibold text-blue-950">
-              بيانات المقيمين
-            </h4>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={addValuer}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
-              >
-                اضافة مقيم اخر
-              </button>
-              <button
-                type="button"
-                onClick={deleteLastValuer}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50"
-              >
-                حذف اخر مقيم
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {valuers.map((valuer, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-blue-900/15 rounded-xl p-2"
-              >
-                <div>
-                  <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
-                    اسم المقيم *
-                  </label>
-                  <select
-                    className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                    value={valuer.valuer_name}
-                    onChange={(e) =>
-                      handleValuerChange(idx, "valuer_name", e.target.value)
-                    }
-                  >
-                    <option value="">تحديد</option>
-                    {valuerOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
-                    نسبة المساهمة *
-                  </label>
-                  <select
-                    className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                    value={valuer.contribution_percentage}
-                    onChange={(e) =>
-                      handleValuerChange(
-                        idx,
-                        "contribution_percentage",
-                        Number(e.target.value)
-                      )
-                    }
-                  >
-                    {contributionOptions.map((pct) => (
-                      <option key={pct} value={pct}>
-                        {pct}%
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-2">
+                  {reportUsers.map((userName, idx) => (
+                    <div key={idx} className="w-full">
+                      <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
+                        اسم مستخدم التقرير *
+                      </label>
+                      <input
+                        type="text"
+                        value={userName}
+                        onChange={(e) => updateReportUser(idx, e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                        placeholder="اسم مستخدم التقرير"
+                      />
+                    </div>
+                  ))}
+                  {reportUsers.length === 0 && (
+                    <div className="text-[10px] text-blue-900/60">
+                      اضغط على "اضافة مستخدم اخر" لإضافة مستخدمين.
+                    </div>
+                  )}
                 </div>
+              </Section>
+            )}
+          </Section>
+
+          <Section title="Valuers">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-[12px] font-semibold text-blue-950">
+                بيانات المقيمين
+              </h4>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={addValuer}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                >
+                  اضافة مقيم اخر
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteLastValuer}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 text-blue-700 text-xs font-semibold hover:bg-blue-50"
+                >
+                  حذف اخر مقيم
+                </button>
               </div>
-            ))}
-          </div>
-        </Section>
-        {!isEditing ? (
-        <Section title="Assets attachments">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
-              <div>
-                <p className="text-[12px] font-semibold text-blue-950">
-                  Upload Excel (market &amp; cost)
-                </p>
-                <p className="text-[11px] text-blue-900/60">
-                  Must include sheets: market, cost.
-                </p>
-                {excelFile ? (
-                  <p className="text-xs text-green-700 mt-1">
-                    {excelFile.name}
-                  </p>
-                ) : (
-                  fileNotes.excelName && (
-                    <p className="text-xs text-blue-700 mt-1">
-                      Last selected: {fileNotes.excelName}
-                    </p>
-                  )
-                )}
-              </div>
-              <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
-                <Upload className="w-4 h-4" />
-                <span>Select file</span>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={(e) => setExcelFileAndRemember(e.target.files?.[0] || null)}
-                />
-              </label>
             </div>
 
-            <div className="border border-dashed border-blue-900/20 rounded-xl p-2 bg-blue-50/40 space-y-2">
-              <label className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70">
-                <input
-                  type="checkbox"
-                  checked={wantsPdfUpload}
-                  onChange={(e) => handlePdfToggle(e.target.checked)}
-                  className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
-                />
-                Upload PDF (optional)
-              </label>
-              <p className="text-[11px] text-blue-900/60">
-                Attach a single PDF file for this report.
-              </p>
-              {wantsPdfUpload ? (
-                <div className="flex items-center justify-between">
+            <div className="space-y-2">
+              {valuers.map((valuer, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-2 border border-blue-900/15 rounded-xl p-2"
+                >
                   <div>
-                    {pdfFile ? (
-                      <p className="text-xs text-green-700 mt-1">{pdfFile.name}</p>
+                    <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
+                      اسم المقيم *
+                    </label>
+                    <select
+                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                      value={valuer.valuer_name}
+                      onChange={(e) =>
+                        handleValuerChange(idx, "valuer_name", e.target.value)
+                      }
+                    >
+                      <option value="">تحديد</option>
+                      {valuerOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-blue-900/70 mb-1">
+                      نسبة المساهمة *
+                    </label>
+                    <select
+                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                      value={valuer.contribution_percentage}
+                      onChange={(e) =>
+                        handleValuerChange(
+                          idx,
+                          "contribution_percentage",
+                          Number(e.target.value)
+                        )
+                      }
+                    >
+                      {contributionOptions.map((pct) => (
+                        <option key={pct} value={pct}>
+                          {pct}%
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+          {!isEditing ? (
+            <Section title="Assets attachments">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                <div className="border border-dashed border-blue-900/20 rounded-xl p-2 flex items-center justify-between bg-blue-50/40">
+                  <div>
+                    <p className="text-[12px] font-semibold text-blue-950">
+                      Upload Excel (market &amp; cost)
+                    </p>
+                    <p className="text-[11px] text-blue-900/60">
+                      Must include sheets: market, cost.
+                    </p>
+                    {excelFile ? (
+                      <p className="text-xs text-green-700 mt-1">
+                        {excelFile.name}
+                      </p>
                     ) : (
-                      fileNotes.pdfName && (
+                      fileNotes.excelName && (
                         <p className="text-xs text-blue-700 mt-1">
-                          Last selected: {fileNotes.pdfName}
+                          Last selected: {fileNotes.excelName}
                         </p>
                       )
                     )}
@@ -2377,152 +2396,187 @@ const DuplicateReport = ({ onViewChange }) => {
                     <span>Select file</span>
                     <input
                       type="file"
-                      accept=".pdf"
+                      accept=".xlsx,.xls"
                       className="hidden"
-                      ref={pdfInputRef}
-                      onChange={(e) => setPdfFileAndRemember(e.target.files?.[0] || null)}
-                      onClick={(e) => {
-                        e.currentTarget.value = null;
-                      }}
+                      onChange={(e) => setExcelFileAndRemember(e.target.files?.[0] || null)}
                     />
                   </label>
                 </div>
-              ) : (
-                <p className="text-[10px] text-blue-900/60">PDF upload is disabled.</p>
-              )}
-            </div>
-          </div>
-        </Section>
-        ) : (
-          <div className="rounded-xl border border-blue-900/10 bg-blue-50/40 px-3 py-2 text-[10px] text-blue-900/70">
-            Attachments are locked while editing. Create a new report to upload Excel or PDF files.
-          </div>
-        )}
 
-        <div className="flex justify-end gap-2 mt-3">
-          <button
-            onClick={clearSavedState}
-            className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-          >
-            Reset Form
-          </button>
-          {isEditing ? (
-            <button
-              onClick={handleUpdateReport}
-              disabled={updatingReport}
-              className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
-                updatingReport
-                  ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
-                  : "bg-blue-900 hover:bg-blue-800 text-white"
-              }`}
-            >
-              {updatingReport ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </span>
-              ) : (
-                "Save changes"
-              )}
-            </button>
+                <div className="border border-dashed border-blue-900/20 rounded-xl p-2 bg-blue-50/40 space-y-2">
+                  <label className="flex items-center gap-2 text-[10px] font-semibold text-blue-900/70">
+                    <input
+                      type="checkbox"
+                      checked={wantsPdfUpload}
+                      onChange={(e) => handlePdfToggle(e.target.checked)}
+                      className="h-4 w-4 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                    />
+                    Upload PDF (optional)
+                  </label>
+                  <p className="text-[11px] text-blue-900/60">
+                    Attach a single PDF file for this report.
+                  </p>
+                  {wantsPdfUpload ? (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {pdfFile ? (
+                          <p className="text-xs text-green-700 mt-1">{pdfFile.name}</p>
+                        ) : (
+                          fileNotes.pdfName && (
+                            <p className="text-xs text-blue-700 mt-1">
+                              Last selected: {fileNotes.pdfName}
+                            </p>
+                          )
+                        )}
+                      </div>
+                      <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-md cursor-pointer text-[10px] font-semibold text-blue-900">
+                        <Upload className="w-4 h-4" />
+                        <span>Select file</span>
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          className="hidden"
+                          ref={pdfInputRef}
+                          onChange={(e) => setPdfFileAndRemember(e.target.files?.[0] || null)}
+                          onClick={(e) => {
+                            e.currentTarget.value = null;
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-blue-900/60">PDF upload is disabled.</p>
+                  )}
+                </div>
+              </div>
+            </Section>
           ) : (
+            <div className="rounded-xl border border-blue-900/10 bg-blue-50/40 px-3 py-2 text-[10px] text-blue-900/70">
+              Attachments are locked while editing. Create a new report to upload Excel or PDF files.
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-3">
             <button
-              onClick={handleCreateReport}
-              disabled={submitting || excelValidationLoading}
-              className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
-                submitting
+              onClick={clearSavedState}
+              className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+            >
+              Reset Form
+            </button>
+            {isEditing ? (
+              <button
+                onClick={handleUpdateReport}
+                disabled={updatingReport}
+                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${updatingReport
                   ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
                   : "bg-blue-900 hover:bg-blue-800 text-white"
-              }`}
-            >
-              {submitting ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Adding...
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Add report
-                </span>
-              )}
-            </button>
-          )}
+                  }`}
+              >
+                {updatingReport ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </span>
+                ) : (
+                  "Save changes"
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleCreateReport}
+                disabled={submitting || excelValidationLoading}
+                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
+                  ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                  : "bg-blue-900 hover:bg-blue-800 text-white"
+                  }`}
+              >
+                {submitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Adding...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    Add report
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
 
-    <Modal
-      open={!!assetEdit}
-      onClose={closeAssetEdit}
-      title="Edit asset"
-      maxWidth="max-w-3xl"
-    >
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <InputField
-            label="Asset name"
-            value={assetDraft.asset_name}
-            onChange={(e) =>
-              setAssetDraft((prev) => ({ ...prev, asset_name: e.target.value }))
-            }
-          />
-          <InputField
-            label="Asset usage id"
-            value={assetDraft.asset_usage_id}
-            onChange={(e) =>
-              setAssetDraft((prev) => ({
-                ...prev,
-                asset_usage_id: e.target.value,
-              }))
-            }
-          />
-          <InputField
-            label="Final value"
-            value={assetDraft.final_value}
-            onChange={(e) =>
-              setAssetDraft((prev) => ({
-                ...prev,
-                final_value: e.target.value,
-              }))
-            }
-          />
-          <InputField
-            label="Region"
-            value={assetDraft.region}
-            onChange={(e) =>
-              setAssetDraft((prev) => ({ ...prev, region: e.target.value }))
-            }
-          />
-          <InputField
-            label="City"
-            value={assetDraft.city}
-            onChange={(e) =>
-              setAssetDraft((prev) => ({ ...prev, city: e.target.value }))
-            }
-          />
+      <Modal
+        open={!!assetEdit}
+        onClose={closeAssetEdit}
+        title="Edit asset"
+        maxWidth="max-w-3xl"
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <InputField
+              label="Asset name"
+              value={assetDraft.asset_name}
+              onChange={(e) =>
+                setAssetDraft((prev) => ({ ...prev, asset_name: e.target.value }))
+              }
+            />
+            <InputField
+              label="Asset usage id"
+              value={assetDraft.asset_usage_id}
+              onChange={(e) =>
+                setAssetDraft((prev) => ({
+                  ...prev,
+                  asset_usage_id: e.target.value,
+                }))
+              }
+            />
+            <InputField
+              label="Final value"
+              value={assetDraft.final_value}
+              onChange={(e) =>
+                setAssetDraft((prev) => ({
+                  ...prev,
+                  final_value: e.target.value,
+                }))
+              }
+            />
+            <InputField
+              label="Region"
+              value={assetDraft.region}
+              onChange={(e) =>
+                setAssetDraft((prev) => ({ ...prev, region: e.target.value }))
+              }
+            />
+            <InputField
+              label="City"
+              value={assetDraft.city}
+              onChange={(e) =>
+                setAssetDraft((prev) => ({ ...prev, city: e.target.value }))
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeAssetEdit}
+              className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAssetEdit}
+              disabled={assetEditBusy}
+              className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${assetEditBusy ? "bg-blue-900/40" : "bg-blue-900 hover:bg-blue-800"
+                }`}
+            >
+              {assetEditBusy ? "Saving..." : "Save"}
+            </button>
+          </div>
         </div>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={closeAssetEdit}
-            className="rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveAssetEdit}
-            disabled={assetEditBusy}
-            className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${
-              assetEditBusy ? "bg-blue-900/40" : "bg-blue-900 hover:bg-blue-800"
-            }`}
-          >
-            {assetEditBusy ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-    </Modal>
+      </Modal>
     </div>
   );
 };

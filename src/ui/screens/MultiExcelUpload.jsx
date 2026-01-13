@@ -24,6 +24,7 @@ import {
     ChevronRight,
     Download,
 } from "lucide-react";
+
 import { multiExcelUpload, fetchMultiApproachReports, updateMultiApproachReport, deleteMultiApproachReport, updateMultiApproachAsset, deleteMultiApproachAsset } from "../../api/report"; // Adjust the import path as needed
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
@@ -583,9 +584,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const { taqeemStatus } = useNavStatus();
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
+    const [selectedReportActions, setSelectedReportActions] = useState({});
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
     const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [batchId, setBatchId] = useState("");
+    const [selectedAssetBulkActions, setSelectedAssetBulkActions] = useState({});
     const [uploadResult, setUploadResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -593,6 +596,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [creatingReports, setCreatingReports] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [validating, setValidating] = useState(false);
+    const [selectedAssetActions, setSelectedAssetActions] = useState({});
     const [validationItems, setValidationItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("report-info");
@@ -1233,6 +1237,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
             }
         );
 
+        console.log("result", result);
+
         if (!result || !result?.success) {
             return
         }
@@ -1241,6 +1247,77 @@ const MultiExcelUpload = ({ onViewChange }) => {
             // Step 2: Create reports in Taqeem
             await createReportsByBatch(result.batchId, recommendedTabs, result.insertedCount);
         }
+    };
+
+    const handleStoreOnly = async () => {
+        // Validation remains the same
+        if (excelFiles.length === 0) {
+            setError("Please select at least one Excel file");
+            return;
+        }
+        if (wantsPdfUpload && pdfFiles.length === 0) {
+            setError("Please select at least one PDF file or disable PDF upload.");
+            return;
+        }
+        if (wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)) {
+            setError("PDF filenames must match the Excel filenames.");
+            return;
+        }
+
+        const result = await executeWithAuth(
+            async (params) => {
+                const { token: authToken } = params;
+
+                setSuccess(
+                    wantsPdfUpload
+                        ? "Uploading files to server..."
+                        : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
+                );
+
+                const data = await multiExcelUpload(excelFiles, wantsPdfUpload ? pdfFiles : []);
+
+                if (data.status !== "success") {
+                    throw new Error(data.error || "Upload failed");
+                }
+
+                const batchIdFromApi = data.batchId;
+                const insertedCount = data.created || data.inserted || 0;
+
+                setBatchId(batchIdFromApi);
+                setUploadResult(data);
+                setSuccess(`Files stored successfully. Batch ID: ${batchIdFromApi}. Inserted ${insertedCount} report(s). You can submit them to Taqeem later.`);
+
+                // Load new reports and append to existing ones
+                await loadReports(true);
+
+                return {
+                    success: true,
+                    batchId: batchIdFromApi,
+                    insertedCount
+                };
+            },
+            { token },
+            {
+                requiredPoints: excelFiles.length || 0,
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onViewChange,
+                onAuthSuccess: () => {
+                    console.log("[MultiExcelUpload] Authentication successful for store only");
+                },
+                onAuthFailure: (reason) => {
+                    console.warn("[MultiExcelUpload] Authentication failed:", reason);
+
+                    if (reason === "LOGIN_REQUIRED") {
+                        setError("Please log in to continue. You'll need to re-select your files after logging in.");
+                        return;
+                    }
+
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "TAQEEM_AUTH_REQUIRED") {
+                        setError(reason?.message || "Authentication failed");
+                    }
+                }
+            }
+        );
     };
 
     const requiredFields = useMemo(
@@ -1725,6 +1802,20 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
+        if (action === "submit-taqeem") {
+            const batchId = report?.batch_id || report?.batchId;
+            if (!batchId) {
+                setActionStatus({ type: "error", message: "Missing batch ID. Cannot submit to Taqeem." });
+                return;
+            }
+
+            const assetCount = Array.isArray(report.asset_data) ? report.asset_data.length : 0;
+            const tabsForAssets = resolveTabsForAssets(assetCount);
+
+            await createReportsByBatch(batchId, tabsForAssets, 1, { resume: false });
+            return;
+        }
+
         if (action === "delete") {
             const confirmed = window.confirm("Delete this report and its assets?");
             if (!confirmed) return;
@@ -2010,53 +2101,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     </div>
                 </div>
             )}
-            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
-                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
-                <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-3">
-                    <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                            Batch Automation
-                        </p>
-                        <h2 className="text-lg md:text-xl font-display text-compact text-slate-900 font-bold">
-                            Multi-Excel Upload
-                        </h2>
-                        <div className="flex flex-wrap gap-2 text-xs text-slate-700">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <Table className="h-3 w-3 text-emerald-600" />
-                                {recommendedTabs} tab{recommendedTabs !== 1 ? "s" : ""} auto
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <Files className="h-3 w-3 text-sky-600" />
-                                {wantsPdfUpload ? "PDF upload on" : "PDF upload optional"}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <ShieldCheck className="h-3 w-3 text-indigo-600" />
-                                Validation enabled
-                            </span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2 md:mt-0">
-                        <button
-                            type="button"
-                            onClick={downloadExcelTemplate}
-                            disabled={downloadingTemplate}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            {downloadingTemplate ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <Download className="w-3.5 h-3.5" />
-                            )}
-                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
-                        </button>
-                    </div>
-                </div>
-            </div>
 
             <div className="space-y-2">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
                     <div className="flex flex-wrap items-center gap-2">
+                        {/* Excel file input - keep as is */}
                         <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
                             <div className="flex items-center gap-2 text-xs text-slate-700">
                                 <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
@@ -2071,6 +2120,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
                             <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
+
+                        {/* PDF upload section - keep as is but remove template button from here */}
                         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
                             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                                 <input
@@ -2108,21 +2159,76 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                 onChange={handlePdfChange}
                             />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setExcelFiles([]);
-                                    setPdfFiles([]);
-                                    resetMessages();
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                            >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                                Reset
-                            </button>
-                        </div>
+
+                        {/* Template button - placed NEXT TO the PDF section */}
+                        <button
+                            type="button"
+                            onClick={downloadExcelTemplate}
+                            disabled={downloadingTemplate}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {downloadingTemplate ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Download className="w-3.5 h-3.5" />
+                            )}
+                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                        </button>
+
+                        {/* Reset button - keep as is */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setExcelFiles([]);
+                                setPdfFiles([]);
+                                resetMessages();
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                        >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Reset
+                        </button>
                     </div>
+                </div>
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                        type="button"
+                        onClick={handleUploadAndCreate}
+                        disabled={loading || creatingReports || !isReadyToUpload}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-green-600 hover:bg-green-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {(loading || creatingReports) ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Send className="w-4 h-4" />
+                        )}
+                        {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Send To Taqeem"}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleStoreOnly}
+                        disabled={loading || !isReadyToUpload}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-blue-600 hover:bg-blue-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {loading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <FileIcon className="w-4 h-4" />
+                        )}
+                        {loading ? "Storing..." : "Store and Send Later"}
+                    </button>
                 </div>
             </div>
 
@@ -2337,7 +2443,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                     })}
                                 </div>
                             ) : (
-                                <div className="p-6 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-sm text-slate-600 flex items-center justify-center font-medium">
+                                <div className="p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-sm text-slate-600 flex items-center justify-center font-medium">
                                     Validation results will appear here after reading the Excel.
                                 </div>
                             )
@@ -2463,31 +2569,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         )}
                     </div>
                 </div>
-            </div>
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                    type="button"
-                    onClick={handleUploadAndCreate}
-                    disabled={loading || creatingReports || !isReadyToUpload}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white text-xs font-semibold shadow-md hover:shadow-lg hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all"
-                >
-                    {(loading || creatingReports) ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Send className="w-4 h-4" />
-                    )}
-                    {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Send To Taqeem"}
-                </button>
-
-                <button
-                    type="button"
-                    onClick={resetAll}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                >
-                    <RefreshCw className="w-4 h-4" />
-                    Reset All
-                </button>
             </div>
 
             <Section title="Reports">
@@ -2631,18 +2712,21 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                         </span>
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1">
                                                             <select
-                                                                defaultValue=""
+                                                                value={selectedReportActions[recordId] || ""}
                                                                 disabled={!recordId || submitting || !!reportBusy}
                                                                 onChange={(e) => {
                                                                     const action = e.target.value;
-                                                                    handleReportAction(report, action);
-                                                                    e.target.value = "";
+                                                                    setSelectedReportActions((prev) => ({
+                                                                        ...prev,
+                                                                        [recordId]: action,
+                                                                    }));
                                                                 }}
-                                                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                                                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer flex-1"
                                                             >
                                                                 <option value="">Actions</option>
+                                                                <option value="submit-taqeem">Submit to Taqeem</option>
                                                                 <option value="retry">Retry submit</option>
                                                                 <option value="delete">Delete</option>
                                                                 <option value="edit">Edit</option>
@@ -2650,6 +2734,25 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                 <option value="approve">Approve</option>
                                                                 <option value="download">Download certificate</option>
                                                             </select>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const action = selectedReportActions[recordId];
+                                                                    if (action) {
+                                                                        handleReportAction(report, action);
+                                                                        // Clear selection after action
+                                                                        setSelectedReportActions((prev) => {
+                                                                            const next = { ...prev };
+                                                                            delete next[recordId];
+                                                                            return next;
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                disabled={!recordId || !selectedReportActions[recordId] || submitting || !!reportBusy}
+                                                                className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                            >
+                                                                Go
+                                                            </button>
                                                         </div>
                                                         {reportBusy && (
                                                             <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
@@ -2676,19 +2779,42 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                         Assets: <span className="text-blue-600 font-semibold">{assetList.length}</span>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <select
-                                                                            defaultValue=""
-                                                                            onChange={(e) => {
-                                                                                const action = e.target.value;
-                                                                                handleBulkAssetAction(report, action);
-                                                                                e.target.value = "";
-                                                                            }}
-                                                                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
-                                                                        >
-                                                                            <option value="">Asset actions</option>
-                                                                            <option value="delete">Delete</option>
-                                                                            <option value="retry">Retry submission</option>
-                                                                        </select>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <select
+                                                                                value={selectedAssetBulkActions[recordId] || ""}
+                                                                                onChange={(e) => {
+                                                                                    const action = e.target.value;
+                                                                                    setSelectedAssetBulkActions((prev) => ({
+                                                                                        ...prev,
+                                                                                        [recordId]: action,
+                                                                                    }));
+                                                                                }}
+                                                                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                                                                            >
+                                                                                <option value="">Asset actions</option>
+                                                                                <option value="delete">Delete</option>
+                                                                                <option value="retry">Retry submission</option>
+                                                                            </select>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    const action = selectedAssetBulkActions[recordId];
+                                                                                    if (action) {
+                                                                                        handleBulkAssetAction(report, action);
+                                                                                        // Clear selection after action
+                                                                                        setSelectedAssetBulkActions((prev) => {
+                                                                                            const next = { ...prev };
+                                                                                            delete next[recordId];
+                                                                                            return next;
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                                disabled={!selectedAssetBulkActions[recordId]}
+                                                                                className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                                            >
+                                                                                Go
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                                 <div className="rounded-md border border-slate-200 overflow-hidden bg-white shadow-sm">
@@ -2775,22 +2901,46 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                     {assetStatusLabels[assetStatus] || assetStatus}
                                                                                                 </span>
                                                                                             </td>
+                                                                                            {/* REPLACE THE EXISTING INDIVIDUAL ASSET ACTIONS SELECT */}
                                                                                             <td className="px-2 py-1.5">
-                                                                                                <select
-                                                                                                    defaultValue=""
-                                                                                                    disabled={!!assetBusy}
-                                                                                                    onChange={(e) => {
-                                                                                                        const action = e.target.value;
-                                                                                                        handleAssetAction(report, assetIndex, action);
-                                                                                                        e.target.value = "";
-                                                                                                    }}
-                                                                                                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
-                                                                                                >
-                                                                                                    <option value="">Actions</option>
-                                                                                                    <option value="delete">Delete</option>
-                                                                                                    <option value="retry">Retry submission</option>
-                                                                                                    <option value="edit">Edit</option>
-                                                                                                </select>
+                                                                                                <div className="flex items-center gap-1">
+                                                                                                    <select
+                                                                                                        value={selectedAssetActions[`${recordId}:${assetIndex}`] || ""}
+                                                                                                        disabled={!!assetBusy}
+                                                                                                        onChange={(e) => {
+                                                                                                            const action = e.target.value;
+                                                                                                            setSelectedAssetActions((prev) => ({
+                                                                                                                ...prev,
+                                                                                                                [`${recordId}:${assetIndex}`]: action,
+                                                                                                            }));
+                                                                                                        }}
+                                                                                                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer flex-1"
+                                                                                                    >
+                                                                                                        <option value="">Actions</option>
+                                                                                                        <option value="delete">Delete</option>
+                                                                                                        <option value="retry">Retry submission</option>
+                                                                                                        <option value="edit">Edit</option>
+                                                                                                    </select>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => {
+                                                                                                            const action = selectedAssetActions[`${recordId}:${assetIndex}`];
+                                                                                                            if (action) {
+                                                                                                                handleAssetAction(report, assetIndex, action);
+                                                                                                                // Clear selection after action
+                                                                                                                setSelectedAssetActions((prev) => {
+                                                                                                                    const next = { ...prev };
+                                                                                                                    delete next[`${recordId}:${assetIndex}`];
+                                                                                                                    return next;
+                                                                                                                });
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        disabled={!!assetBusy || !selectedAssetActions[`${recordId}:${assetIndex}`]}
+                                                                                                        className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                                                                    >
+                                                                                                        Go
+                                                                                                    </button>
+                                                                                                </div>
                                                                                             </td>
                                                                                             <td className="px-2 py-1.5">
                                                                                                 <input

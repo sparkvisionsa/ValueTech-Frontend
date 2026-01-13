@@ -20,6 +20,7 @@ import {
     Table,
     Info,
     Download,
+    FileIcon,
 } from "lucide-react";
 import {
     submitReportsQuicklyUpload,
@@ -276,15 +277,113 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const handlePdfChange = (e) => {
         const files = Array.from(e.target.files || []);
         const oversizedFiles = files.filter(file => file.size > MAX_PDF_SIZE);
-        
+
         if (oversizedFiles.length > 0) {
             const oversizedNames = oversizedFiles.map(f => f.name).join(", ");
             setError(`PDF file(s) exceed 20 MB limit: ${oversizedNames}`);
             return;
         }
-        
+
         setPdfFiles(files);
         resetMessages();
+    };
+
+    const handleStoreAndSubmit = async () => {
+        try {
+            setLoading(true);
+            resetMessages();
+
+            if (excelFiles.length === 0) {
+                throw new Error("Please select at least one Excel file");
+            }
+            if (wantsPdfUpload && pdfFiles.length === 0) {
+                throw new Error("Please select at least one PDF file or disable PDF upload.");
+            }
+            if (wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)) {
+                throw new Error("PDF filenames must match the Excel filenames.");
+            }
+            if (!isReadyToUpload) {
+                throw new Error("Please fix validation issues before uploading.");
+            }
+
+            // Check if Taqeem is logged in
+            if (!isTaqeemLoggedIn) {
+                throw new Error("Please login to Taqeem first to submit reports.");
+            }
+
+            setSuccess("Uploading files to server...");
+            const data = await submitReportsQuicklyUpload(
+                excelFiles,
+                wantsPdfUpload ? pdfFiles : [],
+                !wantsPdfUpload
+            );
+
+            if (data.status !== "success") {
+                throw new Error(data.error || "Upload failed");
+            }
+
+            const insertedCount = data.created || 0;
+            setSuccess(`Files uploaded successfully. Inserted ${insertedCount} report(s). Now submitting to Taqeem...`);
+
+            // Refresh reports to get the newly uploaded ones
+            await loadReports();
+
+            // Get the newly uploaded reports (assuming they're the most recent)
+            const recentReports = [...reports].sort((a, b) =>
+                new Date(b.createdAt || b.submitted_at || 0) - new Date(a.createdAt || a.submitted_at || 0)
+            ).slice(0, insertedCount);
+
+            if (recentReports.length === 0) {
+                throw new Error("Could not find the newly uploaded reports.");
+            }
+
+            setSubmitting(true);
+
+            // Submit each report to Taqeem
+            for (const report of recentReports) {
+                const recordId = getReportRecordId(report);
+                if (recordId) {
+                    try {
+                        // Use global recommendedTabs for submission
+                        const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
+                        await submitToTaqeem(recordId, tabsNum);
+
+                        // Add a small delay between submissions to avoid rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (err) {
+                        console.error(`Failed to submit report ${recordId}:`, err);
+                        // Continue with next report even if one fails
+                    }
+                }
+            }
+
+            setSuccess(`${recentReports.length} report(s) uploaded and submitted to Taqeem successfully.`);
+            setExcelFiles([]);
+            setPdfFiles([]);
+            setWantsPdfUpload(false);
+
+        } catch (err) {
+            console.error("Store and Submit failed", err);
+            const status = err?.response?.status;
+            const apiError =
+                err?.response?.data?.error ||
+                err?.response?.data?.message ||
+                err?.message ||
+                "Failed to upload and submit files";
+
+            if (status === 400) {
+                setError(apiError || "Bad request. Please check the selected files and try again.");
+            } else if (status === 500) {
+                setError(apiError || "Server error while processing your files. Please try again or contact support.");
+            } else if (err?.code === "ERR_NETWORK") {
+                setError("Network error. Make sure the backend server is running and reachable.");
+            } else {
+                setError(apiError);
+            }
+        } finally {
+            setLoading(false);
+            setSubmitting(false);
+        }
     };
 
     const handlePdfToggle = (checked) => {
@@ -426,7 +525,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 const percentage = progressData.percentage || 0;
                 const message = progressData.message || progressData.currentItem || '';
                 const createdReportId = progressData.createdReportId;
-                
+
                 // Determine status from progress data - prioritize paused/stopped flags
                 let status = 'processing';
                 // Check paused/stopped flags first (these come from process control system)
@@ -452,7 +551,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 } else {
                     status = 'starting';
                 }
-                
+
                 // Update progress state in real-time - preserve existing state if status is same
                 setReportProgress((prev) => {
                     const existing = prev[recordId] || {};
@@ -518,7 +617,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         try {
             const shouldValidatePdf = wantsPdfUpload;
             const results = [];
-            
+
             for (const file of excelList) {
                 const buffer = await file.arrayBuffer();
                 const workbook = new ExcelJS.Workbook();
@@ -570,7 +669,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 const costAssetCount = costRows.filter((r) =>
                     hasValue(r.asset_name || r.assetName || r["asset_name\n"] || r["Asset Name"])
                 ).length;
-                
+
                 if (marketAssetCount === 0 && costAssetCount === 0) {
                     addIssue(
                         "Assets",
@@ -803,7 +902,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setError("Missing report record id.");
                 return;
             }
-            
+
             if (!window?.electronAPI?.pauseMacroFill) {
                 setError("Desktop integration unavailable. Restart the app.");
                 return;
@@ -824,10 +923,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 });
 
                 setSuccess("Pausing report submission...");
-                
+
                 // Pause the macro fill process (which controls the browser)
                 const result = await window.electronAPI.pauseMacroFill(recordId);
-                
+
                 if (result?.status === "SUCCESS") {
                     // Status is already updated optimistically, real-time listener will confirm
                     setSuccess("Report submission paused.");
@@ -869,7 +968,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setError("Missing report record id.");
                 return;
             }
-            
+
             if (!window?.electronAPI?.resumeMacroFill) {
                 setError("Desktop integration unavailable. Restart the app.");
                 return;
@@ -890,10 +989,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 });
 
                 setSuccess("Resuming report submission...");
-                
+
                 // Resume the macro fill process (which controls the browser)
                 const result = await window.electronAPI.resumeMacroFill(recordId);
-                
+
                 if (result?.status === "SUCCESS") {
                     // Status is already updated optimistically, real-time listener will confirm
                     setSuccess("Report submission resumed.");
@@ -935,7 +1034,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setError("Missing report record id.");
                 return;
             }
-            
+
             if (!window?.electronAPI?.stopMacroFill) {
                 setError("Desktop integration unavailable. Restart the app.");
                 return;
@@ -947,10 +1046,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
             try {
                 setSuccess("Stopping report submission...");
-                
+
                 // Stop the macro fill process (which controls the browser)
                 const result = await window.electronAPI.stopMacroFill(recordId);
-                
+
                 if (result?.status === "SUCCESS") {
                     // Status will be updated via real-time progress listener
                     // Preserve current percentage for visibility
@@ -976,7 +1075,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const submitToTaqeem = useCallback(
         async (recordId, tabsNum, options = {}) => {
             const { withLoading = true, resume = false } = options;
-            
+
             if (!recordId) {
                 setError("Missing report record id.");
                 return;
@@ -1110,14 +1209,14 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             const numReports = selectedIds.length;
             const initialTabsPerBrowser = Math.floor(totalTabs / numReports);
             const remainderTabs = totalTabs % numReports;
-            
+
             // Initialize progress for all reports
             const initialProgress = {};
             selectedIds.forEach((id) => {
                 initialProgress[id] = { percentage: 0, status: 'pending', message: 'Waiting to start...' };
             });
             setReportProgress(initialProgress);
-            
+
             const submissionPromises = [];
             let queueError = null;
 
@@ -1176,25 +1275,25 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (bulkAction === "send-approver") {
             try {
                 setSuccess(`Sending ${selectedIds.length} report(s) to approver...`);
-                
+
                 // Get reports with report_id (Taqeem report IDs)
                 const reportsToSend = selectedIds
                     .map(id => reports.find(r => getReportRecordId(r) === id))
                     .filter(r => r && r.report_id);
-                
+
                 if (reportsToSend.length === 0) {
                     setError("No reports with Taqeem report IDs found. Reports must be submitted to Taqeem first.");
                     return;
                 }
 
                 const reportIds = reportsToSend.map(r => r.report_id).filter(Boolean);
-                
+
                 if (!window.electronAPI?.finalizeMultipleReports) {
                     throw new Error("Desktop integration unavailable. Restart the app.");
                 }
 
                 const result = await window.electronAPI.finalizeMultipleReports(reportIds);
-                
+
                 if (result?.status !== "SUCCESS") {
                     throw new Error(result?.error || "Failed to send reports to approver.");
                 }
@@ -1221,7 +1320,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (bulkAction === "approve") {
             try {
                 setSuccess(`Approving ${selectedIds.length} report(s)...`);
-                
+
                 for (const id of selectedIds) {
                     try {
                         await updateSubmitReportsQuickly(id, { checked: true });
@@ -1268,14 +1367,14 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 }
 
                 const result = await window.electronAPI.finalizeMultipleReports([report.report_id]);
-                
+
                 if (result?.status !== "SUCCESS") {
                     throw new Error(result?.error || "Failed to send report to approver.");
                 }
 
                 // Update report status to "sent"
                 await updateSubmitReportsQuickly(recordId, { report_status: "sent" });
-                
+
                 await loadReports();
                 setSuccess("Report sent to approver successfully.");
             } catch (err) {
@@ -1287,9 +1386,9 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
             try {
                 setSuccess("Approving report...");
-                
+
                 await updateSubmitReportsQuickly(recordId, { checked: true });
-                
+
                 await loadReports();
                 setSuccess("Report approved successfully.");
             } catch (err) {
@@ -1318,7 +1417,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     }, [reports, reportSelectFilter]);
 
     const totalPages = Math.max(1, Math.ceil(filteredReports.length / itemsPerPage));
-    
+
     const visibleReports = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
@@ -1446,6 +1545,46 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             </button>
                         </div>
                     </div>
+                </div>
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                        type="button"
+                        onClick={handleStoreAndSubmit}
+                        disabled={loading || !isReadyToUpload || !isTaqeemLoggedIn}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-green-600 hover:bg-green-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {loading || submitting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Send className="w-4 h-4" />
+                        )}
+                        {loading ? "Uploading..." : submitting ? "Submitting..." : "Store and Submit Now"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleUpload}
+                        disabled={loading || !isReadyToUpload}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-blue-600 hover:bg-blue-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {loading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <FileIcon className="w-4 h-4" />
+                        )}
+                        {loading ? "Uploading..." : "Store and Submit Later"}
+                    </button>
+
                 </div>
             </div>
 
@@ -1597,21 +1736,21 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                         ? "bg-emerald-50 text-emerald-700 border-emerald-300"
                                                                         : "bg-slate-50 text-slate-700 border-slate-300";
                                                                     const notesText = hasFieldValue ? "Auto-generated from Excel" : "Will be set automatically";
-                                                                    
+
                                                                     // Format the display value
                                                                     let displayValue = field.value;
                                                                     if (hasFieldValue) {
                                                                         if (field.label === "Final Value" || field.label === "Value") {
                                                                             // Format numbers with commas
-                                                                            displayValue = typeof field.value === 'number' 
-                                                                                ? field.value.toLocaleString() 
+                                                                            displayValue = typeof field.value === 'number'
+                                                                                ? field.value.toLocaleString()
                                                                                 : Number(field.value || 0).toLocaleString();
                                                                         } else if (field.label === "Valued At" || field.label === "Submitted At") {
                                                                             // Format dates (already in yyyy-mm-dd format, but ensure it displays nicely)
                                                                             displayValue = field.value;
                                                                         }
                                                                     }
-                                                                    
+
                                                                     return (
                                                                         <tr key={field.label} className="border-b border-slate-200 hover:bg-slate-50/50">
                                                                             <td className="px-2 py-1.5 bg-white font-semibold text-slate-800">
@@ -1766,22 +1905,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                    type="button"
-                    onClick={handleUpload}
-                    disabled={loading || !isReadyToUpload}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white text-xs font-semibold shadow-md hover:shadow-lg hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all"
-                >
-                    {loading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Send className="w-4 h-4" />
-                    )}
-                    {loading ? "Uploading..." : "Upload & Create Reports"}
-                </button>
-            </div>
+
 
             {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
                 <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -1887,406 +2011,403 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     <>
                         <div className="w-full overflow-x-auto">
                             <div className="min-w-full">
-                            <table className="w-full text-xs text-slate-700">
-                                <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-800 border-b-2 border-blue-200">
-                                    <tr>
-                                        <th className="px-2 py-2 text-left w-12 text-[10px] font-semibold uppercase tracking-wider">#</th>
-                                        <th className="px-2 py-2 text-left w-10 text-[10px] font-semibold uppercase tracking-wider"></th>
-                                        <th className="px-2 py-2 text-left w-32 text-[10px] font-semibold uppercase tracking-wider">Report ID</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Client</th>
-                                        <th className="px-2 py-2 text-left w-24 text-[10px] font-semibold uppercase tracking-wider">Final value</th>
-                                        <th className="px-2 py-2 text-left w-28 text-[10px] font-semibold uppercase tracking-wider">Status</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Action</th>
-                                        <th className="px-2 py-2 text-left w-16 text-[10px] font-semibold uppercase tracking-wider">Select</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {visibleReports.map((report, idx) => {
-                                        const recordId = getReportRecordId(report);
-                                        const statusKey = getReportStatus(report);
-                                        const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
-                                        const isExpanded = recordId ? expandedReports.includes(recordId) : false;
-                                        const reportBusy = recordId ? reportActionBusy[recordId] : null;
+                                <table className="w-full text-xs text-slate-700">
+                                    <thead className="bg-gradient-to-r from-blue-50 to-indigo-50 text-slate-800 border-b-2 border-blue-200">
+                                        <tr>
+                                            <th className="px-2 py-2 text-left w-12 text-[10px] font-semibold uppercase tracking-wider">#</th>
+                                            <th className="px-2 py-2 text-left w-10 text-[10px] font-semibold uppercase tracking-wider"></th>
+                                            <th className="px-2 py-2 text-left w-32 text-[10px] font-semibold uppercase tracking-wider">Report ID</th>
+                                            <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Client</th>
+                                            <th className="px-2 py-2 text-left w-24 text-[10px] font-semibold uppercase tracking-wider">Final value</th>
+                                            <th className="px-2 py-2 text-left w-28 text-[10px] font-semibold uppercase tracking-wider">Status</th>
+                                            <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Action</th>
+                                            <th className="px-2 py-2 text-left w-16 text-[10px] font-semibold uppercase tracking-wider">Select</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {visibleReports.map((report, idx) => {
+                                            const recordId = getReportRecordId(report);
+                                            const statusKey = getReportStatus(report);
+                                            const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
+                                            const isExpanded = recordId ? expandedReports.includes(recordId) : false;
+                                            const reportBusy = recordId ? reportActionBusy[recordId] : null;
 
-                                        return (
-                                            <React.Fragment key={recordId || `report-${idx}`}>
-                                                <tr className="border-t border-slate-200 bg-white hover:bg-blue-50/30 transition-colors">
-                                                    <td className="px-2 py-2 text-slate-600 text-xs font-medium">
-                                                        {idx + 1}
-                                                    </td>
-                                                    <td className="px-2 py-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => recordId && toggleReportExpansion(recordId)}
-                                                            disabled={!recordId}
-                                                            className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-slate-300 text-slate-700 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 transition-colors"
-                                                            aria-label={isExpanded ? "Hide assets" : "Show assets"}
-                                                        >
-                                                            {isExpanded ? (
-                                                                <ChevronDown className="w-3.5 h-3.5" />
-                                                            ) : (
-                                                                <ChevronRight className="w-3.5 h-3.5" />
-                                                            )}
-                                                        </button>
-                                                    </td>
-                                                    <td className="px-2 py-2">
-                                                        <div className="text-xs font-semibold text-slate-900 truncate" title={report.report_id || "Not submit"}>
-                                                            {report.report_id || "Not submit"}
-                                                        </div>
-                                                        <div className="text-[10px] text-slate-500 truncate" title={recordId || "-"}>
-                                                            {recordId || "-"}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 truncate" title={report.client_name || "-"}>
-                                                        <span className="text-xs text-slate-700">{report.client_name || "-"}</span>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs font-medium text-slate-700">
-                                                        {report.final_value || "-"}
-                                                    </td>
-                                                    <td className="px-2 py-2">
-                                                        <div className="flex flex-col gap-1">
-                                                            <span
-                                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                                                    reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
-                                                                }`}
+                                            return (
+                                                <React.Fragment key={recordId || `report-${idx}`}>
+                                                    <tr className="border-t border-slate-200 bg-white hover:bg-blue-50/30 transition-colors">
+                                                        <td className="px-2 py-2 text-slate-600 text-xs font-medium">
+                                                            {idx + 1}
+                                                        </td>
+                                                        <td className="px-2 py-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => recordId && toggleReportExpansion(recordId)}
+                                                                disabled={!recordId}
+                                                                className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-slate-300 text-slate-700 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 transition-colors"
+                                                                aria-label={isExpanded ? "Hide assets" : "Show assets"}
                                                             >
-                                                                {reportStatusLabels[statusKey] || statusKey}
-                                                            </span>
-                                                            {reportProgress[recordId] && (
-                                                                <div className="w-full space-y-1">
-                                                                    <div className="flex items-center justify-between mb-0.5">
-                                                                        <span className="text-[9px] text-slate-600 font-medium">
-                                                                            {Math.round(reportProgress[recordId].percentage)}%
-                                                                        </span>
-                                                                        <span className="text-[9px] text-slate-500 truncate max-w-[120px]" title={reportProgress[recordId].message}>
-                                                                            {reportProgress[recordId].message}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                                                        <div
-                                                                            className={`h-full transition-all duration-300 ${
-                                                                                reportProgress[recordId].status === "error"
-                                                                                    ? "bg-red-500"
-                                                                                    : reportProgress[recordId].status === "paused"
-                                                                                    ? "bg-yellow-500"
-                                                                                    : reportProgress[recordId].status === "stopped"
-                                                                                    ? "bg-slate-500"
-                                                                                    : "bg-blue-600"
-                                                                            }`}
-                                                                            style={{ width: `${Math.min(100, Math.max(0, reportProgress[recordId].percentage))}%` }}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1">
-                                                                        {(() => {
-                                                                            const currentStatus = reportProgress[recordId]?.status;
-                                                                            const isProcessing = currentStatus === "processing" || currentStatus === "starting";
-                                                                            const isPaused = currentStatus === "paused";
-                                                                            const canStop = ["processing", "starting", "paused"].includes(currentStatus);
-                                                                            
-                                                                            return (
-                                                                                <>
-                                                                                    {isProcessing && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => pauseReportProcess(recordId)}
-                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
-                                                                                        >
-                                                                                            Pause
-                                                                                        </button>
-                                                                                    )}
-                                                                                    {isPaused && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => resumeReportProcess(recordId)}
-                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                                                                                        >
-                                                                                            Resume
-                                                                                        </button>
-                                                                                    )}
-                                                                                    {canStop && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => stopReportProcess(recordId)}
-                                                                                            className="px-1.5 py-0.5 text-[9px] rounded border border-rose-400 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
-                                                                                        >
-                                                                                            Stop
-                                                                                        </button>
-                                                                                    )}
-                                                                                </>
-                                                                            );
-                                                                        })()}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2">
-                                                        <div className="flex flex-col gap-1">
-                                                            <div className="flex items-center gap-1">
-                                                                <select
-                                                                    value={actionDropdown[recordId] || ""}
-                                                                    disabled={!recordId || submitting || !!reportBusy}
-                                                                    onChange={(e) => {
-                                                                        const action = e.target.value;
-                                                                        setActionDropdown((prev) => ({
-                                                                            ...prev,
-                                                                            [recordId]: action,
-                                                                        }));
-                                                                    }}
-                                                                    className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
-                                                                >
-                                                                    <option value="">Actions</option>
-                                                                    <option value="retry">Retry submit</option>
-                                                                    <option value="delete">Delete</option>
-                                                                    <option value="edit">Edit</option>
-                                                                    <option value="send-approver">Send to Approver</option>
-                                                                    <option value="approve">Approve</option>
-                                                                </select>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const action = actionDropdown[recordId];
-                                                                        if (action) {
-                                                                            handleReportAction(report, action);
-                                                                            setActionDropdown((prev) => {
-                                                                                const next = { ...prev };
-                                                                                delete next[recordId];
-                                                                                return next;
-                                                                            });
-                                                                        }
-                                                                    }}
-                                                                    disabled={!recordId || submitting || !!reportBusy || !actionDropdown[recordId]}
-                                                                    className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-semibold transition-colors"
-                                                                >
-                                                                    Go
-                                                                </button>
+                                                                {isExpanded ? (
+                                                                    <ChevronDown className="w-3.5 h-3.5" />
+                                                                ) : (
+                                                                    <ChevronRight className="w-3.5 h-3.5" />
+                                                                )}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-2 py-2">
+                                                            <div className="text-xs font-semibold text-slate-900 truncate" title={report.report_id || "Not submit"}>
+                                                                {report.report_id || "Not submit"}
                                                             </div>
-                                                        </div>
-                                                        {reportBusy && (
-                                                            <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
-                                                                Working...
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-2 py-2 text-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            disabled={!recordId}
-                                                            checked={!!recordId && selectedReportSet.has(recordId)}
-                                                            onChange={() => recordId && toggleReportSelection(recordId)}
-                                                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                                                        />
-                                                    </td>
-                                                </tr>
-                                                {isExpanded && (
-                                                    <tr>
-                                                        <td colSpan={8} className="bg-blue-50/20 border-t border-blue-200">
-                                                            <div className="p-2 space-y-2">
-                                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                    <div className="text-xs text-slate-700 font-medium">
-                                                                        Assets: <span className="text-blue-600 font-semibold">{assetList.length}</span>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="rounded-md border border-slate-200 overflow-hidden bg-white shadow-sm">
-                                                                    <div className="max-h-48 overflow-y-auto">
-                                                                        <table className="w-full text-xs text-slate-700">
-                                                                            <thead className="bg-slate-50 text-slate-800 border-b border-slate-200 sticky top-0">
-                                                                                <tr>
-                                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Asset name</th>
-                                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Final value</th>
-                                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Sheet</th>
-                                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
-                                                                                </tr>
-                                                                            </thead>
-                                                                            <tbody>
-                                                                                {assetList.length === 0 ? (
-                                                                                    <tr>
-                                                                                        <td colSpan={4} className="px-2 py-2 text-center text-slate-500 text-xs">
-                                                                                            No assets available for this report.
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                ) : (
-                                                                                    assetList.map((asset, assetIdx) => {
-                                                                                        const assetStatus = asset.submitState === 1 ? "complete" : "incomplete";
-                                                                                        const statusLabel = assetStatus === "complete" ? "Complete" : "Incomplete";
-                                                                                        const statusClass = assetStatus === "complete" 
-                                                                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                                                            : "border-amber-200 bg-amber-50 text-amber-700";
-                                                                                        
-                                                                                        return (
-                                                                                            <tr key={`${recordId}-${assetIdx}`} className="border-t border-slate-200 hover:bg-slate-50/50">
-                                                                                                <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
-                                                                                                    {asset.asset_name || "-"}
-                                                                                                </td>
-                                                                                                <td className="px-2 py-1.5 text-slate-700 text-xs">
-                                                                                                    {asset.final_value || "-"}
-                                                                                                </td>
-                                                                                                <td className="px-2 py-1.5 text-slate-600 text-xs">
-                                                                                                    {asset.source_sheet || "-"}
-                                                                                                </td>
-                                                                                                <td className="px-2 py-1.5">
-                                                                                                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-semibold ${statusClass}`}>
-                                                                                                        {statusLabel}
-                                                                                                    </span>
-                                                                                                </td>
-                                                                                            </tr>
-                                                                                        );
-                                                                                    })
-                                                                                )}
-                                                                            </tbody>
-                                                                        </table>
-                                                                    </div>
-                                                                </div>
+                                                            <div className="text-[10px] text-slate-500 truncate" title={recordId || "-"}>
+                                                                {recordId || "-"}
                                                             </div>
                                                         </td>
+                                                        <td className="px-2 py-2 truncate" title={report.client_name || "-"}>
+                                                            <span className="text-xs text-slate-700">{report.client_name || "-"}</span>
+                                                        </td>
+                                                        <td className="px-2 py-2 text-xs font-medium text-slate-700">
+                                                            {report.final_value || "-"}
+                                                        </td>
+                                                        <td className="px-2 py-2">
+                                                            <div className="flex flex-col gap-1">
+                                                                <span
+                                                                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
+                                                                        }`}
+                                                                >
+                                                                    {reportStatusLabels[statusKey] || statusKey}
+                                                                </span>
+                                                                {reportProgress[recordId] && (
+                                                                    <div className="w-full space-y-1">
+                                                                        <div className="flex items-center justify-between mb-0.5">
+                                                                            <span className="text-[9px] text-slate-600 font-medium">
+                                                                                {Math.round(reportProgress[recordId].percentage)}%
+                                                                            </span>
+                                                                            <span className="text-[9px] text-slate-500 truncate max-w-[120px]" title={reportProgress[recordId].message}>
+                                                                                {reportProgress[recordId].message}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                                                            <div
+                                                                                className={`h-full transition-all duration-300 ${reportProgress[recordId].status === "error"
+                                                                                    ? "bg-red-500"
+                                                                                    : reportProgress[recordId].status === "paused"
+                                                                                        ? "bg-yellow-500"
+                                                                                        : reportProgress[recordId].status === "stopped"
+                                                                                            ? "bg-slate-500"
+                                                                                            : "bg-blue-600"
+                                                                                    }`}
+                                                                                style={{ width: `${Math.min(100, Math.max(0, reportProgress[recordId].percentage))}%` }}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1">
+                                                                            {(() => {
+                                                                                const currentStatus = reportProgress[recordId]?.status;
+                                                                                const isProcessing = currentStatus === "processing" || currentStatus === "starting";
+                                                                                const isPaused = currentStatus === "paused";
+                                                                                const canStop = ["processing", "starting", "paused"].includes(currentStatus);
+
+                                                                                return (
+                                                                                    <>
+                                                                                        {isProcessing && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => pauseReportProcess(recordId)}
+                                                                                                className="px-1.5 py-0.5 text-[9px] rounded border border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                                                                            >
+                                                                                                Pause
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {isPaused && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => resumeReportProcess(recordId)}
+                                                                                                className="px-1.5 py-0.5 text-[9px] rounded border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                                                                            >
+                                                                                                Resume
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {canStop && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => stopReportProcess(recordId)}
+                                                                                                className="px-1.5 py-0.5 text-[9px] rounded border border-rose-400 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                                                                                            >
+                                                                                                Stop
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </>
+                                                                                );
+                                                                            })()}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-2 py-2">
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center gap-1">
+                                                                    <select
+                                                                        value={actionDropdown[recordId] || ""}
+                                                                        disabled={!recordId || submitting || !!reportBusy}
+                                                                        onChange={(e) => {
+                                                                            const action = e.target.value;
+                                                                            setActionDropdown((prev) => ({
+                                                                                ...prev,
+                                                                                [recordId]: action,
+                                                                            }));
+                                                                        }}
+                                                                        className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                                                                    >
+                                                                        <option value="">Actions</option>
+                                                                        <option value="retry">Retry submit</option>
+                                                                        <option value="delete">Delete</option>
+                                                                        <option value="edit">Edit</option>
+                                                                        <option value="send-approver">Send to Approver</option>
+                                                                        <option value="approve">Approve</option>
+                                                                    </select>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const action = actionDropdown[recordId];
+                                                                            if (action) {
+                                                                                handleReportAction(report, action);
+                                                                                setActionDropdown((prev) => {
+                                                                                    const next = { ...prev };
+                                                                                    delete next[recordId];
+                                                                                    return next;
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        disabled={!recordId || submitting || !!reportBusy || !actionDropdown[recordId]}
+                                                                        className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-semibold transition-colors"
+                                                                    >
+                                                                        Go
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            {reportBusy && (
+                                                                <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
+                                                                    Working...
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-2 py-2 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                disabled={!recordId}
+                                                                checked={!!recordId && selectedReportSet.has(recordId)}
+                                                                onChange={() => recordId && toggleReportSelection(recordId)}
+                                                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </td>
                                                     </tr>
-                                                )}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                    {isExpanded && (
+                                                        <tr>
+                                                            <td colSpan={8} className="bg-blue-50/20 border-t border-blue-200">
+                                                                <div className="p-2 space-y-2">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                        <div className="text-xs text-slate-700 font-medium">
+                                                                            Assets: <span className="text-blue-600 font-semibold">{assetList.length}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="rounded-md border border-slate-200 overflow-hidden bg-white shadow-sm">
+                                                                        <div className="max-h-48 overflow-y-auto">
+                                                                            <table className="w-full text-xs text-slate-700">
+                                                                                <thead className="bg-slate-50 text-slate-800 border-b border-slate-200 sticky top-0">
+                                                                                    <tr>
+                                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Asset name</th>
+                                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Final value</th>
+                                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Sheet</th>
+                                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {assetList.length === 0 ? (
+                                                                                        <tr>
+                                                                                            <td colSpan={4} className="px-2 py-2 text-center text-slate-500 text-xs">
+                                                                                                No assets available for this report.
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ) : (
+                                                                                        assetList.map((asset, assetIdx) => {
+                                                                                            const assetStatus = asset.submitState === 1 ? "complete" : "incomplete";
+                                                                                            const statusLabel = assetStatus === "complete" ? "Complete" : "Incomplete";
+                                                                                            const statusClass = assetStatus === "complete"
+                                                                                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                                                                : "border-amber-200 bg-amber-50 text-amber-700";
+
+                                                                                            return (
+                                                                                                <tr key={`${recordId}-${assetIdx}`} className="border-t border-slate-200 hover:bg-slate-50/50">
+                                                                                                    <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
+                                                                                                        {asset.asset_name || "-"}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-1.5 text-slate-700 text-xs">
+                                                                                                        {asset.final_value || "-"}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-1.5 text-slate-600 text-xs">
+                                                                                                        {asset.source_sheet || "-"}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-1.5">
+                                                                                                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-semibold ${statusClass}`}>
+                                                                                                            {statusLabel}
+                                                                                                        </span>
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                            );
+                                                                                        })
+                                                                                    )}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
                         {/* Pagination Controls */}
                         {totalPages > 1 && (() => {
-                        const getPageNumbers = () => {
-                            const pages = [];
+                            const getPageNumbers = () => {
+                                const pages = [];
 
-                            if (totalPages <= 6) {
-                                // Show all pages if 6 or fewer
-                                for (let i = 1; i <= totalPages; i++) {
-                                    pages.push(i);
-                                }
-                                return pages;
-                            }
-
-                            // Always show first 3 pages
-                            pages.push(1, 2, 3);
-
-                            const lastThree = [totalPages - 2, totalPages - 1, totalPages];
-                            const lastThreeStart = totalPages - 2;
-
-                            // If current page is in first 3 or overlaps with last 3
-                            if (currentPage <= 3) {
-                                // Show: 1, 2, 3, 4, 5, ..., last 3
-                                if (4 < lastThreeStart) {
-                                    pages.push(4, 5);
-                                    pages.push('ellipsis');
-                                }
-                            } else if (currentPage >= lastThreeStart) {
-                                // Show: 1, 2, 3, ..., last 3
-                                if (3 < lastThreeStart - 1) {
-                                    pages.push('ellipsis');
-                                }
-                            } else {
-                                // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
-                                const showBefore = currentPage - 1;
-                                const showAfter = currentPage + 1;
-
-                                // Check if we need ellipsis before current page
-                                if (showBefore > 4) {
-                                    pages.push('ellipsis');
-                                    pages.push(showBefore);
-                                } else if (showBefore > 3) {
-                                    pages.push(showBefore);
+                                if (totalPages <= 6) {
+                                    // Show all pages if 6 or fewer
+                                    for (let i = 1; i <= totalPages; i++) {
+                                        pages.push(i);
+                                    }
+                                    return pages;
                                 }
 
-                                pages.push(currentPage);
+                                // Always show first 3 pages
+                                pages.push(1, 2, 3);
 
-                                // Check if we need ellipsis after current page
-                                if (showAfter < lastThreeStart - 1) {
-                                    pages.push(showAfter);
-                                    if (showAfter < lastThreeStart - 2) {
+                                const lastThree = [totalPages - 2, totalPages - 1, totalPages];
+                                const lastThreeStart = totalPages - 2;
+
+                                // If current page is in first 3 or overlaps with last 3
+                                if (currentPage <= 3) {
+                                    // Show: 1, 2, 3, 4, 5, ..., last 3
+                                    if (4 < lastThreeStart) {
+                                        pages.push(4, 5);
                                         pages.push('ellipsis');
                                     }
-                                }
-                            }
-
-                            // Always show last 3 pages (avoid duplicates)
-                            lastThree.forEach(page => {
-                                if (!pages.includes(page)) {
-                                    pages.push(page);
-                                }
-                            });
-
-                            // Clean up and ensure proper order
-                            const cleaned = [];
-                            let prevNum = 0;
-
-                            for (let i = 0; i < pages.length; i++) {
-                                const item = pages[i];
-                                if (item === 'ellipsis') {
-                                    if (cleaned[cleaned.length - 1] !== 'ellipsis') {
-                                        cleaned.push('ellipsis');
+                                } else if (currentPage >= lastThreeStart) {
+                                    // Show: 1, 2, 3, ..., last 3
+                                    if (3 < lastThreeStart - 1) {
+                                        pages.push('ellipsis');
                                     }
-                                } else if (typeof item === 'number') {
-                                    if (item > prevNum) {
-                                        if (item > prevNum + 1 && prevNum > 0 && cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                } else {
+                                    // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
+                                    const showBefore = currentPage - 1;
+                                    const showAfter = currentPage + 1;
+
+                                    // Check if we need ellipsis before current page
+                                    if (showBefore > 4) {
+                                        pages.push('ellipsis');
+                                        pages.push(showBefore);
+                                    } else if (showBefore > 3) {
+                                        pages.push(showBefore);
+                                    }
+
+                                    pages.push(currentPage);
+
+                                    // Check if we need ellipsis after current page
+                                    if (showAfter < lastThreeStart - 1) {
+                                        pages.push(showAfter);
+                                        if (showAfter < lastThreeStart - 2) {
+                                            pages.push('ellipsis');
+                                        }
+                                    }
+                                }
+
+                                // Always show last 3 pages (avoid duplicates)
+                                lastThree.forEach(page => {
+                                    if (!pages.includes(page)) {
+                                        pages.push(page);
+                                    }
+                                });
+
+                                // Clean up and ensure proper order
+                                const cleaned = [];
+                                let prevNum = 0;
+
+                                for (let i = 0; i < pages.length; i++) {
+                                    const item = pages[i];
+                                    if (item === 'ellipsis') {
+                                        if (cleaned[cleaned.length - 1] !== 'ellipsis') {
                                             cleaned.push('ellipsis');
                                         }
-                                        cleaned.push(item);
-                                        prevNum = item;
+                                    } else if (typeof item === 'number') {
+                                        if (item > prevNum) {
+                                            if (item > prevNum + 1 && prevNum > 0 && cleaned[cleaned.length - 1] !== 'ellipsis') {
+                                                cleaned.push('ellipsis');
+                                            }
+                                            cleaned.push(item);
+                                            prevNum = item;
+                                        }
                                     }
                                 }
-                            }
 
-                            return cleaned;
-                        };
+                                return cleaned;
+                            };
 
-                        const pageNumbers = getPageNumbers();
+                            const pageNumbers = getPageNumbers();
 
-                        return (
-                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
-                                <div className="text-xs text-slate-600 font-medium">
-                                    Showing <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredReports.length)}</span> of <span className="font-semibold text-slate-800">{filteredReports.length}</span> reports
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <button
-                                        type="button"
-                                        onClick={() => handlePageChange(currentPage - 1)}
-                                        disabled={currentPage === 1}
-                                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        Previous
-                                    </button>
-                                    <div className="flex items-center gap-1">
-                                        {pageNumbers.map((page, idx) => {
-                                            if (page === 'ellipsis') {
+                            return (
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
+                                    <div className="text-xs text-slate-600 font-medium">
+                                        Showing <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredReports.length)}</span> of <span className="font-semibold text-slate-800">{filteredReports.length}</span> reports
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(currentPage - 1)}
+                                            disabled={currentPage === 1}
+                                            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Previous
+                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            {pageNumbers.map((page, idx) => {
+                                                if (page === 'ellipsis') {
+                                                    return (
+                                                        <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-slate-600">
+                                                            ...
+                                                        </span>
+                                                    );
+                                                }
                                                 return (
-                                                    <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-slate-600">
-                                                        ...
-                                                    </span>
-                                                );
-                                            }
-                                            return (
-                                                <button
-                                                    key={page}
-                                                    type="button"
-                                                    onClick={() => handlePageChange(page)}
-                                                    className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                                        currentPage === page
+                                                    <button
+                                                        key={page}
+                                                        type="button"
+                                                        onClick={() => handlePageChange(page)}
+                                                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${currentPage === page
                                                             ? "bg-blue-600 text-white shadow-sm"
                                                             : "text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400"
-                                                    }`}
-                                                >
-                                                    {page}
-                                                </button>
-                                            );
-                                        })}
+                                                            }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePageChange(currentPage + 1)}
+                                            disabled={currentPage === totalPages}
+                                            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            Next
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => handlePageChange(currentPage + 1)}
-                                        disabled={currentPage === totalPages}
-                                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        Next
-                                    </button>
                                 </div>
-                            </div>
-                        );
+                            );
                         })()}
                     </>
                 )}

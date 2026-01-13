@@ -17,6 +17,7 @@ import {
     CheckCircle2,
     X,
     MoreVertical,
+    ExternalLink,
     Send,
     Table,
     Eye
@@ -29,8 +30,11 @@ import EditAssetModal from "./EditAssetModal";
 const ReportsTable = () => {
     const [reports, setReports] = useState([]);
     const [assetFilter, setAssetFilter] = useState("all");
+    const [actionDropdown, setActionDropdown] = useState({});
+    const [submitToTaqeemLoading, setSubmitToTaqeemLoading] = useState({});
     const [editLoading, setEditLoading] = useState({});
     const [editModalOpen, setEditModalOpen] = useState(false);
+    const [success, setSuccess] = useState("");
     const [selectedAsset, setSelectedAsset] = useState(null);
     const [selectedReportId, setSelectedReportId] = useState(null);
     const [filteredReports, setFilteredReports] = useState([]);
@@ -60,6 +64,97 @@ const ReportsTable = () => {
 
     const { ramInfo } = useRam();
     const tabsNum = ramInfo?.recommendedTabs || 1;
+
+    const handleSubmitToTaqeem = async (reportId) => {
+        // Find the report to check status
+        const report = allReports.find(r => r.report_id === reportId);
+        if (!report) return;
+
+        const status = getReportStatus(report);
+        if (status !== "New") {
+            setError("Only NEW status reports can be submitted to Taqeem");
+            return;
+        }
+
+
+        if (submitToTaqeemLoading[reportId]) return;
+
+        await executeWithAuth(
+            async (params) => {
+                const { token: authToken, reportId: id, tabsNum: tabs } = params;
+
+                setSubmitToTaqeemLoading(prev => ({ ...prev, [reportId]: true }));
+                setDropdownOpen(null);
+
+                try {
+                    console.log("[ReportsTable] Calling completeReportFlow for report:", id);
+
+                    const flowResult = await window.electronAPI.completeReportFlow(id, tabs);
+
+                    console.log("[ReportsTable] completeReportFlow result:", flowResult);
+
+                    if (flowResult?.status === "SUCCESS") {
+                        // Show success message
+                        const completedAssets = flowResult?.summary?.complete_macros || 0;
+
+                        // Deduct points if assets were completed
+                        if (completedAssets > 0) {
+                            try {
+                                await window.electronAPI.apiRequest(
+                                    "PATCH",
+                                    `/api/packages/deduct`,
+                                    { amount: completedAssets },
+                                    { Authorization: `Bearer ${authToken}` }
+                                );
+                                console.log("[ReportsTable] Deducted points for:", completedAssets, "assets");
+                            } catch (deductError) {
+                                console.error("[ReportsTable] Error deducting points:", deductError);
+                                // Don't throw here - deduction failure shouldn't fail the whole submission
+                            }
+                        }
+
+                        return {
+                            success: true,
+                            message: `✅ Successfully submitted report "${id}" to Taqeem. ${completedAssets} assets processed.`,
+                            completedAssets
+                        };
+                    } else {
+                        throw new Error(flowResult?.message || "Failed to submit to Taqeem. Please try again.");
+                    }
+                } catch (error) {
+                    console.error("[ReportsTable] Error submitting to Taqeem:", error);
+                    throw error;
+                } finally {
+                    setSubmitToTaqeemLoading(prev => ({ ...prev, [reportId]: false }));
+                }
+            },
+            { token, reportId, tabsNum },
+            {
+                requiredPoints: 1, // Submit to Taqeem costs 1 point (adjust as needed)
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onAuthSuccess: () => {
+                    console.log('Submit to Taqeem authentication successful');
+                },
+                onAuthFailure: (reason) => {
+                    console.warn('Submit to Taqeem authentication failed:', reason);
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                        setError(reason?.message || "Authentication failed for Submit to Taqeem");
+                    }
+                }
+            }
+        ).then(result => {
+            if (result?.success) {
+                setSuccess(result.message);
+                // Refresh the reports table
+                fetchAllReports();
+            }
+        }).catch(error => {
+            // Error is already handled in onAuthFailure callback
+            if (!error?.message?.includes("INSUFFICIENT_POINTS") && !error?.message?.includes("LOGIN_REQUIRED")) {
+                setError(error?.message || "Failed to submit to Taqeem");
+            }
+        });
+    };
 
     const setActionLoading = (actionType, reportId, isLoading) => {
         setLoadingActions(prev => ({
@@ -281,11 +376,23 @@ const ReportsTable = () => {
 
                 applyFilters(result.data);
             } else {
-                setError(result.message || "Failed to fetch reports");
+                setError(
+                    (result?.message || '')
+                        .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+                        .replace(/^Error:\s*/i, '') ||
+                    'Failed to fetch reports'
+                );
+
             }
         } catch (err) {
             console.error("Error fetching reports:", err);
-            setError(err.message || "Failed to fetch reports");
+            setError(
+                (result?.message || '')
+                    .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+                    .replace(/^Error:\s*/i, '') ||
+                'Failed to fetch reports'
+            );
+
         } finally {
             setLoading(false);
         }
@@ -374,14 +481,12 @@ const ReportsTable = () => {
         localStorage.removeItem('notification-target');
     }, [allReports]);
 
+
     const toggleReportExpand = (reportId) => {
         setExpandedReport(expandedReport === reportId ? null : reportId);
     };
 
-    const toggleDropdown = (reportId, e) => {
-        e.stopPropagation();
-        setDropdownOpen(dropdownOpen === reportId ? null : reportId);
-    };
+
 
     const handlePageChange = (page) => {
         const pageNumber = Number(page);
@@ -430,17 +535,20 @@ const ReportsTable = () => {
     };
 
     const getReportStatus = (report) => {
-        const assetData = getAssetData(report);
-        if (allCompleted) return capitalizeStatus("completed");
-        const allCompleted = assetData.every(asset => asset.submitState === 1);
+        // First check if report has a status field
         if (report.report_status) {
-            return capitalizeStatus(report.report_status);
+            const status = capitalizeStatus(report.report_status);
+            if (status === "New") return status;
         }
 
         if (report.status) {
-            return capitalizeStatus(report.status);
+            const status = capitalizeStatus(report.status);
+            if (status === "New") return status;
         }
 
+        const assetData = getAssetData(report);
+        const allCompleted = assetData.every(asset => asset.submitState === 1);
+        if (allCompleted) return capitalizeStatus("completed");
 
         if (assetData.length === 0) return capitalizeStatus("draft");
 
@@ -450,9 +558,11 @@ const ReportsTable = () => {
         return capitalizeStatus("pending");
     };
 
+    // Update the getStatusColor function to handle "NEW" status:
     const getStatusColor = (status) => {
         const statusUpper = status.toUpperCase();
 
+        if (statusUpper === 'NEW') return 'border-blue-200 bg-blue-50 text-blue-700';
         if (statusUpper === 'CONFIRMED') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
         if (statusUpper === 'SENT') return 'border-purple-200 bg-purple-50 text-purple-700';
         if (statusUpper === 'COMPLETED' || statusUpper === 'COMPLETE') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -463,9 +573,11 @@ const ReportsTable = () => {
         return 'border-gray-200 bg-gray-50 text-gray-700';
     };
 
+    // Update the getStatusIcon function to handle "NEW" status:
     const getStatusIcon = (status) => {
         const statusUpper = status.toUpperCase();
 
+        if (statusUpper === 'NEW') return <ExternalLink className="w-2.5 h-2.5" />;
         if (statusUpper === 'CONFIRMED') return <CheckCircle2 className="w-2.5 h-2.5" />;
         if (statusUpper === 'SENT') return <Send className="w-2.5 h-2.5" />;
         if (statusUpper === 'COMPLETED' || statusUpper === 'COMPLETE') return <CheckCircle2 className="w-2.5 h-2.5" />;
@@ -479,6 +591,26 @@ const ReportsTable = () => {
     const clearSearch = () => {
         setSearchQuery("");
     };
+
+    useEffect(() => {
+        const handleRefreshEvent = () => {
+            fetchAllReports();
+        };
+
+        window.addEventListener('refreshReportsTable', handleRefreshEvent);
+
+        const handleClickOutside = () => {
+            setDropdownOpen(null);
+        };
+
+        document.addEventListener('click', handleClickOutside);
+
+        return () => {
+            window.removeEventListener('refreshReportsTable', handleRefreshEvent);
+            document.removeEventListener('click', handleClickOutside);
+        };
+    }, []);
+
 
     return (
         <div className="min-h-screen bg-gray-50 py-3 px-3">
@@ -613,7 +745,7 @@ const ReportsTable = () => {
                                             <th className="px-3 py-2 text-left font-semibold">Status</th>
                                             <th className="px-3 py-2 text-left font-semibold">Assets</th>
                                             <th className="px-3 py-2 text-left font-semibold">Created Date</th>
-                                            <th className="px-3 py-2 text-left font-semibold">Actions</th>
+                                            <th className="px-3 py-2 text-left font-semibold w-60">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
@@ -641,13 +773,15 @@ const ReportsTable = () => {
                                                 const status = getReportStatus(report);
                                                 const statusColor = getStatusColor(status);
 
+                                                const isNewReport = status === "New";
+
                                                 const isFullCheckLoading = isActionLoading('fullCheck', report.report_id);
                                                 const isHalfCheckLoading = isActionLoading('halfCheck', report.report_id);
                                                 const isRetryLoading = isActionLoading('retry', report.report_id);
                                                 const isSendLoading = isActionLoading('send', report.report_id);
+                                                const isSubmitToTaqeemLoading = submitToTaqeemLoading[report.report_id];
 
-                                                const isAnyActionLoading = isFullCheckLoading || isHalfCheckLoading || isRetryLoading || isSendLoading;
-
+                                                const isAnyActionLoading = isFullCheckLoading || isHalfCheckLoading || isRetryLoading || isSendLoading || isSubmitToTaqeemLoading;
                                                 return (
                                                     <React.Fragment key={report._id}>
                                                         <tr className={`${isHighlighted ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-gray-50'} transition-colors`}>
@@ -683,79 +817,83 @@ const ReportsTable = () => {
                                                                 {formatDate(report.createdAt)}
                                                             </td>
                                                             <td className="px-3 py-2">
-                                                                <div className="relative">
+                                                                <div className="flex items-center gap-1">
+                                                                    {/* Dropdown Select */}
+                                                                    <div className="relative flex-1">
+                                                                        <select
+                                                                            value={actionDropdown[report._id] || ""}
+                                                                            onChange={(e) => {
+                                                                                const action = e.target.value;
+                                                                                setActionDropdown((prev) => ({
+                                                                                    ...prev,
+                                                                                    [report._id]: action,
+                                                                                }));
+                                                                            }}
+                                                                            disabled={isAnyActionLoading}
+                                                                            className="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer appearance-none bg-white"
+                                                                        >
+                                                                            <option value="">Select Action</option>
+                                                                            <option value="submit-to-taqeem" disabled={!isNewReport}>
+                                                                                {isNewReport ? "Submit to Taqeem" : "Submit to Taqeem"}
+                                                                            </option>
+                                                                            <option value="full-check">Full Check</option>
+                                                                            <option value="half-check">Half Check</option>
+                                                                            <option value="retry">Retry</option>
+                                                                            <option value="send">Send</option>
+                                                                        </select>
+
+                                                                        {/* Dropdown arrow */}
+                                                                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                                                                            <ChevronDown className="w-3 h-3 text-gray-400" />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Go Button */}
                                                                     <button
                                                                         type="button"
-                                                                        onClick={(e) => toggleDropdown(report._id, e)}
-                                                                        disabled={isAnyActionLoading}
-                                                                        className="inline-flex items-center justify-center w-7 h-7 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                        onClick={() => {
+                                                                            const action = actionDropdown[report._id];
+                                                                            if (action) {
+                                                                                switch (action) {
+                                                                                    case 'submit-to-taqeem':
+                                                                                        handleSubmitToTaqeem(report.report_id);
+                                                                                        break;
+                                                                                    case 'full-check':
+                                                                                        handleFullCheck(report.report_id, report);
+                                                                                        break;
+                                                                                    case 'half-check':
+                                                                                        handleHalfCheck(report.report_id, report);
+                                                                                        break;
+                                                                                    case 'retry':
+                                                                                        handleRetry(report.report_id, report);
+                                                                                        break;
+                                                                                    case 'send':
+                                                                                        handleSend(report.report_id, report);
+                                                                                        break;
+                                                                                }
+                                                                                // Clear the dropdown selection after clicking Go
+                                                                                setActionDropdown((prev) => {
+                                                                                    const next = { ...prev };
+                                                                                    delete next[report._id];
+                                                                                    return next;
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        disabled={!actionDropdown[report._id] || isAnyActionLoading}
+                                                                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed min-w-[40px]"
                                                                     >
-                                                                        {isAnyActionLoading ? (
-                                                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                                                        ) : (
-                                                                            <MoreVertical className="w-3 h-3" />
-                                                                        )}
+                                                                        {(() => {
+                                                                            const action = actionDropdown[report._id];
+                                                                            if (!action) return "Go";
+
+                                                                            if (action === 'submit-to-taqeem' && isSubmitToTaqeemLoading) return "Working...";
+                                                                            if (action === 'full-check' && isFullCheckLoading) return "Working...";
+                                                                            if (action === 'half-check' && isHalfCheckLoading) return "Working...";
+                                                                            if (action === 'retry' && isRetryLoading) return "Working...";
+                                                                            if (action === 'send' && isSendLoading) return "Working...";
+                                                                            return "Go";
+                                                                        })()}
                                                                     </button>
-
-                                                                    {dropdownOpen === report._id && (
-                                                                        <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 z-10 overflow-hidden">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleFullCheck(report.report_id, report)}
-                                                                                disabled={isFullCheckLoading}
-                                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-emerald-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
-                                                                            >
-                                                                                {isFullCheckLoading ? (
-                                                                                    <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
-                                                                                ) : (
-                                                                                    <CheckCheck className="w-3 h-3 text-emerald-600" />
-                                                                                )}
-                                                                                Full Check
-                                                                            </button>
-
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleHalfCheck(report.report_id, report)}
-                                                                                disabled={isHalfCheckLoading}
-                                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-amber-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
-                                                                            >
-                                                                                {isHalfCheckLoading ? (
-                                                                                    <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
-                                                                                ) : (
-                                                                                    <Check className="w-3 h-3 text-amber-600" />
-                                                                                )}
-                                                                                Half Check
-                                                                            </button>
-
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleRetry(report.report_id, report)}
-                                                                                disabled={isRetryLoading}
-                                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-blue-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border-b border-gray-100"
-                                                                            >
-                                                                                {isRetryLoading ? (
-                                                                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                                                                ) : (
-                                                                                    <RefreshCcw className="w-3 h-3 text-blue-600" />
-                                                                                )}
-                                                                                Retry
-                                                                            </button>
-
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleSend(report.report_id, report)}
-                                                                                disabled={isSendLoading}
-                                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-indigo-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                            >
-                                                                                {isSendLoading ? (
-                                                                                    <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
-                                                                                ) : (
-                                                                                    <Send className="w-3 h-3 text-indigo-600" />
-                                                                                )}
-                                                                                Send
-                                                                            </button>
-                                                                        </div>
-                                                                    )}
                                                                 </div>
                                                             </td>
                                                         </tr>

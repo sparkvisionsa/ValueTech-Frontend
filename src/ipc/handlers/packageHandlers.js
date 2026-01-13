@@ -141,7 +141,17 @@ const packageHandlers = {
         }
 
         // create error-like object to include status and body
-        const msg = response.data?.message || `HTTP ${response.status}`;
+        let msg = response.data?.message || `HTTP ${response.status}`;
+
+        // Normalize auth errors
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          msg === 'Invalid or expired token'
+        ) {
+          msg = 'Please login to our system';
+        }
+
         const err = new Error(msg);
         err.status = response.status;
         err.response = { data: response.data, headers: response.headers };

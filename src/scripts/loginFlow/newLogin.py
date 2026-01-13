@@ -34,6 +34,7 @@ async def wait_until_logged_in(page, timeout=340, poll=2):
 
     return {"status": "FAILED", "error": "User did not complete login in time"}
 
+
 async def get_user_id(page):
     await page.get("https://qima.taqeem.sa/valuer/profile")
     user_id = await wait_for_element(page, ".appBox .d-flex.justify-content-between.border-top.mt-md.flex-wrap .fs-xs:nth-of-type(1) span")

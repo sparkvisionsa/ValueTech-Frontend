@@ -6,8 +6,9 @@ import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { useAuthAction } from "../hooks/useAuthAction";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import {
-    Upload, AlertTriangle, Table, FileText, X, CheckCircle,
-    Calendar, MapPin, User, CheckCircle2, Loader2, Download
+    AlertTriangle, Table, FileText,
+    Calendar, MapPin, User, CheckCircle2, Loader2, Download, RefreshCw,
+    Send, FileIcon
 } from "lucide-react";
 import ReportsTable from "../components/ReportsTable";
 import { downloadTemplateFile } from "../utils/templateDownload";
@@ -23,6 +24,71 @@ const UploadAssets = ({ onViewChange }) => {
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+    const openFileDialogAndExtract = async () => {
+        try {
+            setError("");
+            setSuccess("");
+            setPreviewData(null);
+            setReportId("");
+
+            // Use electron's showOpenDialog
+            const dlgResult = await window.electronAPI.showOpenDialog({
+                properties: ['openFile'],
+                filters: [
+                    { name: 'Excel Files', extensions: ['xlsx', 'xls', 'xlsm'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ]
+            });
+
+            // Check if dialog was cancelled or no file selected
+            if (!dlgResult || dlgResult.canceled || !dlgResult.filePaths || dlgResult.filePaths.length === 0) {
+                return;
+            }
+
+            const filePath = dlgResult.filePaths[0];
+
+            if (!filePath) {
+                setError("No file selected");
+                return;
+            }
+
+            setExcelFilePath(filePath);
+            const name = filePath.split(/[\\/]/).pop();
+            setExcelFileName(name);
+
+            const extractedReportId = extractFileNameWithoutExtension(filePath);
+            setReportId(extractedReportId);
+
+            setPreviewLoading(true);
+            console.log("[UploadAssets] calling extract-asset-data for", filePath);
+
+            const result = await window.electronAPI.extractAssetData(filePath);
+
+            console.log("[UploadAssets] extract-asset-data result:", result);
+
+            if (result?.status === "FAILED" || result?.error) {
+                throw new Error(result.error || "Failed to extract data from Excel file");
+            }
+
+            const preview = result?.data ?? null;
+            if (!preview) {
+                setError("No preview data returned from extract-asset-data.");
+                setPreviewData(null);
+            } else {
+                const processedData = processPreviewData(Array.isArray(preview) ? preview : [preview]);
+                setPreviewData(processedData);
+                const info = result?.info || {};
+                setSuccess(`Successfully extracted ${processedData.length} records (${info.marketCount || 0} market approach, ${info.costCount || 0} cost approach)`);
+            }
+        } catch (err) {
+            console.error("[UploadAssets] error extracting preview:", err);
+            setError(err?.message || "Failed to extract preview via IPC");
+            setPreviewData(null);
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
 
     const { executeWithAuth } = useAuthAction();
     let { token, login } = useSession();
@@ -93,70 +159,7 @@ const UploadAssets = ({ onViewChange }) => {
         }
     };
 
-    const openFileDialogAndExtract = async () => {
-        try {
-            setError("");
-            setSuccess("");
-            setPreviewData(null);
-            setReportId("");
 
-            const dlgResult = await window.electronAPI.showOpenDialog();
-
-            if (!dlgResult) {
-                return;
-            }
-
-            let filePath = null;
-
-            if (typeof dlgResult === "string") {
-                filePath = dlgResult;
-            } else if (Array.isArray(dlgResult) && dlgResult.length > 0 && typeof dlgResult[0] === "string") {
-                filePath = dlgResult[0];
-            } else if (typeof dlgResult === "object") {
-                if (Array.isArray(dlgResult.filePaths) && dlgResult.filePaths.length > 0 && typeof dlgResult.filePaths[0] === "string") {
-                    filePath = dlgResult.filePaths[0];
-                } else if (typeof dlgResult.path === "string") {
-                    filePath = dlgResult.path;
-                }
-            }
-
-            if (!filePath || typeof filePath !== "string") {
-                setError("Unexpected result from file dialog. Please try again.");
-                return;
-            }
-
-            setExcelFilePath(filePath);
-            const name = filePath.split(/[\\/]/).pop();
-            setExcelFileName(name);
-
-            const extractedReportId = extractFileNameWithoutExtension(filePath);
-            setReportId(extractedReportId);
-
-            setPreviewLoading(true);
-            console.log("[UploadAssets] calling extract-asset-data for", filePath);
-
-            const result = await window.electronAPI.extractAssetData(filePath, { cleanup: false });
-
-            console.log("[UploadAssets] extract-asset-data result:", result);
-
-            const preview = result?.data ?? null;
-            if (!preview) {
-                setError("No preview data returned from extract-asset-data.");
-                setPreviewData(null);
-            } else {
-                const processedData = processPreviewData(Array.isArray(preview) ? preview : [preview]);
-                setPreviewData(processedData);
-                const info = result?.info || {};
-                setSuccess(`Successfully extracted ${processedData.length} records (${info.marketCount || 0} market approach, ${info.costCount || 0} cost approach)`);
-            }
-        } catch (err) {
-            console.error("[UploadAssets] error extracting preview:", err);
-            setError(err?.message || "Failed to extract preview via IPC");
-            setPreviewData(null);
-        } finally {
-            setPreviewLoading(false);
-        }
-    };
 
     const handleDownloadTemplate = async () => {
         if (downloadingTemplate) return;
@@ -324,6 +327,7 @@ const UploadAssets = ({ onViewChange }) => {
                     if (!uploadResult.success) {
                         throw new Error(uploadResult.message || "Failed to create report");
                     }
+                    window.dispatchEvent(new CustomEvent('refreshReportsTable'));
 
                     // 2. Complete the flow (automation)
                     const tabsNum = getTabsCount();
@@ -419,6 +423,7 @@ const UploadAssets = ({ onViewChange }) => {
                         removeFile();
                     }, 2000);
                 }
+
             } else if (!result && error === "") {
                 // Auth failed but error already handled in onAuthFailure
                 console.log("[UploadAssets] Upload cancelled due to auth failure");
@@ -426,6 +431,104 @@ const UploadAssets = ({ onViewChange }) => {
         } catch (error) {
             console.error("[UploadAssets] Error in handleUploadToDB:", error);
             setError(error?.message || "An unexpected error occurred");
+        } finally {
+            setUploadLoading(false);
+        }
+    };
+
+
+    const handleStoreAndSubmitLater = async () => {
+        // Validation
+        if (!reportId.trim()) {
+            setError("Report ID could not be extracted from file name. Please check the file name.");
+            return;
+        }
+
+        if (!previewData || previewData.length === 0) {
+            setError("No data to upload");
+            return;
+        }
+
+        // Check if all common fields are filled
+        if (!inspectionDate || !region || !city || !ownerName) {
+            setError("Please fill all common fields (Inspection Date, Region, City, and Owner Name)");
+            return;
+        }
+
+        setError("");
+        setSuccess("");
+        setUploadLoading(true);
+
+        try {
+            // Check if user is logged in
+            if (!token) {
+                setError("You must be logged in to store reports");
+                setUploadLoading(false);
+                return;
+            }
+
+            console.log("[UploadAssets] Storing report for later submission with token:", !!token);
+
+            // Upload report to backend (without automation)
+            const uploadResult = await window.electronAPI.apiRequest(
+                "POST",
+                "/api/report/createReportWithCommonFields",
+                {
+                    reportId: reportId.trim(),
+                    reportData: previewData,
+                    commonFields: {
+                        region: region || undefined,
+                        city: city || undefined,
+                        inspectionDate: inspectionDate || undefined,
+                        ownerName: ownerName || undefined
+                    }
+                },
+                {
+                    Authorization: `Bearer ${token}`
+                }
+            );
+
+            console.log("[UploadAssets] Upload response:", uploadResult);
+
+            if (!uploadResult.success) {
+                throw new Error(uploadResult.message || "Failed to create report");
+            }
+
+            // Build success message
+            const successMessage = `✅ Successfully stored report "${reportId}" with ${previewData.length} assets for later submission`;
+
+            // Add common fields info
+            const commonFieldsInfo = [];
+            if (inspectionDate) commonFieldsInfo.push(`Inspection Date: ${inspectionDate}`);
+            if (region) commonFieldsInfo.push(`Region: ${region}`);
+            if (city) commonFieldsInfo.push(`City: ${city}`);
+            if (ownerName) commonFieldsInfo.push(`Owner: ${ownerName}`);
+
+            let fullMessage = successMessage;
+            if (commonFieldsInfo.length > 0) {
+                fullMessage += `\n\nCommon fields applied:\n• ${commonFieldsInfo.join('\n• ')}`;
+            }
+
+            setSuccess(fullMessage);
+
+            // Clear form and refresh reports table
+            setTimeout(() => {
+                removeFile();
+                // Trigger refresh of ReportsTable component
+                window.dispatchEvent(new CustomEvent('refreshReportsTable'));
+            }, 2000);
+
+        } catch (error) {
+            console.error("[UploadAssets] Error in handleStoreAndSubmitLater:", error);
+
+            // Handle authentication errors
+            if (error?.message?.includes("Unauthorized") || error?.message?.includes("token") || error?.message?.includes("auth")) {
+                setError("Your session has expired. Please log in again.");
+                // Optionally trigger login
+                // login();
+            } else {
+                setError(error?.message || "An unexpected error occurred");
+            }
         } finally {
             setUploadLoading(false);
         }
@@ -558,7 +661,23 @@ const UploadAssets = ({ onViewChange }) => {
     };
 
     // Check if upload should be enabled
-    const isUploadEnabled = excelFileName && previewData && previewData.length > 0 && reportId.trim();
+    const isUploadEnabled = excelFileName &&
+        previewData &&
+        previewData.length > 0 &&
+        reportId.trim() &&
+        inspectionDate &&
+        region &&
+        city &&
+        ownerName;
+
+    const isStoreEnabled = excelFileName &&
+        previewData &&
+        previewData.length > 0 &&
+        reportId.trim() &&
+        inspectionDate &&
+        region &&
+        city &&
+        ownerName;
 
     return (
         <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
@@ -574,251 +693,235 @@ const UploadAssets = ({ onViewChange }) => {
                 </div>
             )}
 
-            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-200/30 blur-3xl" />
-                <div className="pointer-events-none absolute -left-20 -bottom-24 h-56 w-56 rounded-full bg-emerald-200/30 blur-3xl" />
-                <div className="relative flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-3">
-                    <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                            Asset Management
-                        </p>
-                        <h2 className="text-lg md:text-xl font-display text-compact text-slate-900 font-bold">
-                            Upload Assets
-                        </h2>
-                        <div className="flex flex-wrap gap-2 text-xs text-slate-700">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm font-medium">
-                                <Table className="h-3 w-3 text-emerald-600" />
-                                {getTabsCount()} tab{getTabsCount() !== 1 ? 's' : ''} auto
-                            </span>
+            {/* File Selection Section - Top */}
+            <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                <div className="space-y-2">
+                    {/* Main row with Excel input taking remaining width */}
+                    <div className="flex items-center gap-2">
+                        <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all flex-1 group">
+                            <div className="flex items-center gap-2 text-xs text-slate-700">
+                                <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                                <span className="font-semibold">
+                                    {excelFileName
+                                        ? <span className="truncate" title={excelFileName}>{excelFileName}</span>
+                                        : "Choose Excel file"}
+                                </span>
+                            </div>
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                className="hidden"
+                                onClick={(e) => {
+                                    // Prevent the default file input dialog
+                                    e.preventDefault();
+                                    // Use electron's showOpenDialog instead
+                                    openFileDialogAndExtract();
+                                    // Reset the input
+                                    e.target.value = null;
+                                }}
+                            />
+                            <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
+                        </label>
+
+                        {/* Button container */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleDownloadTemplate}
+                                disabled={downloadingTemplate}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                            >
+                                {downloadingTemplate ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Download className="w-4 h-4" />
+                                )}
+                                {downloadingTemplate ? "Downloading..." : "Export Template"}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={removeFile}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors whitespace-nowrap"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Reset
+                            </button>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={handleDownloadTemplate}
-                            disabled={downloadingTemplate}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    {/* Status Messages */}
+                    {(error || success) && (
+                        <div className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
+                            ? "bg-rose-50 text-rose-700 border-rose-300"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                            }`}
                         >
-                            {downloadingTemplate ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            {error ? (
+                                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             ) : (
-                                <Download className="w-3.5 h-3.5" />
+                                <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             )}
-                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
-                        </button>
-                        <button
-                            onClick={handleUploadToDB}
-                            disabled={!isUploadEnabled || uploadLoading}
-                            className="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all bg-gradient-to-r from-emerald-500 via-cyan-500 to-sky-500 text-white shadow-sm hover:shadow-md hover:scale-[1.02] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-sm"
-                            title={!isUploadEnabled ? "Please select a file first" : ""}
-                        >
-                            {uploadLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <CheckCircle className="w-4 h-4" />
-                            )}
-                            {uploadLoading ? "Uploading..." : "Upload & Submit"}
-                        </button>
-                    </div>
+                            <div className="text-xs font-medium whitespace-pre-line">{error || success}</div>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Status Messages */}
-            {(error || success) && (
-                <div
-                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
-                        ? "bg-rose-50 text-rose-700 border-rose-300"
-                        : "bg-emerald-50 text-emerald-700 border-emerald-300"
-                        }`}
-                >
-                    {error ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    ) : (
-                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div className="text-xs font-medium whitespace-pre-line">{error || success}</div>
+            {/* Common Fields Section - Full Row Below File Selection */}
+            {previewData && (
+                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                    <h3 className="text-sm font-semibold text-slate-800 mb-3">Common Fields</h3>
+
+                    <div className="grid grid-cols-4 gap-3">
+                        {/* Inspection Date */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                Inspection Date
+                            </label>
+                            <div className="relative">
+                                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+                                <input
+                                    type="date"
+                                    value={inspectionDate}
+                                    onChange={(e) => handleCommonFieldChange('inspectionDate', e.target.value)}
+                                    max={getTodayDate()}
+                                    className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Region */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                Region
+                            </label>
+                            <div className="relative">
+                                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+                                <select
+                                    value={region}
+                                    onChange={(e) => handleCommonFieldChange('region', e.target.value)}
+                                    className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white cursor-pointer"
+                                >
+                                    <option value="">Select Region</option>
+                                    {Object.keys(saudiRegions).map(regionName => (
+                                        <option key={regionName} value={regionName}>
+                                            {regionName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* City */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                City
+                            </label>
+                            <div className="relative">
+                                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+                                <select
+                                    value={city}
+                                    onChange={(e) => handleCommonFieldChange('city', e.target.value)}
+                                    disabled={!region}
+                                    className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                    <option value="">{region ? "Select City" : "Select region first"}</option>
+                                    {availableCities.map(cityName => (
+                                        <option key={cityName} value={cityName}>
+                                            {cityName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Owner Name */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                Owner Name
+                            </label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={ownerName}
+                                    onChange={(e) => handleCommonFieldChange('ownerName', e.target.value)}
+                                    className="w-full pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                                    placeholder="Owner name"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Main Content */}
-            <div className="grid grid-cols-12 gap-3">
-                {/* Left Column - File Selection & Common Fields */}
-                <div className="col-span-4 space-y-3">
-                    {/* File Selection */}
-                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-semibold text-slate-800">File Selection</h3>
-                            {excelFileName && (
-                                <button
-                                    onClick={removeFile}
-                                    className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700 px-2 py-1 rounded-md hover:bg-rose-50 transition-colors"
-                                >
-                                    <X className="w-3 h-3" />
-                                    Remove
-                                </button>
-                            )}
-                        </div>
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    onClick={handleUploadToDB}
+                    disabled={!isUploadEnabled || uploadLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-green-600 hover:bg-green-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                >
+                    {uploadLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                        <Send className="w-3.5 h-3.5" />
+                    )}
+                    {uploadLoading ? "Uploading..." : "Store & Submit Now"}
+                </button>
 
-                        <div className="space-y-2">
-                            <button
-                                onClick={openFileDialogAndExtract}
-                                disabled={previewLoading}
-                                className="w-full inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-all bg-blue-600 text-white shadow-sm hover:bg-blue-700 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {previewLoading ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                    <Upload className="w-3.5 h-3.5" />
-                                )}
-                                {previewLoading ? "Processing..." : "Select Excel File"}
-                            </button>
+                <button
+                    type="button"
+                    onClick={handleStoreAndSubmitLater}
+                    disabled={!isStoreEnabled || uploadLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-blue-600 hover:bg-blue-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                >
+                    {uploadLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                        <FileIcon className="w-4 h-4" />
+                    )}
+                    {uploadLoading ? "Storing..." : "Store & Submit Later"}
+                </button>
+            </div>
 
-                            {excelFileName ? (
-                                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2">
-                                    <div className="flex items-center gap-2">
-                                        <FileText className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                                        <span className="text-xs font-medium text-emerald-800 truncate">
-                                            {excelFileName}
-                                        </span>
-                                    </div>
-                                    {reportId && (
-                                        <div className="mt-1 text-[10px] text-blue-700 font-medium">
-                                            Report ID: {reportId}
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="text-xs text-slate-500 px-2 py-2 bg-slate-50 border border-slate-200 rounded-md text-center">
-                                    No file selected
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Common Fields */}
+            {/* Preview Table - Full Width Below Everything */}
+            <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-800">Data Preview</h3>
                     {previewData && (
-                        <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
-                            <h3 className="text-sm font-semibold text-slate-800 mb-2">Common Fields</h3>
-
-                            <div className="space-y-2">
-                                {/* Inspection Date */}
-                                <div>
-                                    <label className="block text-[10px] font-semibold text-slate-700 mb-1">
-                                        Inspection Date
-                                    </label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
-                                        <input
-                                            type="date"
-                                            value={inspectionDate}
-                                            onChange={(e) => handleCommonFieldChange('inspectionDate', e.target.value)}
-                                            max={getTodayDate()}
-                                            className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Region & City */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[10px] font-semibold text-slate-700 mb-1">
-                                            Region
-                                        </label>
-                                        <div className="relative">
-                                            <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
-                                            <select
-                                                value={region}
-                                                onChange={(e) => handleCommonFieldChange('region', e.target.value)}
-                                                className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white cursor-pointer"
-                                            >
-                                                <option value="">Select Region</option>
-                                                {Object.keys(saudiRegions).map(regionName => (
-                                                    <option key={regionName} value={regionName}>
-                                                        {regionName}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-[10px] font-semibold text-slate-700 mb-1">
-                                            City
-                                        </label>
-                                        <div className="relative">
-                                            <MapPin className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
-                                            <select
-                                                value={city}
-                                                onChange={(e) => handleCommonFieldChange('city', e.target.value)}
-                                                disabled={!region}
-                                                className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all appearance-none bg-white disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer disabled:cursor-not-allowed"
-                                            >
-                                                <option value="">{region ? "Select City" : "Select region first"}</option>
-                                                {availableCities.map(cityName => (
-                                                    <option key={cityName} value={cityName}>
-                                                        {cityName}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Owner Name */}
-                                <div>
-                                    <label className="block text-[10px] font-semibold text-slate-700 mb-1">
-                                        Owner Name
-                                    </label>
-                                    <div className="relative">
-                                        <User className="absolute left-2 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 pointer-events-none" />
-                                        <input
-                                            type="text"
-                                            value={ownerName}
-                                            onChange={(e) => handleCommonFieldChange('ownerName', e.target.value)}
-                                            className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
-                                            placeholder="Owner name (optional)"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="text-xs text-slate-600 font-medium">
+                            {previewData.length} records
                         </div>
                     )}
                 </div>
 
-                {/* Right Column - Preview Table */}
-                <div className="col-span-8">
-                    <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3 h-full">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-semibold text-slate-800">Data Preview</h3>
-                            {previewData && (
-                                <div className="text-xs text-slate-600 font-medium">
-                                    {previewData.length} records
-                                </div>
-                            )}
+                {previewLoading ? (
+                    <div className="flex items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        <div className="text-slate-600">
+                            <div className="text-sm font-semibold">Extracting data...</div>
+                            <div className="text-xs">Processing your Excel file</div>
                         </div>
-
-                        {previewLoading ? (
-                            <div className="flex items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
-                                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                                <div className="text-slate-600">
-                                    <div className="text-xs font-semibold">Extracting data...</div>
-                                    <div className="text-[10px]">Processing your Excel file</div>
-                                </div>
-                            </div>
-                        ) : previewData ? (
-                            <PreviewTable data={previewData} />
-                        ) : (
-                            <div className="text-center p-6 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
-                                <Table className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                                <div className="text-slate-500">
-                                    <div className="text-xs font-semibold mb-1">No preview available</div>
-                                    <div className="text-[10px]">Select an Excel file to see data preview</div>
-                                </div>
-                            </div>
-                        )}
                     </div>
-                </div>
+                ) : previewData ? (
+                    <PreviewTable data={previewData} />
+                ) : (
+                    <div className="text-center p-3 border-2 border-dashed border-300 rounded-lg bg-slate-50">
+                        <div className="text-xs">Validation results will appear here</div>
+                    </div>
+                )}
             </div>
 
             {/* Reports Table Section */}
