@@ -10,9 +10,36 @@ const createReportWithCommonFields = async (reportId, reportData, commonFields) 
     return await httpClient.post(url, { reportId, reportData, commonFields });
 };
 
-const updateUrgentReport = async (reportId, reportData) => {
-    const url = `/report/updateUrgentReport`;
-    return await httpClient.put(url, { reportId, reportData });
+const updateUrgentReport = async (reportId, reportData = {}, options = {}) => {
+    const formData = new FormData();
+    const { pdfFile } = options;
+
+    formData.append("reportId", reportId);
+
+    Object.entries(reportData || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (key === "valuers") {
+            formData.append(key, JSON.stringify(value));
+            return;
+        }
+        formData.append(key, value);
+    });
+
+    if (pdfFile) {
+        formData.append("pdf", pdfFile);
+    }
+
+    const response = await httpClient.patch(
+        `/elrajhi-upload/reports/${reportId}`,
+        formData,
+        {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        }
+    );
+
+    return response.data;
 };
 
 const getAllReports = async (options = {}) => {
@@ -180,6 +207,11 @@ const fetchElrajhiBatchReports = async (batchId) => {
     return response.data;
 };
 
+const fetchElrajhiReportById = async (reportId) => {
+    const response = await httpClient.get(`/elrajhi-upload/reports/${reportId}`);
+    return response.data;
+};
+
 const createManualMultiApproachReport = async (payload) => {
     const response = await httpClient.post("/multi-approach/manual", payload);
     return response.data;
@@ -254,6 +286,7 @@ module.exports = {
     updateUrgentReport,
     fetchElrajhiBatches,
     fetchElrajhiBatchReports,
+    fetchElrajhiReportById,
     createManualMultiApproachReport,
     fetchMultiApproachReports,
     updateMultiApproachReport,
