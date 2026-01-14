@@ -1629,7 +1629,7 @@ const handleDeleteReport = async () => {
                                         <button
                                             onClick={handleCheckReportInTaqeem}
                                             className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-normal flex items-center gap-2 transition-colors whitespace-nowrap"
-                                        >
+                                        >  
                                             <Search className="w-3 h-3" />
                                             Check Report
                                         </button>

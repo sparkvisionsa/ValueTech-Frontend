@@ -6,13 +6,14 @@ const getMyReports = async ({ page = 1, limit = 20 }) => {
   });
 };
 
-const lookupReportById = async (report_id) => {
-  return await httpClient.get("/report-lookup/lookup", {
-    params: { report_id },
+const searchReports = async ({ q, page = 1, limit = 20, source = "ALL" }) => {
+  return await httpClient.get("/report-lookup/search", {
+    params: { q, page, limit, source },
   });
 };
 
-module.exports = { getMyReports, lookupReportById };
+
+module.exports = { getMyReports, searchReports };
 
 // ✅ add this line so default-import works in webpack
 module.exports.default = module.exports;

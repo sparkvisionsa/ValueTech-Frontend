@@ -78,18 +78,30 @@ export default function ReportsPage({ onViewChange = () => {} }) {
     }
   }
 
-  async function searchByReportId() {
-    if (!reportId.trim()) return load();
-    setLoading(true);
-    try {
-      const res = await reportApi.lookupReportById(reportId.trim());
-      setRows(res.data.status === "success" ? [res.data.data] : []);
-      setTotal(res.data.status === "success" ? 1 : 0);
-      setPage(1);
-    } finally {
-      setLoading(false);
-    }
+async function searchAnything() {
+  const q = String(reportId || "").trim();   // or use a new input state like searchText
+
+  if (!q) {
+    alert("Please enter something to search");
+    return;
   }
+
+  setLoading(true);
+  try {
+    const res = await reportApi.searchReports({ q, page: 1, limit, source });
+    setRows(res.data.data || []);
+    setTotal(res.data.total || res.data.totalApprox || 0);
+    setPage(1);
+  } catch (err) {
+    console.error("Search failed:", err);
+    console.log("status:", err?.response?.status);
+    console.log("data:", err?.response?.data);
+    alert(err?.response?.data?.error || err?.message || "Search failed");
+  } finally {
+    setLoading(false);
+  }
+}
+
 
   useEffect(() => {
     load();
@@ -202,7 +214,7 @@ export default function ReportsPage({ onViewChange = () => {} }) {
             <label className="mb-1 block text-xs font-medium text-slate-600">Report ID</label>
             <input
               className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-              placeholder="Search Report ID"
+              placeholder="Search For Anything..."
               value={reportId}
               onChange={(e) => setReportId(e.target.value)}
             />
@@ -244,7 +256,7 @@ export default function ReportsPage({ onViewChange = () => {} }) {
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
-            onClick={searchByReportId}
+            onClick={searchAnything}
             disabled={loading}
             className="inline-flex h-8 items-center justify-center rounded-md bg-slate-900 px-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
