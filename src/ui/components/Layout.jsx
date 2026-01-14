@@ -60,6 +60,13 @@ const heroThemes = {
         blob: 'bg-rose-200/60',
         text: 'text-rose-700'
     },
+     myReports: {
+        surface: 'from-white via-rose-50 to-orange-50',
+        accent: 'from-rose-500 to-orange-500',
+        border: 'border-rose-200/70',
+        blob: 'bg-rose-200/60',
+        text: 'text-rose-700'
+    },
     evaluationSources: {
         surface: 'from-white via-amber-50 to-orange-50',
         accent: 'from-amber-500 to-orange-500',

@@ -22,6 +22,7 @@ import GrabMacroIds from './screens/GrabMacroIds';
 import UploadAssets from './screens/UploadAssets';
 import SubmitMacro from './screens/MacroEdits';
 import DeleteReport from './screens/DeleteReport';
+import MyReports from './screens/MyReports';
 import GetCompanies from './screens/GetCompanies';
 import Packages from './screens/Packages';
 import TaqeemAuth from './screens/TaqeemAuth';
@@ -124,6 +125,8 @@ const AppContent = () => {
 
             case 'delete-report':
                 return <DeleteReport />;
+            case 'my-reports':
+                return <MyReports onViewChange={handleViewChange} />;
 
             case 'get-companies':
                 return <GetCompanies onViewChange={handleViewChange} />

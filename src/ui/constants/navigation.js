@@ -98,6 +98,13 @@ const valueSystemGroups = {
             { id: 'delete-report', label: 'Delete Assets / Reports', description: 'Delete reports and related assets safely.' }
         ]
     },
+    myReports: {
+        id: 'myReports',
+        title: 'My Reports',
+        tabs: [
+            { id: 'my-reports', label: 'My Reports', description: 'Find your All Reports At One Place.' }
+        ]
+    },
     adminConsole: {
         id: 'adminConsole',
         title: 'Super Admin Console',
@@ -165,6 +172,7 @@ const viewTitles = {
     'haraj': 'Haraj',
     'haraj-data': 'Haraj Data',
     'delete-report': 'Delete Assets / Reports',
+    'my-reports': 'My Reports',
     'system-status': 'System Operating Status',
     'system-updates': 'System Updates',
     statics: 'Statics',

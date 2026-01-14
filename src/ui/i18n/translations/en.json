@@ -161,6 +161,9 @@
             "deleteReport": {
                 "title": "Delete Assets / Reports"
             },
+            "myReports": {
+                "title": "My Reports"
+            },
             "adminConsole": {
                 "title": "Super Admin Console"
             }
@@ -250,6 +253,10 @@
                 "label": "Delete Assets / Reports",
                 "description": "Delete reports and related assets safely."
             },
+             "my-reports": {
+                "label": "My Reports",
+                "description": "Find your All Reports At One Place."
+            },
             "delete-assets": {
                 "label": "Change / Check Status",
                 "description": "Change or check report status."
@@ -322,6 +329,7 @@
             "valuation-system": "Valuation System",
             "word-copy": "Word Copy",
             "delete-report": "Delete Assets / Reports",
+              "my-reports": "My Reports",
             "system-status": "System Operating Status",
             "system-updates": "System Updates",
             "statics": "Statics",

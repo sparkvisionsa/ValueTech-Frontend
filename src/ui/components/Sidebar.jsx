@@ -49,7 +49,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'uploadReports', label: 'Upload Reports' },
         { id: 'uploadSingleReport', label: 'Upload Single Report' },
         { id: 'taqeemInfo', label: 'Taqeem Info' },
-        { id: 'deleteReport', label: 'Delete Report' }
+        { id: 'deleteReport', label: 'Delete Report' },
+        { id: 'myReports', label: 'My Reports' }
     ];
 
     const adminLinks = [
