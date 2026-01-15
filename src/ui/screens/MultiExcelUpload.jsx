@@ -13,19 +13,15 @@ import {
     AlertTriangle,
     FileIcon,
     RefreshCw,
-    FolderOpen,
     Info,
     Send,
-    Hash,
-    Table,
-    ShieldCheck,
     ChevronDown,
     ChevronUp,
     ChevronRight,
     Download,
 } from "lucide-react";
 
-import { multiExcelUpload, fetchMultiApproachReports, updateMultiApproachReport, deleteMultiApproachReport, updateMultiApproachAsset, deleteMultiApproachAsset } from "../../api/report"; // Adjust the import path as needed
+import { multiExcelUpload, updateMultiApproachReport, deleteMultiApproachReport, updateMultiApproachAsset, deleteMultiApproachAsset } from "../../api/report";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 
@@ -212,21 +208,6 @@ const getReportStatus = (report) => {
     if (report?.endSubmitTime) return "complete";
     if (report?.report_id) return "sent";
     return "incomplete";
-};
-
-const getReportSortTimestamp = (report) => {
-    const raw = report?.createdAt || report?.updatedAt;
-    if (raw) {
-        const date = new Date(raw);
-        const ts = date.getTime();
-        if (!Number.isNaN(ts)) return ts;
-    }
-    const id = report?._id || report?.id;
-    if (typeof id === "string" && id.length >= 8) {
-        const ts = parseInt(id.slice(0, 8), 16);
-        if (!Number.isNaN(ts)) return ts * 1000;
-    }
-    return 0;
 };
 
 const getAssetMacroId = (asset, report) => {
@@ -590,8 +571,17 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [batchId, setBatchId] = useState("");
     const [selectedAssetBulkActions, setSelectedAssetBulkActions] = useState({});
     const [uploadResult, setUploadResult] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [reportsPagination, setReportsPagination] = useState({
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+    });
     const [success, setSuccess] = useState("");
     const [creatingReports, setCreatingReports] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -613,7 +603,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [assetActionBusy, setAssetActionBusy] = useState({});
     const [editingReportId, setEditingReportId] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
     const [formData, setFormData] = useState(buildDefaultFormData());
     const [errors, setErrors] = useState({});
     const [reportUsers, setReportUsers] = useState([]);
@@ -695,48 +685,61 @@ const MultiExcelUpload = ({ onViewChange }) => {
         try {
             setReportsLoading(true);
             setReportsError(null);
-            const result = await fetchMultiApproachReports();
+
+            const pageToUse = append ? currentPage + 1 : currentPage;
+
+            const params = new URLSearchParams({
+                page: pageToUse.toString(),
+                limit: itemsPerPage.toString(),
+            });
+
+            const result = await window.electronAPI.apiRequest(
+                "GET",
+                `/api/multi-approach/user?${params.toString()}`,
+                {},
+                {
+                    Authorization: `Bearer ${token}`
+                }
+            );
+
             if (!result?.success) {
                 throw new Error(result?.message || "Failed to load reports.");
             }
+
             const reportList = Array.isArray(result.reports) ? result.reports : [];
+            const paginationInfo = result.pagination || {};
+
             if (append) {
-                // Merge with existing reports, avoiding duplicates
-                setReports((prev) => {
-                    const existingIds = new Set(prev.map(r => getReportRecordId(r)).filter(Boolean));
-                    const newReports = reportList.filter(r => {
-                        const id = getReportRecordId(r);
-                        return id && !existingIds.has(id);
-                    });
-                    const merged = [...prev, ...newReports];
-                    return merged;
-                });
+                // Merge with existing reports
+                setReports((prev) => [...prev, ...reportList]);
             } else {
-                // Replace all reports (initial load or explicit refresh)
+                // Replace all reports
                 setReports(reportList);
-                setCurrentPage(1);
             }
+
+            setReportsPagination(paginationInfo);
+
         } catch (err) {
             setReportsError(err?.message || "Failed to load reports.");
         } finally {
             setReportsLoading(false);
         }
-    }, [setReports]);
+    }, [setReports, token, currentPage, itemsPerPage]);
 
-    const handlePageChange = (newPage) => {
-        if (newPage >= 1 && newPage <= totalPages) {
-            setCurrentPage(newPage);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    };
+    const handlePageChange = useCallback(async (newPage) => {
+        if (newPage < 1 || reportsLoading) return;
+        setCurrentPage(newPage);
+        // The useEffect will handle the actual loading
+    }, [reportsLoading]);
 
-    // Load reports automatically on mount if we don't have any
+    // Load reports automatically when filter or page size changes
+    // Load reports automatically when filter or page size changes
+    // Load reports when page, filter, or page size changes
     useEffect(() => {
-        if (reports.length === 0 && !reportsLoading) {
+        if (!reportsLoading) {
             loadReports(false);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Only run on mount - loadReports is stable
+    }, [currentPage, itemsPerPage]);
 
     const pdfMatchInfo = useMemo(() => {
         if (!wantsPdfUpload) {
@@ -1147,6 +1150,50 @@ const MultiExcelUpload = ({ onViewChange }) => {
         }
     };
 
+    const filteredReports = useMemo(() => {
+        let result = reports;
+
+        // Apply status filter
+        if (reportSelectFilter !== "all") {
+            result = result.filter((report) => getReportStatus(report) === reportSelectFilter);
+        }
+
+        // Apply search filter if there's a query
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            result = result.filter((report) => {
+                // Search in report_id
+                if (report.report_id && report.report_id.toLowerCase().includes(query)) {
+                    return true;
+                }
+                // Search in client_name
+                if (report.client_name && report.client_name.toLowerCase().includes(query)) {
+                    return true;
+                }
+                // Search in final_value (convert to string for comparison)
+                if (report.final_value && String(report.final_value).toLowerCase().includes(query)) {
+                    return true;
+                }
+                // Also search in value if final_value is not present
+                if (report.value && String(report.value).toLowerCase().includes(query)) {
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        return result;
+    }, [reports, reportSelectFilter, searchQuery]);
+
+
+    // Use filteredReports for display, but respect backend pagination
+    const visibleReports = useMemo(() => {
+        // Calculate start and end indices for current page
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+
+        return filteredReports.slice(startIndex, endIndex);
+    }, [filteredReports, currentPage, itemsPerPage]);
     useEffect(() => {
         runValidation(excelFiles, pdfMatchInfo.pdfMap);
     }, [excelFiles, pdfFiles, wantsPdfUpload]);
@@ -1165,7 +1212,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
     }, [excelFiles.length, pdfFiles.length, wantsPdfUpload, validating, validationItems, pdfMatchInfo]);
 
     const handleUploadAndCreate = async () => {
-        // Validation remains the same
         if (excelFiles.length === 0) {
             setError("Please select at least one Excel file");
             return;
@@ -1203,8 +1249,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 setUploadResult(data);
                 setSuccess(`Files uploaded successfully. Batch ID: ${batchIdFromApi}. Inserted ${insertedCount} report(s).`);
 
-                // Load new reports and append to existing ones
-                await loadReports(true);
+                // Load new reports
+                await loadReports();
 
                 return {
                     success: true,
@@ -1223,10 +1269,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 onAuthFailure: (reason) => {
                     console.warn("[MultiExcelUpload] Authentication failed:", reason);
 
-                    // Don't set resumeOnLoad for LOGIN_REQUIRED - files can't be restored anyway
                     if (reason === "LOGIN_REQUIRED") {
                         setError("Please log in to continue. You'll need to re-select your files after logging in.");
-                        resetPendingUpload(); // Clear any pending state
                         return;
                     }
 
@@ -1236,8 +1280,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 }
             }
         );
-
-        console.log("result", result);
 
         if (!result || !result?.success) {
             return
@@ -1250,7 +1292,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
     };
 
     const handleStoreOnly = async () => {
-        // Validation remains the same
         if (excelFiles.length === 0) {
             setError("Please select at least one Excel file");
             return;
@@ -1264,60 +1305,52 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        const result = await executeWithAuth(
-            async (params) => {
-                const { token: authToken } = params;
+        try {
+            setSuccess(
+                wantsPdfUpload
+                    ? "Uploading files to server..."
+                    : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
+            );
 
-                setSuccess(
-                    wantsPdfUpload
-                        ? "Uploading files to server..."
-                        : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
-                );
+            // Perform upload
+            const data = await multiExcelUpload(
+                excelFiles,
+                wantsPdfUpload ? pdfFiles : []
+            );
 
-                const data = await multiExcelUpload(excelFiles, wantsPdfUpload ? pdfFiles : []);
-
-                if (data.status !== "success") {
-                    throw new Error(data.error || "Upload failed");
-                }
-
-                const batchIdFromApi = data.batchId;
-                const insertedCount = data.created || data.inserted || 0;
-
-                setBatchId(batchIdFromApi);
-                setUploadResult(data);
-                setSuccess(`Files stored successfully. Batch ID: ${batchIdFromApi}. Inserted ${insertedCount} report(s). You can submit them to Taqeem later.`);
-
-                // Load new reports and append to existing ones
-                await loadReports(true);
-
-                return {
-                    success: true,
-                    batchId: batchIdFromApi,
-                    insertedCount
-                };
-            },
-            { token },
-            {
-                requiredPoints: excelFiles.length || 0,
-                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
-                onViewChange,
-                onAuthSuccess: () => {
-                    console.log("[MultiExcelUpload] Authentication successful for store only");
-                },
-                onAuthFailure: (reason) => {
-                    console.warn("[MultiExcelUpload] Authentication failed:", reason);
-
-                    if (reason === "LOGIN_REQUIRED") {
-                        setError("Please log in to continue. You'll need to re-select your files after logging in.");
-                        return;
-                    }
-
-                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "TAQEEM_AUTH_REQUIRED") {
-                        setError(reason?.message || "Authentication failed");
-                    }
-                }
+            if (!data || data.status !== "success") {
+                throw new Error(data?.error || "Upload failed");
             }
-        );
+
+            const batchIdFromApi = data.batchId;
+            const insertedCount = data.created || data.inserted || 0;
+
+            setBatchId(batchIdFromApi);
+            setUploadResult(data);
+
+            setSuccess(
+                `Files stored successfully. Batch ID: ${batchIdFromApi}. ` +
+                `Inserted ${insertedCount} report(s). You can submit them to Taqeem later.`
+            );
+
+            // Reload reports
+            await loadReports();
+
+            return {
+                success: true,
+                batchId: batchIdFromApi,
+                insertedCount
+            };
+
+        } catch (error) {
+            console.error("[MultiExcelUpload] Upload failed:", error);
+
+            const message =
+                error?.message?.replace(/^Error:\s*/, "") ||
+                "Something went wrong while uploading files.";
+
+            setError(message);
+        }
     };
 
     const requiredFields = useMemo(
@@ -1336,78 +1369,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
         ],
         []
     );
-
-    const orderedReports = useMemo(() => {
-        return [...reports].sort((a, b) => {
-            const idA = getReportRecordId(a);
-            const idB = getReportRecordId(b);
-
-            // Special handling: id=1 (or "1") should always be last
-            const isIdOneA = idA === 1 || idA === "1" || String(idA).trim() === "1";
-            const isIdOneB = idB === 1 || idB === "1" || String(idB).trim() === "1";
-
-            if (isIdOneA && !isIdOneB) return 1; // id=1 goes to end
-            if (!isIdOneA && isIdOneB) return -1; // id=1 goes to end
-            if (isIdOneA && isIdOneB) return 0; // Both are id=1, keep order
-
-            // Primary sort: by timestamp (newest first)
-            const timestampA = getReportSortTimestamp(a);
-            const timestampB = getReportSortTimestamp(b);
-
-            if (timestampA !== timestampB) {
-                return timestampB - timestampA; // Newest first
-            }
-
-            // Secondary sort: by ID (higher IDs first, so id=1 appears last)
-            // Try to parse as numbers if possible
-            const numA = typeof idA === 'string' ? parseInt(idA, 10) : (typeof idA === 'number' ? idA : 0);
-            const numB = typeof idB === 'string' ? parseInt(idB, 10) : (typeof idB === 'number' ? idB : 0);
-
-            if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
-                return numB - numA; // Higher IDs first (so id=1 is last)
-            }
-
-            // Fallback: string comparison
-            const strA = String(idA || '');
-            const strB = String(idB || '');
-            return strB.localeCompare(strA);
-        });
-    }, [reports]);
-
-
-    const filteredReports = useMemo(() => {
-        if (reportSelectFilter === "all") return orderedReports;
-        return orderedReports.filter(
-            (report) => getReportStatus(report) === reportSelectFilter
-        );
-    }, [orderedReports, reportSelectFilter]);
-
-    const totalPages = Math.max(1, Math.ceil(filteredReports.length / itemsPerPage));
-
-    const visibleReports = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        const endIndex = startIndex + itemsPerPage;
-        return filteredReports.slice(startIndex, endIndex);
-    }, [filteredReports, currentPage, itemsPerPage]);
-
-    useEffect(() => {
-        if (currentPage > totalPages && totalPages > 0) {
-            setCurrentPage(1);
-        }
-    }, [totalPages]);
-
-    useEffect(() => {
-        if (reportSelectFilter === "all") {
-            setSelectedReportIds([]);
-            return;
-        }
-        const ids = filteredReports.map(getReportRecordId).filter(Boolean);
-        setSelectedReportIds(ids);
-    }, [reportSelectFilter, filteredReports]);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [reportSelectFilter]);
 
     const toggleReportExpansion = (reportId) => {
         setExpandedReports((prev) =>
@@ -1623,7 +1584,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 message: "Downloading Excel template...",
             });
 
-            // Try using Electron API first (for Electron apps)
+            // Try using Electron API first
             if (window?.electronAPI?.readTemplateFile) {
                 try {
                     const result = await window.electronAPI.readTemplateFile('multi-excel-template.xlsx');
@@ -1632,13 +1593,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         throw new Error(result?.error || "Failed to read template file");
                     }
 
-                    // Convert array buffer back to Uint8Array
                     const buffer = new Uint8Array(result.arrayBuffer);
                     const blob = new Blob([buffer], {
                         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     });
 
-                    // Create download link
                     const url = window.URL.createObjectURL(blob);
                     const link = document.createElement("a");
                     link.href = url;
@@ -1655,11 +1614,10 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     return;
                 } catch (electronError) {
                     console.log("Electron API method failed, trying fetch:", electronError.message);
-                    // Fall through to try fetch method
                 }
             }
 
-            // Fallback: Try using fetch (for web/development)
+            // Fallback: Try using fetch
             const possibleExtensions = [".xlsx", ".xls", ""];
             let downloadSuccess = false;
             let lastError = null;
@@ -1820,7 +1778,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             const confirmed = window.confirm("Delete this report and its assets?");
             if (!confirmed) return;
 
-            // Use executeWithAuth for delete action
             const result = await executeWithAuth(
                 async (params) => {
                     const { token: authToken } = params;
@@ -1834,7 +1791,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 },
                 { token, recordId },
                 {
-                    requiredPoints: 0, // Delete doesn't cost points
+                    requiredPoints: 0,
                     onViewChange,
                     onAuthFailure: (reason) => {
                         setActionStatus({
@@ -1848,7 +1805,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
         }
 
         if (action === "approve") {
-            // Use executeWithAuth for approve action
             const result = await executeWithAuth(
                 async (params) => {
                     const { token: authToken } = params;
@@ -1862,7 +1818,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 },
                 { token, recordId },
                 {
-                    requiredPoints: 0, // Approve doesn't cost points
+                    requiredPoints: 0,
                     onViewChange,
                     onAuthFailure: (reason) => {
                         setActionStatus({
@@ -1876,7 +1832,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
         }
 
         if (action === "download") {
-            // Use executeWithAuth for download action
             const result = await executeWithAuth(
                 async (params) => {
                     const { token: authToken } = params;
@@ -1885,7 +1840,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 },
                 { token, report },
                 {
-                    requiredPoints: 0, // Download doesn't cost points
+                    requiredPoints: 0,
                     onViewChange,
                     onAuthFailure: (reason) => {
                         setActionStatus({
@@ -1898,7 +1853,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        // For "send" or "retry" actions, they already use submitToTaqeem which uses executeWithAuth
         if (action === "send" || action === "retry") {
             setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
             try {
@@ -1952,7 +1906,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 },
                 { token, recordId, assetIndex },
                 {
-                    requiredPoints: 0, // Delete doesn't cost points
+                    requiredPoints: 0,
                     onViewChange,
                     onAuthFailure: (reason) => {
                         setActionStatus({
@@ -1965,7 +1919,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        // For "retry" action, it uses submitToTaqeem which already uses executeWithAuth
         if (action === "retry") {
             setAssetActionBusy((prev) => ({
                 ...prev,
@@ -2038,7 +1991,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     },
                     { token, reportId, selectedAssets },
                     {
-                        requiredPoints: 0, // Bulk delete doesn't cost points
+                        requiredPoints: 0,
                         onViewChange,
                         onAuthFailure: (reason) => {
                             setActionStatus({
@@ -2092,7 +2045,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
         <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
             {showInsufficientPointsModal && (
                 <div className="fixed inset-0 z-[9999]">
-                    {/* Modal positioned at top */}
                     <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
                         <InsufficientPointsModal
                             viewChange={onViewChange}
@@ -2105,7 +2057,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             <div className="space-y-2">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* Excel file input - keep as is */}
                         <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
                             <div className="flex items-center gap-2 text-xs text-slate-700">
                                 <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
@@ -2121,7 +2072,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
 
-                        {/* PDF upload section - keep as is but remove template button from here */}
                         <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
                             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                                 <input
@@ -2160,7 +2110,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             />
                         </div>
 
-                        {/* Template button - placed NEXT TO the PDF section */}
                         <button
                             type="button"
                             onClick={downloadExcelTemplate}
@@ -2175,7 +2124,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
                         </button>
 
-                        {/* Reset button - keep as is */}
                         <button
                             type="button"
                             onClick={() => {
@@ -2190,7 +2138,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         </button>
                     </div>
                 </div>
-                {/* Action Buttons */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                         type="button"
@@ -2232,7 +2179,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 </div>
             </div>
 
-            {/* Status Messages */}
             {(error || success) && (
                 <div
                     className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
@@ -2583,6 +2529,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
                             {reportsLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
+
                         <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
                             Filter:
                             <select
@@ -2597,12 +2544,77 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                 <option value="approved">Approved</option>
                             </select>
                         </label>
-                        {filteredReports.length > 0 && (
-                            <span className="text-xs text-slate-600 ml-auto font-medium">
-                                Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
-                            </span>
+
+                        {/* ADD SEARCH INPUT HERE */}
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Search reports..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-64 rounded-md border border-slate-300 bg-white px-3 py-1.5 pl-9 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                            />
+                            <div className="absolute left-2.5 top-1/2 transform -translate-y-1/2">
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
+                        {/* END SEARCH INPUT */}
+
+                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+                            Items per page:
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setCurrentPage(1);
+                                    setItemsPerPage(Number(e.target.value));
+                                }}
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                            >
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+
+                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5 ml-auto">
+                            Page:
+                            <input
+                                type="number"
+                                min="1"
+                                max={reportsPagination.totalPages || 1}
+                                value={currentPage}
+                                onChange={(e) => {
+                                    const page = parseInt(e.target.value) || 1;
+                                    if (page >= 1 && page <= (reportsPagination.totalPages || 1)) {
+                                        handlePageChange(page);
+                                    }
+                                }}
+                                className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                            />
+                            <span className="text-xs text-slate-600">of {reportsPagination.totalPages || 1}</span>
+                        </label>
+                        {searchQuery.trim() && (
+                            <div className="text-xs text-slate-600">
+                                Found {visibleReports.length} report{visibleReports.length !== 1 ? 's' : ''} matching "{searchQuery}" on this page
+                            </div>
                         )}
                     </div>
+
                 </div>
 
                 {actionAlert}
@@ -2626,13 +2638,13 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     </div>
                 )}
 
-                {!reportsLoading && reports.length > 0 && !visibleReports.length && (
+                {!reportsLoading && reports.length > 0 && !filteredReports.length && (
                     <div className="text-xs text-slate-600 py-2 text-center">
                         No reports match the selected status.
                     </div>
                 )}
 
-                {visibleReports.length > 0 && (
+                {!reportsLoading && reports.length > 0 && (
                     <div className="w-full overflow-x-auto">
                         <div className="min-w-full">
                             <table className="w-full text-xs text-slate-700">
@@ -2649,10 +2661,9 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {visibleReports.map((report, idx) => {
+                                    {filteredReports.map((report, idx) => {
+                                        const reportIndex = ((currentPage - 1) * itemsPerPage) + idx + 1;
                                         const recordId = getReportRecordId(report);
-                                        const globalIndex = filteredReports.findIndex(r => getReportRecordId(r) === recordId);
-                                        const reportIndex = globalIndex >= 0 ? globalIndex + 1 : ((currentPage - 1) * itemsPerPage) + idx + 1;
                                         const statusKey = getReportStatus(report);
                                         const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
                                         const isExpanded = recordId ? expandedReports.includes(recordId) : false;
@@ -2740,7 +2751,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                     const action = selectedReportActions[recordId];
                                                                     if (action) {
                                                                         handleReportAction(report, action);
-                                                                        // Clear selection after action
                                                                         setSelectedReportActions((prev) => {
                                                                             const next = { ...prev };
                                                                             delete next[recordId];
@@ -2801,7 +2811,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                     const action = selectedAssetBulkActions[recordId];
                                                                                     if (action) {
                                                                                         handleBulkAssetAction(report, action);
-                                                                                        // Clear selection after action
                                                                                         setSelectedAssetBulkActions((prev) => {
                                                                                             const next = { ...prev };
                                                                                             delete next[recordId];
@@ -2901,7 +2910,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                     {assetStatusLabels[assetStatus] || assetStatus}
                                                                                                 </span>
                                                                                             </td>
-                                                                                            {/* REPLACE THE EXISTING INDIVIDUAL ASSET ACTIONS SELECT */}
                                                                                             <td className="px-2 py-1.5">
                                                                                                 <div className="flex items-center gap-1">
                                                                                                     <select
@@ -2927,7 +2935,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                             const action = selectedAssetActions[`${recordId}:${assetIndex}`];
                                                                                                             if (action) {
                                                                                                                 handleAssetAction(report, assetIndex, action);
-                                                                                                                // Clear selection after action
                                                                                                                 setSelectedAssetActions((prev) => {
                                                                                                                     const next = { ...prev };
                                                                                                                     delete next[`${recordId}:${assetIndex}`];
@@ -2969,42 +2976,36 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         </div>
 
                         {/* Pagination Controls */}
-                        {totalPages > 1 && (() => {
+                        {reportsPagination.totalPages > 1 && (() => {
                             const getPageNumbers = () => {
                                 const pages = [];
+                                const totalPages = reportsPagination.totalPages || 1;
 
                                 if (totalPages <= 6) {
-                                    // Show all pages if 6 or fewer
                                     for (let i = 1; i <= totalPages; i++) {
                                         pages.push(i);
                                     }
                                     return pages;
                                 }
 
-                                // Always show first 3 pages
                                 pages.push(1, 2, 3);
 
                                 const lastThree = [totalPages - 2, totalPages - 1, totalPages];
                                 const lastThreeStart = totalPages - 2;
 
-                                // If current page is in first 3 or overlaps with last 3
                                 if (currentPage <= 3) {
-                                    // Show: 1, 2, 3, 4, 5, ..., last 3
                                     if (4 < lastThreeStart) {
                                         pages.push(4, 5);
                                         pages.push('ellipsis');
                                     }
                                 } else if (currentPage >= lastThreeStart) {
-                                    // Show: 1, 2, 3, ..., last 3
                                     if (3 < lastThreeStart - 1) {
                                         pages.push('ellipsis');
                                     }
                                 } else {
-                                    // In the middle: show 1, 2, 3, ..., current-1, current, current+1, ..., last 3
                                     const showBefore = currentPage - 1;
                                     const showAfter = currentPage + 1;
 
-                                    // Check if we need ellipsis before current page
                                     if (showBefore > 4) {
                                         pages.push('ellipsis');
                                         pages.push(showBefore);
@@ -3014,7 +3015,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                                     pages.push(currentPage);
 
-                                    // Check if we need ellipsis after current page
                                     if (showAfter < lastThreeStart - 1) {
                                         pages.push(showAfter);
                                         if (showAfter < lastThreeStart - 2) {
@@ -3023,14 +3023,12 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                     }
                                 }
 
-                                // Always show last 3 pages (avoid duplicates)
                                 lastThree.forEach(page => {
                                     if (!pages.includes(page)) {
                                         pages.push(page);
                                     }
                                 });
 
-                                // Clean up and ensure proper order
                                 const cleaned = [];
                                 let prevNum = 0;
 
@@ -3055,17 +3053,20 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             };
 
                             const pageNumbers = getPageNumbers();
+                            const totalPages = reportsPagination.totalPages || 1;
+                            const startItem = ((currentPage - 1) * itemsPerPage) + 1;
+                            const endItem = Math.min(currentPage * itemsPerPage, reportsPagination.total || 0);
 
                             return (
                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
                                     <div className="text-xs text-slate-600 font-medium">
-                                        Showing <span className="font-semibold text-slate-800">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-slate-800">{Math.min(currentPage * itemsPerPage, filteredReports.length)}</span> of <span className="font-semibold text-slate-800">{filteredReports.length}</span> reports
+                                        Showing <span className="font-semibold text-slate-800">{Math.min(startItem, reportsPagination.total || 0)}</span> to <span className="font-semibold text-slate-800">{Math.min(endItem, reportsPagination.total || 0)}</span> of <span className="font-semibold text-slate-800">{reportsPagination.total || 0}</span> total reports
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <button
                                             type="button"
                                             onClick={() => handlePageChange(currentPage - 1)}
-                                            disabled={currentPage === 1}
+                                            disabled={currentPage === 1 || reportsLoading}
                                             className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
                                             Previous
@@ -3084,9 +3085,10 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                         key={page}
                                                         type="button"
                                                         onClick={() => handlePageChange(page)}
+                                                        disabled={reportsLoading}
                                                         className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${currentPage === page
                                                             ? "bg-blue-600 text-white shadow-sm"
-                                                            : "text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400"
+                                                            : "text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             }`}
                                                     >
                                                         {page}
@@ -3097,7 +3099,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                         <button
                                             type="button"
                                             onClick={() => handlePageChange(currentPage + 1)}
-                                            disabled={currentPage === totalPages}
+                                            disabled={currentPage === totalPages || reportsLoading}
                                             className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
                                             Next
@@ -3436,7 +3438,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     </div>
                 </div>
             </Modal>
-
         </div>
     );
 };

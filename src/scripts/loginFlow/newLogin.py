@@ -53,6 +53,7 @@ async def public_login_flow(login_url, is_auth = False):
 
     print("Please log in manually...")
 
+
     # Step 2: wait for success
     logged_in = await wait_until_logged_in(page)
     if logged_in["status"] != "SUCCESS":
@@ -70,6 +71,7 @@ async def public_login_flow(login_url, is_auth = False):
         page = browser.main_tab
         
         user_id = await get_user_id(page)
+
         return {"status": "CHECK", "user_id": user_id}
 
 

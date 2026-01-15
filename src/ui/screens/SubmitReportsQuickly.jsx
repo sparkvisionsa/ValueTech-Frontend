@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
 import { useRam } from "../context/RAMContext";
 import usePersistentState from "../hooks/usePersistentState";
+import { useSession } from "../context/SessionContext";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import {
     FileSpreadsheet,
@@ -233,9 +233,18 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [searchTerm, setSearchTerm] = useState("");
     const [success, setSuccess] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [validating, setValidating] = useState(false);
+    const [reportsPagination, setReportsPagination] = useState({
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+    });
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
     const [validationItems, setValidationItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
@@ -244,7 +253,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [reports, setReports, resetReports] = usePersistentState("submitReportsQuickly:reports", [], { storage: "session" });
     const [reportsLoading, setReportsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [itemsPerPage, setItemsPerPage] = useState(10);
     const [expandedReports, setExpandedReports] = useState([]);
     const [selectedReportIds, setSelectedReportIds] = useState([]);
     const [reportSelectFilter, setReportSelectFilter] = useState("all");
@@ -431,18 +440,42 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const loadReports = useCallback(async () => {
         try {
             setReportsLoading(true);
-            const result = await fetchSubmitReportsQuickly();
+
+            // Build query parameters for backend pagination
+            const params = new URLSearchParams({
+                page: currentPage.toString(),
+                limit: itemsPerPage.toString(),
+            });
+
+            // REMOVED: Status filter parameter - we'll filter on frontend instead
+
+            const result = await window.electronAPI.apiRequest(
+                "GET",
+                `/api/submit-reports-quickly/user?${params.toString()}`,
+                {},
+                {
+                    Authorization: `Bearer ${token}`
+                }
+            );
+
+            console.log("result", result);
+
             if (!result?.success) {
                 throw new Error(result?.message || "Failed to load reports.");
             }
+
             const reportList = Array.isArray(result.reports) ? result.reports : [];
+            const paginationInfo = result.pagination || {};
+
             setReports(reportList);
+            setReportsPagination(paginationInfo);
+
         } catch (err) {
             setError(err?.message || "Failed to load reports.");
         } finally {
             setReportsLoading(false);
         }
-    }, [setReports]);
+    }, [token, currentPage, itemsPerPage, setReports]);
 
     const clearReportCreatedCache = useCallback((recordId) => {
         reportCreatedCacheRef.current.delete(recordId);
@@ -491,11 +524,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         resolveReportCreated(recordId, createdReportId);
     }, [resolveReportCreated, setReports]);
 
+    // Load reports when page, filter, or page size changes
     useEffect(() => {
-        if (reports.length === 0 && !reportsLoading) {
+        if (!reportsLoading) {
             loadReports();
         }
-    }, []);
+    }, [currentPage, itemsPerPage]);
 
     useEffect(() => {
         return () => {
@@ -1285,8 +1319,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     setError("No reports with Taqeem report IDs found. Reports must be submitted to Taqeem first.");
                     return;
                 }
-
-                const reportIds = reportsToSend.map(r => r.report_id).filter(Boolean);
+                const reportIds = useMemo(
+                    () => reports.map(getReportRecordId).filter(Boolean),
+                    [reports]
+                );
 
                 if (!window.electronAPI?.finalizeMultipleReports) {
                     throw new Error("Desktop integration unavailable. Restart the app.");
@@ -1412,30 +1448,64 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     };
 
     const filteredReports = useMemo(() => {
-        if (reportSelectFilter === "all") return reports;
-        return reports.filter((report) => getReportStatus(report) === reportSelectFilter);
-    }, [reports, reportSelectFilter]);
+        let filtered = reports;
 
-    const totalPages = Math.max(1, Math.ceil(filteredReports.length / itemsPerPage));
+        // Apply status filter
+        if (reportSelectFilter !== "all") {
+            filtered = filtered.filter((report) => getReportStatus(report) === reportSelectFilter);
+        }
 
+        // Apply search filter if there's a search term
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase().trim();
+            filtered = filtered.filter((report) => {
+                // Search in client_name
+                if (report.client_name && report.client_name.toLowerCase().includes(term)) {
+                    return true;
+                }
+                // Search in report_id
+                if (report.report_id && report.report_id.toLowerCase().includes(term)) {
+                    return true;
+                }
+                // Search in final_value (convert to string for comparison)
+                if (report.final_value && String(report.final_value).toLowerCase().includes(term)) {
+                    return true;
+                }
+                // Search in title
+                if (report.title && report.title.toLowerCase().includes(term)) {
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        return filtered;
+    }, [reports, reportSelectFilter, searchTerm]);
+
+    // Use backend pagination info
+    const totalPages = reportsPagination.totalPages || 1;
+
+    // Use filteredReports for display, but respect backend pagination
     const visibleReports = useMemo(() => {
+        // Always slice from filteredReports (not reports)
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
+
         return filteredReports.slice(startIndex, endIndex);
     }, [filteredReports, currentPage, itemsPerPage]);
 
     useEffect(() => {
-        if (currentPage > totalPages && totalPages > 0) {
-            setCurrentPage(1);
+        if (currentPage > 0) {
+            loadReports();
         }
-    }, [totalPages]);
+    }, [currentPage]);
 
-    const handlePageChange = (newPage) => {
-        if (newPage >= 1 && newPage <= totalPages) {
+    const handlePageChange = useCallback((newPage) => {
+        if (newPage >= 1 && newPage <= reportsPagination.totalPages && !reportsLoading) {
             setCurrentPage(newPage);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-    };
+    }, [reportsPagination.totalPages, reportsLoading]);
 
     const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
     const filteredReportIds = useMemo(
@@ -1923,8 +1993,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-semibold text-slate-800">Reports</h3>
                 </div>
-                <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className="space-y-">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
                         <button
                             type="button"
                             onClick={() => loadReports()}
@@ -1934,11 +2004,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
                             {reportsLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
+
                         <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
                             Filter:
                             <select
                                 value={reportSelectFilter}
-                                onChange={(e) => setReportSelectFilter(e.target.value)}
+                                onChange={(e) => {
+                                    setReportSelectFilter(e.target.value);
+                                    setCurrentPage(1); // Reset to page 1 when filter changes
+                                }}
                                 className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                             >
                                 <option value="all">All statuses</option>
@@ -1949,6 +2023,73 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 <option value="approved">Approved</option>
                             </select>
                         </label>
+
+                        {/* Search input */}
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Search by client, report ID, or value..."
+                                value={searchTerm}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    setCurrentPage(1); // Reset to page 1 when searching
+                                }}
+                                className="rounded-md border border-slate-300 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-64"
+                            />
+                            <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                            {searchTerm && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm("")}
+                                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
+
+                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+                            Items per page:
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                            >
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+
+                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+                            Page:
+                            <input
+                                type="number"
+                                min="1"
+                                max={totalPages}
+                                value={currentPage}
+                                onChange={(e) => {
+                                    const page = parseInt(e.target.value) || 1;
+                                    if (page >= 1 && page <= totalPages) {
+                                        handlePageChange(page);
+                                    }
+                                }}
+                                className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                            />
+                            <span className="text-xs text-slate-600">of {totalPages}</span>
+                        </label>
+
                         <div className="flex items-center gap-2 ml-auto">
                             <select
                                 value={bulkAction}
@@ -2025,7 +2166,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {visibleReports.map((report, idx) => {
+                                        {console.log("visble", visibleReports.length, "filtered", filteredReports.length, "fethced", reports.length)}
+                                        {filteredReports.map((report, idx) => {
                                             const recordId = getReportRecordId(report);
                                             const statusKey = getReportStatus(report);
                                             const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];

@@ -1,5 +1,5 @@
 
-import os, json
+import os, json, asyncio
 import nodriver as uc
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -9,6 +9,7 @@ load_dotenv()
 
 browser = None
 page = None
+refresh_task = None
 
 async def spawn_new_browser(
     old_browser,
@@ -62,6 +63,11 @@ async def switch_to_headless():
         await headless_browser.cookies.load()
         browser = headless_browser
         old_browser.stop()
+
+        global refresh_task
+        if refresh_task is None or refresh_task.done():
+            refresh_task = asyncio.create_task(_periodic_refresh(interval_minutes=20))
+
 
         return {"status": "SUCCESS"}
 
@@ -170,7 +176,12 @@ async def new_window(url):
             return {"status": "FAILED", "error": str(e)}    
 
 async def closeBrowser():
-    global browser, page
+    global browser, page, refresh_task
+
+    if refresh_task:
+        refresh_task.cancel()
+        refresh_task = None
+
     if browser:
         try:
             await browser.stop()
@@ -232,3 +243,39 @@ def _is_valid_http_url(url: str) -> bool:
         return parts.scheme in ("http", "https") and bool(parts.netloc)
     except Exception:
         return False
+    
+    
+async def _periodic_refresh(interval_minutes=1):
+    global browser
+
+    interval_seconds = interval_minutes * 60
+
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+
+            if not browser:
+                continue
+
+            page = browser.main_tab
+            if not page:
+                continue
+
+            current_url = await page.evaluate("window.location.href")
+            if not current_url:
+                continue
+
+            await page.get(current_url)
+
+            print(json.dumps({
+                "type": "DEBUG",
+                "message": f"Headless session refreshed: {current_url}"
+            }), flush=True)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(json.dumps({
+                "type": "WARN",
+                "message": f"Periodic refresh failed: {e}"
+            }), flush=True)
