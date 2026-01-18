@@ -2141,7 +2141,7 @@ const handleDeleteReport = async () => {
         </div>
       )}
     </div>
-    <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
+    {/* <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
       <select
         value={filterMode}
         onChange={(e) => setFilterMode(e.target.value)}
@@ -2222,7 +2222,104 @@ const handleDeleteReport = async () => {
                                             Stop
                                         </button>
       </div>
-    </div>
+    </div> */}
+
+
+    <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
+  <select
+    value={filterMode}
+    onChange={(e) => setFilterMode(e.target.value)}
+    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+  >
+    <option value="all">All</option>
+    <option value="checked">Checked</option>
+    <option value="deleted-report">Deleted Report</option>
+    <option value="deleted-asset">Deleted Asset</option>
+  </select>
+
+  <input
+    type="text"
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    placeholder="Search report ID"
+    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white w-48"
+  />
+
+  {/* Dropdown */}
+  <div className="relative">
+    <details className="group">
+      <summary className="list-none cursor-pointer px-3 py-2 bg-gray-100 hover:bg-gray-200 text-black rounded-lg text-xs font-medium transition-colors">
+        Actions
+      </summary>
+
+      <div className="absolute right-0 z-10 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-col gap-2">
+        <button
+          onClick={handleCheckSelectedReports}
+          disabled={selectedReports.size === 0}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+         
+          Check Selected
+        </button>
+
+        <button
+          onClick={handleDeleteSelectedReports}
+          disabled={selectedReports.size === 0 || deleteReportStatus === 'running'}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+         
+          Delete Selected Reports
+        </button>
+
+        <button
+          onClick={handleCheckSelected}
+          disabled={selectedReports.size === 0}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+          
+          Check
+        </button>
+
+        <button
+          onClick={handleDeleteSelectedAssets}
+          disabled={selectedReports.size === 0 || deleteAssetsStatus === 'running'}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+        
+          Delete Selected Assets
+        </button>
+
+        <button
+          onClick={handleResumeSelected}
+          disabled={selectedReports.size === 0}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+          
+          Resume
+        </button>
+
+        <button
+          onClick={handlePauseSelected}
+          disabled={selectedReports.size === 0}
+          className="py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+          
+          Pause
+        </button>
+
+        <button
+          onClick={handleStopSelected}
+          disabled={selectedReports.size === 0}
+          className=" py-1 bg-gray-100 hover:bg-gray-200 disabled:bg-slate-200 text-black rounded-lg text-xs flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
+        >
+          
+          Stop
+        </button>
+      </div>
+    </details>
+  </div>
+</div>
+
 
     <div className="overflow-x-auto">
       <table className="min-w-full text-[10px] text-slate-700">
