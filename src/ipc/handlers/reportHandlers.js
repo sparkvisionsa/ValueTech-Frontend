@@ -651,6 +651,24 @@ async handleValidateReport(event, reportId, userId = null) {
         }
     },
 
+    async storeReportDeletion(event, deletionData) {
+        try {
+            return await pythonAPI.report.storeReportDeletion(deletionData);
+        } catch (err) {
+            console.error('[MAIN] Store report deletion error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async getValidationResults(event, userId, reportIds) {
+        try {
+            return await pythonAPI.report.getValidationResults(userId, reportIds);
+        } catch (err) {
+            console.error('[MAIN] Get validation results error:', err && err.stack ? err.stack : err);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
     async getCheckedReports(event, userId, page, limit, searchTerm = "") {
         try {
             return await pythonAPI.report.getCheckedReports(userId, page, limit, searchTerm);

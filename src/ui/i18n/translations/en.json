@@ -161,7 +161,11 @@
             "deleteReport": {
                 "title": "Delete Assets / Reports"
             },
+
             "myReports": {
+
+             "myReports": {
+
                 "title": "My Reports"
             },
             "adminConsole": {
@@ -255,7 +259,10 @@
             },
              "my-reports": {
                 "label": "My Reports",
+
                 "description": "Find your All Reports At One Place."
+
+
             },
             "delete-assets": {
                 "label": "Change / Check Status",
@@ -328,8 +335,10 @@
             "admin-packages": "Packages",
             "valuation-system": "Valuation System",
             "word-copy": "Word Copy",
+
             "delete-report": "Delete Assets / Reports",
-              "my-reports": "My Reports",
+            "my-reports": "My Reports",
+
             "system-status": "System Operating Status",
             "system-updates": "System Updates",
             "statics": "Statics",
@@ -561,4 +570,5 @@
             "activateFailed": "Failed to activate"
         }
     }
+}
 }

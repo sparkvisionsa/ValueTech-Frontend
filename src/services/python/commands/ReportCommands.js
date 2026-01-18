@@ -371,6 +371,21 @@ class ReportCommands {
         });
     }
 
+    async storeReportDeletion(deletionData) {
+        return this._sendCommand({
+            action: 'store-report-deletion',
+            deletionData
+        });
+    }
+
+    async getValidationResults(userId, reportIds) {
+        return this._sendCommand({
+            action: 'get-validation-results',
+            userId,
+            reportIds
+        });
+    }
+
     async getCheckedReports(userId, page, limit, searchTerm = "") {
         return this._sendCommand({
             action: 'get-checked-reports',

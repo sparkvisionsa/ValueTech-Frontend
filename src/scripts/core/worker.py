@@ -1,4 +1,5 @@
 import asyncio, sys, json, traceback, platform
+from datetime import datetime
 
 from .browser import closeBrowser, get_browser, check_browser_status, spawn_new_browser
 
@@ -557,6 +558,8 @@ async def handle_command(cmd):
                         "deleted": bool(d.get("deleted")),
                         "remaining_assets": d.get("remaining_assets"),
                         "total_assets": d.get("total_assets"),
+                        "result": d.get("result"),
+                        "report_status": d.get("report_status"),
                         "updated_at": d.get("updated_at").isoformat() if d.get("updated_at") else None,
                         "deleted_at": d.get("deleted_at").isoformat() if d.get("deleted_at") else None
                     })
@@ -567,6 +570,64 @@ async def handle_command(cmd):
                     "page": page,
                     "limit": limit
                 }
+            except Exception as e:
+                result = {"status": "FAILED", "error": str(e)}
+
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "store-report-deletion":
+        deletion_data = cmd.get("deletionData")
+        if not deletion_data:
+            result = {"status": "FAILED", "error": "Missing deletionData"}
+        else:
+            try:
+                from datetime import datetime
+                coll = mongo_db.report_deletions
+                doc = {
+                    "report_id": str(deletion_data.get("reportId")),
+                    "user_id": str(deletion_data.get("userId")),
+                    "action": deletion_data.get("action"),
+                    "result": deletion_data.get("result"),
+                    "report_status": deletion_data.get("reportStatus"),
+                    "total_assets": deletion_data.get("totalAssets", 0),
+                    "deleted": deletion_data.get("result") in ["Report - Deleted", "Asset - Deleted"],
+                    "delete_type": "report" if deletion_data.get("action") == "delete-report" else "assets" if deletion_data.get("action") == "delete-assets" else None,
+                    "updated_at": datetime.utcnow(),
+                    "deleted_at": datetime.utcnow() if deletion_data.get("result") in ["Report - Deleted", "Asset - Deleted"] else None
+                }
+                if deletion_data.get("error"):
+                    doc["error"] = deletion_data.get("error")
+                
+                await coll.insert_one(doc)
+                result = {"status": "SUCCESS", "message": "Deletion record stored"}
+            except Exception as e:
+                result = {"status": "FAILED", "error": str(e)}
+
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "store-report-deletion":
+        deletion_data = cmd.get("deletionData")
+        if not deletion_data:
+            result = {"status": "FAILED", "error": "Missing deletionData"}
+        else:
+            try:
+                coll = mongo_db.report_deletions
+                deletion_data["user_id"] = str(deletion_data.get("userId"))
+                deletion_data["report_id"] = str(deletion_data.get("reportId"))
+                deletion_data["action"] = deletion_data.get("action")
+                deletion_data["result"] = deletion_data.get("result")
+                deletion_data["report_status"] = deletion_data.get("reportStatus")
+                deletion_data["total_assets"] = deletion_data.get("totalAssets", 0)
+                deletion_data["updated_at"] = datetime.utcnow()
+                
+                if deletion_data.get("error"):
+                    deletion_data["error"] = deletion_data.get("error")
+                
+                # Insert the deletion record
+                await coll.insert_one(deletion_data)
+                result = {"status": "SUCCESS", "message": "Deletion record stored"}
             except Exception as e:
                 result = {"status": "FAILED", "error": str(e)}
 
@@ -586,7 +647,7 @@ async def handle_command(cmd):
                 if search_term:
                     query["report_id"] = {"$regex": str(search_term), "$options": "i"}
                 skip = max(page - 1, 0) * limit
-                coll = mongo_db.check_report
+                coll = mongo_db.report_deletions
                 total = await coll.count_documents(query)
                 cursor = coll.find(query).sort("last_status_check_at", -1).skip(skip).limit(limit)
                 docs = await cursor.to_list(length=limit)
@@ -606,6 +667,46 @@ async def handle_command(cmd):
                     "total": total,
                     "page": page,
                     "limit": limit
+                }
+            except Exception as e:
+                result = {"status": "FAILED", "error": str(e)}
+
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "get-validation-results":
+        user_id = cmd.get("userId")
+        report_ids = cmd.get("reportIds", [])
+
+        if not user_id or not report_ids:
+            result = {"status": "FAILED", "error": "Missing userId or reportIds"}
+        else:
+            try:
+                from bson import ObjectId
+                coll = mongo_db["report_deletions"]
+                query = {
+                    "user_id": str(user_id),
+                    "report_id": {"$in": [str(rid) for rid in report_ids]}
+                }
+                # Get all records sorted by updated_at descending
+                cursor = coll.find(query).sort("updated_at", -1)
+                docs = await cursor.to_list(length=None)
+                
+                # Get latest result for each report_id (since sorted by updated_at desc, first occurrence is latest)
+                validation_results = {}
+                for d in docs:
+                    report_id = d.get("report_id")
+                    if report_id and report_id not in validation_results:
+                        validation_results[report_id] = {
+                            "report_id": report_id,
+                            "result": d.get("result"),
+                            "report_status": d.get("report_status"),
+                            "total_assets": d.get("total_assets", 0)
+                        }
+                
+                result = {
+                    "status": "SUCCESS",
+                    "items": list(validation_results.values())
                 }
             except Exception as e:
                 result = {"status": "FAILED", "error": str(e)}

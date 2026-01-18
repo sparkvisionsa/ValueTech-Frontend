@@ -112,6 +112,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getReportDeletions: (userId, deleteType, page = 1, limit = 10, searchTerm = "") =>
         safeInvoke('get-report-deletions', userId, deleteType, page, limit, searchTerm),
 
+    storeReportDeletion: (deletionData) => safeInvoke('store-report-deletion', deletionData),
+
+    getValidationResults: (userId, reportIds) => safeInvoke('get-validation-results', userId, reportIds),
+
     getCheckedReports: (userId, page = 1, limit = 10, searchTerm = "") =>
         safeInvoke('get-checked-reports', userId, page, limit, searchTerm),
 

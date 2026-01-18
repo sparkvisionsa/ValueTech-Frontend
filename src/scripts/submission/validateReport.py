@@ -10,7 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 _mongo_client = AsyncIOMotorClient(MONGO_URI)
 _db = _mongo_client["test"]
-_check_report_coll = _db["check_report"]
+_check_report_coll = _db["report_deletions"]
 
 
 

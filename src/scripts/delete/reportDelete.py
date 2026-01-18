@@ -60,7 +60,7 @@ MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 _mongo_client = AsyncIOMotorClient(MONGO_URI)
 _mongo_db = _mongo_client["test"]
 _delete_status_coll = _mongo_db["report_deletions"]
-_check_report_coll = _mongo_db["check_report"]
+_check_report_coll = _mongo_db["report_deletions"]
 
 async def _record_delete_status(
     report_id: str,
@@ -90,11 +90,8 @@ async def _record_delete_status(
             {"$set": payload},
             upsert=True
         )
-        if deleted:
-            delete_query = {"report_id": str(report_id)}
-            if user_id:
-                delete_query["user_id"] = str(user_id)
-            await _check_report_coll.delete_many(delete_query)
+        # Note: We no longer delete records from report_deletions after deletion
+        # All actions (Delete Report, Delete Assets, Check Report) are stored in report_deletions
     except Exception as e:
         log(f"[db] failed to update delete status: {e}", "WARN")
 

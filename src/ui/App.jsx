@@ -44,6 +44,7 @@ import ComingSoon from './screens/ComingSoon';
 import { useValueNav } from './context/ValueNavContext';
 import { NotificationProvider } from './context/NotificationContext';
 
+
 const AppContent = () => {
     const [currentView, setCurrentView] = useState('apps');
     const [pendingProtectedView, setPendingProtectedView] = useState(null);
@@ -128,6 +129,9 @@ const AppContent = () => {
             case 'my-reports':
                 return <MyReports onViewChange={handleViewChange} />;
 
+            case 'my-reports':
+                return <MyReports  onViewChange={handleViewChange}/>;
+
             case 'get-companies':
                 return <GetCompanies onViewChange={handleViewChange} />
 
@@ -189,6 +193,7 @@ const AppContent = () => {
 
 const App = () => {
     return (
+        
         <SessionProvider>
             <SystemControlProvider>
                 <NavStatusProvider>
@@ -204,6 +209,7 @@ const App = () => {
                 </NavStatusProvider>
             </SystemControlProvider>
         </SessionProvider>
+        
     );
 };
 

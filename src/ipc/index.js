@@ -131,6 +131,8 @@ function registerIpcHandlers() {
     ipcMain.handle('stop-delete-incomplete-assets', reportHandlers.stopDeleteIncompleteAssets);
     ipcMain.handle('pause-delete-incomplete-assets', reportHandlers.pauseDeleteIncompleteAssets);
     ipcMain.handle('get-report-deletions', reportHandlers.getReportDeletions);
+    ipcMain.handle('store-report-deletion', reportHandlers.storeReportDeletion);
+    ipcMain.handle('get-validation-results', reportHandlers.getValidationResults);
     ipcMain.handle('get-checked-reports', reportHandlers.getCheckedReports);
 
     ipcMain.handle('handle-cancelled-report', reportHandlers.handleCancelledReport);
