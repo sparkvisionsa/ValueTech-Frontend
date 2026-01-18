@@ -2123,12 +2123,6 @@ const handleDeleteReport = async () => {
                                         : "Enter the report IDs you wish to check or delete. Separate multiple IDs with spaces."
                                     }
                                 </p>
-
-                                {/* Report Validation Status */}
-                              
-
-                              {/* ✅ Replace your current “Report Validation Status” blocks with this table UI */}
-
 {filteredRows.length > 0 && (
   <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
     <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
