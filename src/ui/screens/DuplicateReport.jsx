@@ -937,10 +937,10 @@ const DuplicateReport = ({ onViewChange }) => {
     setValuers((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
   };
 
-  const handleCreateReport = async () => {
+  const handleCreateReport = async (closeModal = true) => {
     if (!validate()) {
       setStatus({ type: "error", message: "Please fill required fields." });
-      return;
+      return false;
     }
 
     if (!excelFile) {
@@ -948,7 +948,7 @@ const DuplicateReport = ({ onViewChange }) => {
         type: "error",
         message: "Excel file is required to add the report.",
       });
-      return;
+      return false;
     }
 
     if (excelValidationLoading) {
@@ -956,7 +956,7 @@ const DuplicateReport = ({ onViewChange }) => {
         type: "error",
         message: "Wait for Excel validation to finish before adding.",
       });
-      return;
+      return false;
     }
 
     if (excelValidation.issues.length) {
@@ -964,7 +964,7 @@ const DuplicateReport = ({ onViewChange }) => {
         type: "error",
         message: "Fix Excel validation issues before adding.",
       });
-      return;
+      return false;
     }
 
     if (wantsPdfUpload && !pdfFile) {
@@ -972,7 +972,7 @@ const DuplicateReport = ({ onViewChange }) => {
         type: "error",
         message: "PDF file is required when PDF upload is enabled.",
       });
-      return;
+      return false;
     }
 
     const payload = new FormData();
@@ -997,12 +997,16 @@ const DuplicateReport = ({ onViewChange }) => {
         setStatus({ type: "success", message: "Report added successfully." });
         setIsValidationCollapsed(false);
         await loadReports();
-        setShowCreateModal(false);
+        if (closeModal) {
+          setShowCreateModal(false);
+        }
+        return true;
       } else {
         setStatus({
           type: "error",
           message: result?.message || "Could not save report.",
         });
+        return false;
       }
     } catch (err) {
       setStatus({
@@ -1012,8 +1016,47 @@ const DuplicateReport = ({ onViewChange }) => {
           err.message ||
           "Failed to save report.",
       });
+      return false;
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStoreAndSubmitNow = async () => {
+    // Call the original create report function but keep modal open
+    const success = await handleCreateReport(false);
+
+    if (success) {
+      try {
+        // Get the latest reports to find the newly created one
+        const result = await fetchDuplicateReports();
+        const latestReports = normalizeReportsResponse(result);
+
+        if (latestReports.length > 0) {
+          // Get the most recent report (should be the one we just created)
+          const latestReport = latestReports[latestReports.length - 1];
+          const recordId = getReportRecordId(latestReport);
+
+          if (recordId) {
+            // Close the modal
+            setShowCreateModal(false);
+
+            // Submit to Taqeem
+            const assetCount = Array.isArray(latestReport.asset_data)
+              ? latestReport.asset_data.length
+              : 0;
+            const tabsForAssets = resolveTabsForAssets(assetCount);
+
+            await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+          }
+        }
+      } catch (err) {
+        setStatus({
+          type: "error",
+          message: "Report stored but failed to submit to Taqeem: " +
+            (err?.message || "Unknown error")
+        });
+      }
     }
   };
 
@@ -2482,26 +2525,46 @@ const DuplicateReport = ({ onViewChange }) => {
                 )}
               </button>
             ) : (
-              <button
-                onClick={handleCreateReport}
-                disabled={submitting || excelValidationLoading}
-                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
-                  ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
-                  : "bg-blue-900 hover:bg-blue-800 text-white"
-                  }`}
-              >
-                {submitting ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Adding...
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    Add report
-                  </span>
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleCreateReport()}
+                  disabled={submitting || excelValidationLoading}
+                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
+                    ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                    : "bg-blue-900 hover:bg-blue-800 text-white"
+                    }`}
+                >
+                  {submitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Adding...
+                    </span>
+                  ) : (
+                    "Store and Submit Later"
+                  )}
+                </button>
+
+                <button
+                  onClick={handleStoreAndSubmitNow}
+                  disabled={submitting || excelValidationLoading}
+                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
+                    ? "bg-emerald-900/10 text-emerald-900/50 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    }`}
+                >
+                  {submitting ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Adding...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      <Send className="w-4 h-4" />
+                      Store and Submit Now
+                    </span>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         </div>

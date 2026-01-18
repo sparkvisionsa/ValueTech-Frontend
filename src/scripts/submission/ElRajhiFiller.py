@@ -284,8 +284,10 @@ async def finalize_report_submission(page, report_id):
         return {"status": "FAILED", "error": str(e)}
     
 async def finalize_multiple_reports(browser, report_ids):
+    new_browser = None
     try: 
-        page = browser.main_tab
+        new_browser = await spawn_new_browser(browser)
+        page = new_browser.main_tab
         finalized_reports = 0
         failed_reports = 0
         for report_id in report_ids:
@@ -303,6 +305,9 @@ async def finalize_multiple_reports(browser, report_ids):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
+    finally:
+        if new_browser:
+            new_browser.stop()
 
 
 async def ElRajhiFiller(browser, batch_id, tabs_num=3, pdf_only=False, company_url=None, finalize_submission=True):

@@ -23,23 +23,6 @@ def get_motor_client():
 
 
 async def run_complete_report_flow(browser, report_id, tabs_num=3, batch_size=10):
-    """
-    Complete flow for processing a report:
-    1. Fetch report data from DB
-    2. Create macros based on asset_data length
-    3. Grab macro IDs
-    4. Fill macro forms
-    5. Check macro completion status
-    
-    Args:
-        browser: Active browser instance
-        report_id: Report ID to process
-        tabs_num: Number of parallel tabs to use (default: 3)
-        batch_size: Batch size for macro creation (default: 10)
-    
-    Returns:
-        dict: Status and results of the complete flow
-    """
     client = None
     process_id = f"complete-flow-{report_id}"
     new_browser = None
@@ -294,7 +277,8 @@ async def run_complete_report_flow(browser, report_id, tabs_num=3, batch_size=10
         check_result = await RunCheckMacroStatus(
             browser=new_browser,
             report_id=report_id,
-            tabs_num=tabs_num
+            tabs_num=tabs_num,
+            same=True
         )
         
         if check_result.get("status") == "FAILED":

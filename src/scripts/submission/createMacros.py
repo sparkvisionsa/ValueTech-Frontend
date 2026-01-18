@@ -356,7 +356,6 @@ async def pause_create_macros(report_id):
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
 
-
 async def resume_create_macros(report_id):
     """Resume macro creation for a report"""
     try:
@@ -376,7 +375,6 @@ async def resume_create_macros(report_id):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
-
 
 async def stop_create_macros(report_id):
     """Stop macro creation for a report"""

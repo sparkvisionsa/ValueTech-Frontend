@@ -8,6 +8,7 @@ from scripts.core.processControl import (
     clear_process,
     update_progress,
 )
+from scripts.core.browser import spawn_new_browser  
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -694,18 +695,49 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
             clear_process(process_id)
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
-async def RunCheckMacroStatus(browser, report_id, tabs_num=3):
-    """Full check - processes all pages"""
-    result = await check_incomplete_macros(browser, report_id, tabs_num)
-    return result
+async def RunCheckMacroStatus(browser, report_id, tabs_num=3, same=False):
+    if same and not browser:
+        raise ValueError("same=True requires an existing browser")
+
+    new_browser = None
+    browser_to_use = None
+
+    try:
+        if not same:
+            new_browser = await spawn_new_browser(browser)
+            browser_to_use = new_browser
+        else:
+            browser_to_use = browser
+
+        return await check_incomplete_macros(
+            browser_to_use,
+            report_id,
+            tabs_num
+        )
+
+    finally:
+        if new_browser:
+            new_browser.stop()
 
 async def RunHalfCheckMacroStatus(browser, report_id, tabs_num=3):
-    result = await half_check_incomplete_macros(browser, report_id, tabs_num)
-    return result
+    new_browser = None
+    try:
+        new_browser = await spawn_new_browser(browser)
+
+        return await half_check_incomplete_macros(
+            new_browser,
+            report_id,
+            tabs_num
+        )
+
+    finally:
+        if new_browser:
+            new_browser.stop()
+
 
 # ==============================
 # Pause/Resume/Stop handlers for both full and half checks
-# ==============================
+# ==============================+
 
 async def pause_full_check(report_id):
     """Pause full check process"""

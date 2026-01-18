@@ -15,6 +15,7 @@ from scripts.core.processControl import (
     update_progress,
     emit_progress
 )
+from scripts.core.browser import spawn_new_browser
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -338,6 +339,7 @@ async def run_macro_edit(browser, report_id, tabs_num=3):
         return {"status": "FAILED", "error": str(e), "traceback": tb}
 
 async def run_macro_edit_retry(browser, report_id, tabs_num=3):
+    new_browser = None
     try:
         record = await db.reports.find_one({"report_id": report_id})
         if not record:
@@ -387,8 +389,10 @@ async def run_macro_edit_retry(browser, report_id, tabs_num=3):
             "asset_data": retry_assets
         }
 
+        new_browser = await spawn_new_browser(browser)
+
         result = await handle_macro_edits(
-            browser,
+            new_browser,
             retry_record,
             tabs_num=tabs_num,
             record_id=report_id
@@ -408,6 +412,10 @@ async def run_macro_edit_retry(browser, report_id, tabs_num=3):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
+    
+    finally:
+        if new_browser:
+            new_browser.stop()
 
 
 async def pause_macro_edit(report_id):
