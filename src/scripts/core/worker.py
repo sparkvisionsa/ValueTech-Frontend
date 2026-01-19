@@ -7,6 +7,7 @@ from scripts.loginFlow.login import startLogin, submitOtp
 from scripts.loginFlow.newLogin import public_login_flow
 from scripts.loginFlow.register import register_user
 
+
 from scripts.submission.validateReport import validate_report
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -55,7 +56,7 @@ from scripts.submission.ElRajhiFiller import (
 from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
 from scripts.submission.registrationCertificateDownloader import download_registration_certificates
 from scripts.submission.duplicateReport import run_duplicate_report
-from scripts.submission.mutliReportFiller import create_reports_by_batch, create_new_report
+from scripts.submission.mutliReportFiller import create_reports_by_batch, create_new_report, retry_create_new_report
 
 from scripts.submission.checkMacroStatus import (
     RunCheckMacroStatus, 
@@ -954,6 +955,17 @@ async def handle_command(cmd):
             # Close the browser after completion
             if new_browser:
                 new_browser.stop()
+
+    elif action == "retry-create-report-by-id":
+        browser = await get_browser()
+
+        record_id = cmd.get("recordId")
+        tabs_num = int(cmd.get("tabsNum", 3))
+
+        result = await retry_create_new_report(browser, record_id, tabs_num)
+        result["commandId"] = cmd.get("commandId")
+
+        print(json.dumps(result), flush=True)
         
     elif action == "close":
         await closeBrowser()

@@ -47,7 +47,7 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
                 if (res?.status === "LOGIN_REQUIRED") {
                     setTaqeemStatus?.("info", "Taqeem login: Off");
                     onViewChange?.("login");
-                    return false;
+                    return res;
                 }
             }
 

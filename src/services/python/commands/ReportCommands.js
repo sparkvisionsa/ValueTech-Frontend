@@ -257,6 +257,14 @@ class ReportCommands {
         });
     }
 
+    async retryCreateReportById(recordId, tabsNum) {
+        return this._sendCommand({
+            action: 'retry-create-report-by-id',
+            recordId,
+            tabsNum
+        });
+    }
+
     async fullCheck(reportId, tabsNum) {
         return this._sendCommand({
             action: 'full-check',

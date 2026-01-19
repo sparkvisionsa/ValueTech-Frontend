@@ -46,6 +46,7 @@ export const useAuthAction = () => {
                 setTaqeemStatus
             );
 
+            console.log("[useAuthAction] authStatus:", authStatus);
             // Handle authentication results
             if (authStatus?.status === "INSUFFICIENT_POINTS") {
                 showInsufficientPointsModal();
