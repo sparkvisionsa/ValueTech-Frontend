@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     duplicateReportNavigate: (recordId, company, tabsNum) => safeInvoke('duplicate-report', recordId, company, tabsNum),
     createReportsByBatch: (batchId, tabsNum) => safeInvoke('create-reports-by-batch', batchId, tabsNum),
     createReportById: (recordId, tabsNum) => safeInvoke('create-report-by-id', recordId, tabsNum),
+    retryCreateReportById: (recordId, tabsNum) => safeInvoke('retry-create-report-by-id', recordId, tabsNum),
     retryElrajhiReport: (batchId, tabsNum) => safeInvoke('retry-ElRajhi-report', batchId, tabsNum),
     retryElrajhiReportReportIds: (reportIds, tabsNum) => safeInvoke('retry-ElRajhi-report-by-report-ids', reportIds, tabsNum),
     retryElrajhiReportRecordIds: (recordIds, tabsNum) => safeInvoke('retry-ElRajhi-report-by-record-ids', recordIds, tabsNum),
@@ -159,7 +160,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
 
-     
+
 
     // Progress listener for submit-reports-quickly
     onSubmitReportsQuicklyProgress: (callback) => {

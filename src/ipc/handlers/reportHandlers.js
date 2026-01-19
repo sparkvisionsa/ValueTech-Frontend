@@ -34,31 +34,31 @@ const reportHandlers = {
 
 
 
-async handleValidateReport(event, reportId, userId = null) {
-  try {
-    console.log('[MAIN] Received validate report request:', reportId);
+    async handleValidateReport(event, reportId, userId = null) {
+        try {
+            console.log('[MAIN] Received validate report request:', reportId);
 
-    const result = await pythonAPI.report.validateReport(reportId, userId);
-    console.log("Result at handler (FULL):", result);
+            const result = await pythonAPI.report.validateReport(reportId, userId);
+            console.log("Result at handler (FULL):", result);
 
-    if (result.status === 'SUCCESS') {
-      return { ...result, message: 'Report is valid' };
+            if (result.status === 'SUCCESS') {
+                return { ...result, message: 'Report is valid' };
 
-    } else if (result.status === 'NOT_FOUND') {
-      return { ...result, message: 'Report not found' };
+            } else if (result.status === 'NOT_FOUND') {
+                return { ...result, message: 'Report not found' };
 
-    } else if (result.status === 'MACROS_EXIST') {
-      return { ...result, message: `Report has ${result.assetsExact} macros` };
+            } else if (result.status === 'MACROS_EXIST') {
+                return { ...result, message: `Report has ${result.assetsExact} macros` };
 
-    } else {
-      return { ...result, status: 'ERROR', error: result.error || 'Report validation failed' };
-    }
+            } else {
+                return { ...result, status: 'ERROR', error: result.error || 'Report validation failed' };
+            }
 
-  } catch (error) {
-    console.error('[MAIN] Validate report error:', error);
-    return { status: 'ERROR', error: error.message };
-  }
-},
+        } catch (error) {
+            console.error('[MAIN] Validate report error:', error);
+            return { status: 'ERROR', error: error.message };
+        }
+    },
 
 
     async handleCompleteFlow(event, reportId, tabsNum) {
@@ -178,6 +178,15 @@ async handleValidateReport(event, reportId, userId = null) {
             console.error('[MAIN] Create report by id error:', err && err.stack ? err.stack : err);
             // Unregister on error
             pythonAPI.workerService.unregisterProgressCallback(recordId);
+            return { status: 'FAILED', error: err.message || String(err) };
+        }
+    },
+
+    async handleRetryCreateReportById(event, recordId, tabsNum) {
+        try {
+            return await pythonAPI.report.retryCreateReportById(recordId, tabsNum);
+        } catch (err) {
+            console.error('[MAIN] Retry create report by id error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

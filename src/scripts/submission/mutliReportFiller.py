@@ -440,6 +440,154 @@ async def create_new_report(browser, record_id, tabs_num=3):
             "traceback": traceback.format_exc()
         }
 
+async def retry_create_new_report(browser, record_id, tabs_num=3):
+    """Retry creating a report by only processing assets with submitState == 0"""
+    new_browser = None
+    try:
+        # Convert record_id to string if needed
+        record_id_str = str(record_id).strip()
+        
+        if not ObjectId.is_valid(record_id_str):
+            return {"status": "FAILED", "error": f"Invalid record_id format: {record_id_str}"}
+
+        record_id_obj = ObjectId(record_id_str)
+        
+        # Try to find record in all possible collections
+        collection_names = [
+            "multiapproachreports",
+            "submitreportsquicklies",
+            "submitreportsquickly"
+        ]
+        
+        record, collection = await find_record_in_collections(record_id_obj, collection_names)
+        
+        if not record:
+            return {"status": "FAILED", "error": f"Record not found with id: {record_id_str}"}
+        
+        # Check if report_id exists (report must have been created already)
+        if not record.get("report_id"):
+            return {
+                "status": "FAILED", 
+                "error": "No report_id found. Use create_new_report instead of retry."
+            }
+
+        asset_data = record.get("asset_data", [])
+        if not asset_data:
+            return {"status": "SUCCESS", "message": "No assets found"}
+
+        # Filter retryable assets (submitState == 0)
+        retry_assets = [
+            asset for asset in asset_data
+            if asset.get("submitState", 0) == 0
+        ]
+
+        if not retry_assets:
+            return {
+                "status": "SUCCESS",
+                "message": "No retryable assets found (all macros already submitted)"
+            }
+
+        # Verify IDs
+        missing_ids = [
+            i for i, asset in enumerate(retry_assets)
+            if not asset.get("id")
+        ]
+        if missing_ids:
+            return {
+                "status": "FAILED",
+                "error": f"Retry assets missing macro IDs at indices: {missing_ids}"
+            }
+
+        # Update retry start time
+        await collection.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"retryStartTime": datetime.now(timezone.utc)}}
+        )
+
+        emit_progress_update(
+            record_id_str,
+            0,
+            f"Starting retry for {len(retry_assets)} macros...",
+            "processing"
+        )
+
+        # Create a shallow copy of record with filtered assets
+        retry_record = {
+            **record,
+            "asset_data": retry_assets
+        }
+
+        # Spawn new browser for retry
+        new_browser = await spawn_new_browser(browser)
+
+        # Calculate base progress (report already created = 15%)
+        base_progress = 15
+        asset_fill_base = 85
+        total_assets = len(retry_assets)
+
+        # Custom progress callback for retry
+        def progress_callback(completed, total):
+            if total == 0:
+                return
+            fill_progress = base_progress + (asset_fill_base * completed / total)
+            emit_progress_update(
+                record_id_str,
+                fill_progress,
+                f"Retrying assets: {completed}/{total}",
+                "processing"
+            )
+
+        # Process retry assets using handle_macro_edits
+        result = await handle_macro_edits(
+            new_browser,
+            retry_record,
+            tabs_num=tabs_num,
+            record_id=record_id_str,
+            progress_callback=progress_callback,
+            collection=collection
+        )
+
+        # Update retry end time
+        await collection.update_one(
+            {"_id": record["_id"]},
+            {"$set": {"retryEndTime": datetime.now(timezone.utc)}}
+        )
+
+        # Emit completion message
+        if result.get("status") == "SUCCESS":
+            emit_progress_update(
+                record_id_str,
+                100,
+                f"Retry completed: {result.get('completed', 0)}/{total_assets} macros filled",
+                "completed"
+            )
+        else:
+            emit_progress_update(
+                record_id_str,
+                0,
+                f"Retry failed: {result.get('error', 'Unknown error')}",
+                "error"
+            )
+
+        return result
+
+    except Exception as e:
+        # Clear process state on error
+        from scripts.core.processControl import clear_process
+        clear_process(record_id_str)
+        
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+    
+    finally:
+        if new_browser:
+            new_browser.stop()
+
+
+
 async def create_reports_by_batch(browser, batch_id, tabs_num=3):
     new_browser = None  
     try:
@@ -512,3 +660,4 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
     finally:
         if new_browser:
             new_browser.stop()
+

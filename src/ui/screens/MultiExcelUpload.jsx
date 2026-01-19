@@ -205,8 +205,16 @@ const buildDefaultValuers = () => ([
 
 const getReportStatus = (report) => {
     if (report?.checked) return "approved";
-    if (report?.endSubmitTime) return "complete";
-    if (report?.report_id) return "sent";
+
+    // Check if all assets are complete
+    const allAssetsComplete = Array.isArray(report?.asset_data) && report.asset_data.length > 0
+        ? report.asset_data.every(asset => asset?.submitState === 1)
+        : false;
+
+    // If report has no assets, check endSubmitTime as fallback
+    if (allAssetsComplete) {
+        return "complete";
+    }
     return "incomplete";
 };
 
@@ -215,8 +223,12 @@ const getAssetMacroId = (asset, report) => {
     return asset?.id || asset?.macro_id || asset?.macroId || "";
 };
 
-const getAssetStatus = (asset, report) =>
-    getAssetMacroId(asset, report) ? "complete" : "incomplete";
+const getAssetStatus = (asset, report) => {
+    if (asset?.submitState === 1) return "complete";
+    if (asset?.submitState === 0) return "incomplete";
+    // Fallback to existing logic if submitState doesn't exist
+    return getAssetMacroId(asset, report) ? "complete" : "incomplete";
+};
 
 const getAssetApproach = (asset) => {
     const hasMarket = asset?.market_approach || asset?.market_approach_value;
@@ -1853,7 +1865,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        if (action === "send" || action === "retry") {
+        if (action === "send") {
             setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
             try {
                 const assetCount = Array.isArray(report.asset_data)
@@ -1862,6 +1874,53 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 const tabsForAssets = resolveTabsForAssets(assetCount);
                 await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
                 await loadReports();
+            } catch (err) {
+                setActionStatus({
+                    type: "error",
+                    message:
+                        err?.response?.data?.message || err?.message || "Action failed.",
+                });
+            } finally {
+                setReportActionBusy((prev) => {
+                    const next = { ...prev };
+                    delete next[recordId];
+                    return next;
+                });
+            }
+        }
+
+        if (action === "retry") {
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
+            try {
+                const assetCount = Array.isArray(report.asset_data)
+                    ? report.asset_data.length
+                    : 0;
+                const tabsForAssets = resolveTabsForAssets(assetCount);
+                await executeWithAuth(
+                    async (params) => {
+                        const { token: authToken, recordId } = params;
+                        const result = await window.electronAPI.retryCreateReportById(recordId, tabsForAssets);
+                        if (!result?.success) {
+                            await loadReports();
+                            throw new Error(result?.message || "Failed to retry report.");
+                        }
+                        setActionStatus({ type: "success", message: "Report retried." });
+                        await loadReports();
+                        return { success: true };
+                    },
+                    { token, recordId },
+                    {
+                        requiredPoints: 0,
+                        showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                        onViewChange,
+                        onAuthSuccess: () => {
+                            console.log("[ReportsTable] Authentication successful for retry");
+                        },
+                        onAuthFailure: (reason) => {
+                            console.warn("[ReportsTable] Authentication failed for retry:", reason);
+                        }
+                    }
+                );
             } catch (err) {
                 setActionStatus({
                     type: "error",
