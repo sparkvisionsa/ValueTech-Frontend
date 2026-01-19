@@ -169,11 +169,7 @@
             "deleteReport": {
                 "title": "Delete Assets / Reports"
             },
-
             "myReports": {
-
-             "myReports": {
-
                 "title": "My Reports"
             },
             "adminConsole": {
@@ -578,5 +574,4 @@
             "activateFailed": "Failed to activate"
         }
     }
-}
 }

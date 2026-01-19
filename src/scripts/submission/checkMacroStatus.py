@@ -16,7 +16,65 @@ db = client["test"]
 
 # Status detection markers (similar to ElRajhi checker)
 SENT_BUTTON_MARKER = 'id="reject"'
+
+async def find_report_and_collection(report_id):
+    collections = [
+        ("submitreportsquicklies", db.submitreportsquicklies),
+        ("submitreportsquickly", db.submitreportsquickly),
+        ("reports", db.reports),
+    ]
+
+    report_ids = []
+    if report_id is not None:
+        report_ids.append(report_id)
+
+    report_str = str(report_id).strip() if report_id is not None else ""
+    if report_str and report_str not in report_ids:
+        report_ids.append(report_str)
+
+    try:
+        report_int = int(report_str)
+        if report_int not in report_ids:
+            report_ids.append(report_int)
+    except (TypeError, ValueError):
+        pass
+
+    query = {"report_id": {"$in": report_ids}} if len(report_ids) > 1 else {"report_id": report_id}
+
+    for name, collection in collections:
+        report = await collection.find_one(query)
+        if report:
+            return report, collection, name
+
+    return None, None, None
 CONFIRMED_BUTTON_TEXT = "شهادة التسجيل"
+
+def is_asset_complete(asset):
+    val = asset.get("submitState")
+    return val == 1 or val == "1" or val is True
+
+async def update_report_completion_status(collection, report_id):
+    report = await collection.find_one(
+        {"_id": report_id},
+        {"asset_data.submitState": 1, "report_status": 1}
+    )
+    if not report:
+        return None
+
+    assets = report.get("asset_data", [])
+    any_incomplete = any(not is_asset_complete(asset) for asset in assets) if assets else False
+
+    if any_incomplete:
+        new_status = "incomplete"
+    else:
+        current_status = (report.get("report_status") or "").lower()
+        if current_status in ["sent", "approved"]:
+            new_status = report.get("report_status")
+        else:
+            new_status = "complete"
+
+    await collection.update_one({"_id": report_id}, {"$set": {"report_status": new_status}})
+    return new_status
 
 async def detect_report_status(page):
     """
@@ -69,9 +127,11 @@ async def detect_report_status(page):
 async def check_incomplete_macros(browser, report_id, browsers_num=3):
     try:
         # First, fetch report to map macro IDs
-        report = await db.reports.find_one({"report_id": report_id})
+        report, collection, _ = await find_report_and_collection(report_id)
         if not report:
-            return {"status": "FAILED", "error": f"Report {report_id} not found in reports"}
+            return {"status": "FAILED", "error": f"Report {report_id} not found in reports collections"}
+        report_key = {"_id": report["_id"]}
+        report_key = {"_id": report["_id"]}
 
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
         main_page = await browser.get(base_url)
@@ -85,19 +145,17 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[INFO] Status markers - Delete: {status_info['has_delete_button']}, Sent: {status_info['has_sent_marker']}, Confirmed: {status_info['has_confirmed_marker']}")
         
         # Update report status in database
-        await db.reports.update_one(
-            {"report_id": report_id},
-            {"$set": {"report_status": report_status}}
-        )
+        await collection.update_one(report_key, {"$set": {"report_status": report_status}})
 
         # If report has delete button OR is SENT/CONFIRMED, mark all assets as complete
         if status_info['has_delete_button'] or report_status in ["SENT", "CONFIRMED"]:
             print(f"[INFO] Report is {report_status}, marking all macros as complete.")
             # Mark all assets as complete
-            await db.reports.update_one(
-                {"report_id": report_id},
+            await collection.update_one(
+                report_key,
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
+            await update_report_completion_status(collection, report["_id"])
             return {
                 "status": "SUCCESS",
                 "incomplete_ids": [],
@@ -246,20 +304,20 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
                                 submit_state = 0 if "غير مكتملة" in status_text else 1
 
                                 # Update database
-                                update_result = await db.reports.update_one(
-                                    {"report_id": report_id, "asset_data.id": str(macro_id)},
+                                update_result = await collection.update_one(
+                                    {"_id": report["_id"], "asset_data.id": str(macro_id)},
                                     {"$set": {"asset_data.$.submitState": submit_state}}
                                 )
 
                                 # If no document was matched, try to update using array index
                                 if update_result.matched_count == 0:
-                                    report_after = await db.reports.find_one({"report_id": report_id})
+                                    report_after = await collection.find_one(report_key)
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
                                             if asset.get("id") == macro_id:
-                                                await db.reports.update_one(
-                                                    {"report_id": report_id},
+                                                await collection.update_one(
+                                                    report_key,
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                                                 )
                                                 print(f"[TAB-{tab_id}] Updated Macro {macro_id} using index {idx}")
@@ -325,6 +383,7 @@ async def check_incomplete_macros(browser, report_id, browsers_num=3):
 
         # Clear process state
         clear_process(process_id)
+        await update_report_completion_status(collection, report["_id"])
 
         return {
             "status": "SUCCESS",
@@ -350,9 +409,9 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[HALF CHECK] Starting optimized half check for report {report_id}")
 
         # First, fetch report to get incomplete macros and their page numbers
-        report = await db.reports.find_one({"report_id": report_id})
+        report, collection, _ = await find_report_and_collection(report_id)
         if not report:
-            return {"status": "FAILED", "error": f"Report {report_id} not found in reports"}
+            return {"status": "FAILED", "error": f"Report {report_id} not found in reports collections"}
 
         # Enhanced status detection
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
@@ -365,19 +424,17 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[HALF CHECK] Report {report_id} overall status: {report_status}")
         
         # Update report status in database
-        await db.reports.update_one(
-            {"report_id": report_id},
-            {"$set": {"report_status": report_status}}
-        )
+        await collection.update_one(report_key, {"$set": {"report_status": report_status}})
 
         # If report has delete button OR is SENT/CONFIRMED, mark all assets as complete
         if status_info['has_delete_button'] or report_status in ["SENT", "CONFIRMED"]:
             print(f"[HALF CHECK] Report is {report_status}, marking all macros as complete.")
             # Mark all assets as complete
-            await db.reports.update_one(
-                {"report_id": report_id},
+            await collection.update_one(
+                report_key,
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
+            await update_report_completion_status(collection, report["_id"])
             return {
                 "status": "SUCCESS",
                 "incomplete_ids": [],
@@ -591,19 +648,19 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                 local_processed.add(macro_id)
                                 submit_state = 0 if "غير مكتملة" in status_text else 1
 
-                                update_result = await db.reports.update_one(
-                                    {"report_id": report_id, "asset_data.id": str(macro_id)},
+                                update_result = await collection.update_one(
+                                    {"_id": report["_id"], "asset_data.id": str(macro_id)},
                                     {"$set": {"asset_data.$.submitState": submit_state}}
                                 )
 
                                 if update_result.matched_count == 0:
-                                    report_after = await db.reports.find_one({"report_id": report_id})
+                                    report_after = await collection.find_one(report_key)
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
                                             if asset.get("id") == str(macro_id):
-                                                await db.reports.update_one(
-                                                    {"report_id": report_id},
+                                                await collection.update_one(
+                                                    report_key,
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                                                 )
                                                 print(f"[HALF-TAB-{tab_id}] Updated Macro {macro_id} using index {idx}")
@@ -668,13 +725,14 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         if missing_macros:
             print(f"[HALF CHECK] WARNING: {len(missing_macros)} incomplete macros not found on their expected pages: {sorted(list(missing_macros))}")
             for macro_id in missing_macros:
-                await db.reports.update_one(
-                    {"report_id": report_id, "asset_data.id": str(macro_id)},
+                await collection.update_one(
+                    {"_id": report["_id"], "asset_data.id": str(macro_id)},
                     {"$set": {"asset_data.$.submitState": 1}}
                 )
                 print(f"[HALF CHECK] Marked missing macro {macro_id} as complete")
 
         clear_process(process_id)
+        await update_report_completion_status(collection, report["_id"])
 
         return {
             "status": "SUCCESS",

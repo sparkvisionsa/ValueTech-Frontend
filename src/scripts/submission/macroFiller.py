@@ -33,6 +33,60 @@ def balanced_chunks(lst, n):
         start += size
     return chunks
 
+def is_asset_complete(asset):
+    val = asset.get("submitState")
+    return val == 1 or val == "1" or val is True
+
+async def resolve_collection_for_record(record_id, collection=None):
+    if collection is not None:
+        return collection
+
+    collections_to_check = [
+        db.multiapproachreports,
+        db.submitreportsquicklies,
+        db.submitreportsquickly,
+    ]
+
+    for coll in collections_to_check:
+        try:
+            record_doc = await coll.find_one({"_id": record_id})
+            if record_doc:
+                return coll
+        except Exception:
+            continue
+
+    return None
+
+async def update_report_completion_status(record_id, collection=None):
+    target_collection = await resolve_collection_for_record(record_id, collection)
+    if target_collection is None:
+        return None
+
+    report = await target_collection.find_one(
+        {"_id": record_id},
+        {"asset_data.submitState": 1, "report_status": 1}
+    )
+    if not report:
+        return None
+
+    assets = report.get("asset_data", [])
+    any_incomplete = any(not is_asset_complete(asset) for asset in assets) if assets else False
+
+    if any_incomplete:
+        new_status = "incomplete"
+    else:
+        current_status = (report.get("report_status") or "").lower()
+        if current_status in ["sent", "approved"]:
+            new_status = report.get("report_status")
+        else:
+            new_status = "complete"
+
+    await target_collection.update_one(
+        {"_id": record_id},
+        {"$set": {"report_status": new_status}}
+    )
+    return new_status
+
 
 async def fill_macro_form(page, macro_id, macro_data, field_map, field_types):
     await page.get(f"https://qima.taqeem.sa/report/macro/{macro_id}/edit")
@@ -265,7 +319,10 @@ async def handle_macro_edits(browser, record, tabs_num=3, record_id=None, progre
             "failed": failed,
             "total": total_assets
         }
-    
+
+    if record and record.get("_id"):
+        await update_report_completion_status(record.get("_id"), collection)
+
     return {
         "status": "SUCCESS",
         "message": f"Completed editing {completed} macros",

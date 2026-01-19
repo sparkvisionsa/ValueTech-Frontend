@@ -98,7 +98,7 @@ const valueSystemGroups = {
             { id: 'delete-report', label: 'Delete Assets / Reports', description: 'Delete reports and related assets safely.' }
         ]
     },
-     myReport: {
+    myReports: {
         id: 'myReports',
         title: 'My Reports',
         tabs: [
@@ -122,7 +122,7 @@ const valueSystemCards = [
         id: 'uploading-reports',
         title: 'Uploading Reports',
         description: 'Upload, validate, and manage valuation reports across domains.',
-        groups: ['uploadReports', 'uploadSingleReport', 'taqeemInfo', 'settings', 'deleteReport']
+        groups: ['uploadReports', 'uploadSingleReport', 'taqeemInfo', 'settings', 'deleteReport', 'myReports']
     },
     {
         id: 'evaluation-sources',

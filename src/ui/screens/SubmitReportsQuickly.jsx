@@ -3,6 +3,8 @@ import { useNavStatus } from "../context/NavStatusContext";
 import { useRam } from "../context/RAMContext";
 import usePersistentState from "../hooks/usePersistentState";
 import { useSession } from "../context/SessionContext";
+import { useAuthAction } from "../hooks/useAuthAction";
+import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import {
     FileSpreadsheet,
@@ -225,7 +227,8 @@ const validateMarketSheet = (rows = []) => {
 const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB in bytes
 
 const SubmitReportsQuickly = ({ onViewChange }) => {
-    const { token } = useSession();
+    const { token, login } = useSession();
+    const { executeWithAuth } = useAuthAction();
     const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
     const {
         companies,
@@ -258,6 +261,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [validationMessage, setValidationMessage] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("assets");
     const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [reports, setReports, resetReports] = usePersistentState("submitReportsQuickly:reports", [], { storage: "session" });
     const [reportsLoading, setReportsLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
@@ -280,6 +284,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         email: "a@a.com",
     });
 
+    const excelInputRef = useRef(null);
     const pdfInputRef = useRef(null);
     const reportCreationWaitersRef = useRef(new Map());
     const reportCreatedCacheRef = useRef(new Map());
@@ -289,6 +294,9 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         const files = Array.from(e.target.files || []);
         setExcelFiles(files);
         resetMessages();
+        if (excelInputRef?.current) {
+            excelInputRef.current.value = null;
+        }
     };
 
     const handlePdfChange = (e) => {
@@ -323,8 +331,24 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 throw new Error("Please fix validation issues before uploading.");
             }
 
-            // Check if Taqeem is logged in
-            if (!isTaqeemLoggedIn) {
+            const authStatus = await ensureTaqeemAuthorized(
+                token,
+                onViewChange,
+                isTaqeemLoggedIn,
+                excelFiles.length || 0,
+                login,
+                setTaqeemStatus
+            );
+
+            if (authStatus?.status === "INSUFFICIENT_POINTS") {
+                throw new Error("You don't have enough points to submit reports.");
+            }
+
+            if (authStatus?.status === "LOGIN_REQUIRED") {
+                throw new Error("Please log in to continue. You'll need to re-select your files after logging in.");
+            }
+
+            if (!authStatus) {
                 throw new Error("Please login to Taqeem first to submit reports.");
             }
 
@@ -343,14 +367,19 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             setSuccess(`Files uploaded successfully. Inserted ${insertedCount} report(s). Now submitting to Taqeem...`);
 
             // Refresh reports to get the newly uploaded ones
-            await loadReports();
+            const refreshedReports = await loadReports();
+            const uploadedReports = Array.isArray(data.reports) ? data.reports : [];
+            const candidateReports = uploadedReports.length ? uploadedReports : refreshedReports;
 
             // Get the newly uploaded reports (assuming they're the most recent)
-            const recentReports = [...reports].sort((a, b) =>
-                new Date(b.createdAt || b.submitted_at || 0) - new Date(a.createdAt || a.submitted_at || 0)
-            ).slice(0, insertedCount);
+            const recentReports = [...candidateReports]
+                .sort(
+                    (a, b) =>
+                        new Date(b.createdAt || b.submitted_at || 0) - new Date(a.createdAt || a.submitted_at || 0)
+                )
+                .slice(0, insertedCount);
 
-            if (recentReports.length === 0) {
+            if (insertedCount > 0 && recentReports.length === 0) {
                 throw new Error("Could not find the newly uploaded reports.");
             }
 
@@ -477,9 +506,11 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
             setReports(reportList);
             setReportsPagination(paginationInfo);
+            return reportList;
 
         } catch (err) {
             setError(err?.message || "Failed to load reports.");
+            return [];
         } finally {
             setReportsLoading(false);
         }
@@ -1354,21 +1385,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                         break;
                     }
                 } else if (bulkAction === "retry-submit") {
-                    // Retry incomplete assets for already submitted reports
-                    const report = reports.find((r) => getReportRecordId(r) === id);
-                    const taqeemId = report?.report_id;
-                    if (!taqeemId) {
-                        setReportProgress((prev) => ({
-                            ...prev,
-                            [id]: { percentage: 0, status: 'error', message: 'Missing Taqeem report id' }
-                        }));
-                        continue;
-                    }
-                    const retryPromise = window.electronAPI?.macroFillRetry?.(taqeemId, tabsNum, id, report?.asset_data || [])
-                        .then(() => {
+                    const retryPromise = window.electronAPI?.retryCreateReportById?.(id, tabsNum)
+                        .then((result) => {
+                            const isSuccess = result?.success || result?.status === "SUCCESS";
+                            if (!isSuccess) {
+                                throw new Error(result?.message || result?.error || "Retry failed");
+                            }
                             setReportProgress((prev) => ({
                                 ...prev,
-                                [id]: { percentage: 100, status: 'completed', message: 'Retry started in a new browser' }
+                                [id]: { percentage: 100, status: 'completed', message: result?.message || 'Retry completed' }
                             }));
                         })
                         .catch((err) => {
@@ -1469,14 +1494,44 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         if (!recordId) return;
         const assetList = report?.asset_data || [];
 
-        if (action === "retry") {
-            // Retry only incomplete assets (macro fill retry), similar to Upload Assets screen
+        if (action === "check-status") {
             const taqeemReportId = report.report_id;
             if (!taqeemReportId) {
-                setError("Report must have a Taqeem report_id to retry assets. Submit it first.");
+                setError("Report must have a Taqeem report_id to check status.");
                 return;
             }
-            const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
+            const tabsNum = Math.max(1, Number(recommendedTabs) || 1);
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
+            try {
+                await executeWithAuth(
+                    async (params) => {
+                        const { reportId: id, tabsNum: tabs } = params;
+                        await window.electronAPI?.fullCheck?.(id, tabs);
+                        setTimeout(() => {
+                            loadReports();
+                        }, 1000);
+                        return { success: true };
+                    },
+                    { token, reportId: taqeemReportId, tabsNum },
+                    {
+                        requiredPoints: 1,
+                        showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                        onViewChange,
+                        onAuthFailure: (reason) => {
+                            if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+                                setError(reason?.message || "Authentication failed for full check");
+                            }
+                        }
+                    }
+                );
+            } catch (err) {
+                setError(err?.message || "Failed to perform full check");
+            } finally {
+                setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
+            }
+        } else if (action === "retry") {
+            const assetCount = Array.isArray(assetList) ? assetList.length : 0;
+            const tabsNum = resolveTabsForAssets(assetCount);
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
             try {
                 const ok = await ensureTaqeemAuthorized(token, onViewChange, taqeemStatus?.state === "success", 0, null, setTaqeemStatus);
@@ -1485,8 +1540,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     return;
                 }
                 await ensureCompanySelected();
-                await window.electronAPI?.macroFillRetry?.(taqeemReportId, tabsNum, recordId, assetList);
-                setSuccess("Opened a new browser to retry incomplete assets.");
+                const result = await window.electronAPI?.retryCreateReportById?.(recordId, tabsNum);
+                const isSuccess = result?.success || result?.status === "SUCCESS";
+                if (!isSuccess) {
+                    throw new Error(result?.message || result?.error || "Retry failed");
+                }
+                setSuccess(result?.message || "Retry completed.");
                 await loadReports();
             } catch (err) {
                 setError(err?.message || "Failed to retry asset submission.");
@@ -1642,6 +1701,16 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     return (
         <div className="relative p-2 space-y-2 page-animate overflow-x-hidden">
+            {showInsufficientPointsModal && (
+                <div className="fixed inset-0 z-[9999]">
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
+                        <InsufficientPointsModal
+                            viewChange={onViewChange}
+                            onClose={() => setShowInsufficientPointsModal(false)}
+                        />
+                    </div>
+                </div>
+            )}
             <div className="space-y-1.5">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-2">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -1656,7 +1725,17 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                         : "Choose Excel file"}
                                 </span>
                             </div>
-                            <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
+                            <input
+                                ref={excelInputRef}
+                                type="file"
+                                multiple
+                                accept=".xlsx,.xls"
+                                className="hidden"
+                                onChange={handleExcelChange}
+                                onClick={(e) => {
+                                    e.currentTarget.value = null;
+                                }}
+                            />
                             <span className="text-[10px] font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
                         <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
@@ -1715,7 +1794,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 onClick={() => {
                                     setExcelFiles([]);
                                     setPdfFiles([]);
+                                    setWantsPdfUpload(false);
+                                    resetValidation();
                                     resetMessages();
+                                    if (excelInputRef?.current) {
+                                        excelInputRef.current.value = null;
+                                    }
+                                    if (pdfInputRef?.current) {
+                                        pdfInputRef.current.value = null;
+                                    }
                                 }}
                                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                             >
@@ -1730,7 +1817,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     <button
                         type="button"
                         onClick={handleStoreAndSubmit}
-                        disabled={loading || !isReadyToUpload || !isTaqeemLoggedIn}
+                        disabled={loading || !isReadyToUpload}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-md
                                 bg-green-600 hover:bg-green-700
                                 text-white text-xs font-semibold
@@ -2409,6 +2496,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                         className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                                                                     >
                                                                         <option value="">Actions</option>
+                                                                        <option value="check-status">Check status</option>
                                                                         <option value="retry">Retry submit</option>
                                                                         <option value="delete">Delete</option>
                                                                         <option value="edit">Edit</option>
