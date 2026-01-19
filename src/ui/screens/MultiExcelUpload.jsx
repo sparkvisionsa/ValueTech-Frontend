@@ -960,6 +960,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 });
                 resetPendingSubmit();
                 resetReturnView();
+                return;
             } finally {
                 if (withLoading) {
                     setSubmitting(false);
@@ -1288,6 +1289,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                     if (reason !== "INSUFFICIENT_POINTS" && reason !== "TAQEEM_AUTH_REQUIRED") {
                         setError(reason?.message || "Authentication failed");
+                        return;
                     }
                 }
             }
@@ -2577,7 +2579,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
             </div>
 
             <Section title="Reports">
-                <div className="space-y-2">
+                <div className="space-y-2 mb-2">
                     <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
