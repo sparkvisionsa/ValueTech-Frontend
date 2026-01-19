@@ -1,8 +1,10 @@
-const { session, BrowserWindow } = require('electron');
+const { session, BrowserWindow, shell } = require('electron');
 const pythonAPI = require('../../services/python/PythonAPI');
 
 let secondaryLoginWindow = null;
 const SECONDARY_PARTITION = 'persist:taqeem-secondary';
+let lastExternalLoginTs = 0;
+let externalLoginInFlight = false;
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -297,6 +299,11 @@ const authHandlers = {
             + '&scope=openid&response_type=code'
         );
         const batchId = opts.batchId;
+        const preferChrome = opts.preferChrome !== false;
+        const automationOnly = opts.automationOnly || opts.openInAutomation;
+        const openIfClosed = opts.onlyIfClosed !== false;
+        const navigateIfOpen = !!opts.navigateIfOpen;
+        const forceNewAutomation = !!opts.forceNewAutomation;
 
         let reportIds = [];
         if (batchId) {
@@ -313,6 +320,64 @@ const authHandlers = {
         }
 
         try {
+            if (automationOnly) {
+                const automationResult = await pythonAPI.auth.openLoginPage(loginUrl, {
+                    onlyIfClosed: openIfClosed,
+                    navigateIfOpen,
+                    forceNew: forceNewAutomation
+                });
+
+                if (automationResult?.status === 'SUCCESS') {
+                    return {
+                        status: 'SUCCESS',
+                        message: automationResult.message || 'Opened Taqeem login in automation browser',
+                        browserOpen: automationResult.browserOpen !== false,
+                        alreadyOpen: !!automationResult.alreadyOpen,
+                        openedNew: !!automationResult.openedNewBrowser,
+                        navigated: !!automationResult.navigated
+                    };
+                }
+
+                return { status: 'ERROR', error: automationResult?.error || 'Failed to open Taqeem login' };
+            }
+
+            if (preferChrome) {
+                if (externalLoginInFlight) {
+                    return {
+                        status: 'SUCCESS',
+                        message: 'Taqeem login already opening in external browser'
+                    };
+                }
+                externalLoginInFlight = true;
+                try {
+                    if (secondaryLoginWindow && !secondaryLoginWindow.isDestroyed()) {
+                        secondaryLoginWindow.close();
+                        secondaryLoginWindow = null;
+                    }
+                } catch (err) {
+                    // ignore close errors
+                }
+
+                const now = Date.now();
+                if (now - lastExternalLoginTs < 4000) {
+                    return {
+                        status: 'SUCCESS',
+                        message: 'Taqeem login already opened in external browser'
+                    };
+                }
+                lastExternalLoginTs = now;
+
+                await shell.openExternal(loginUrl);
+
+                setTimeout(() => {
+                    externalLoginInFlight = false;
+                }, 4000);
+
+                return {
+                    status: 'SUCCESS',
+                    message: 'Opened Taqeem login in external browser'
+                };
+            }
             if (secondaryLoginWindow && !secondaryLoginWindow.isDestroyed()) {
                 secondaryLoginWindow.show();
                 secondaryLoginWindow.focus();

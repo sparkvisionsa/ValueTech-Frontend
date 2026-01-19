@@ -17,14 +17,25 @@ async def spawn_new_browser(
     headless=False,
 ):
 
-    await old_browser.cookies.save()
+    profile_dir = user_data_dir or os.getenv("USER_DATA_DIR", None)
+
+    try:
+        if old_browser:
+            await old_browser.cookies.save()
+    except Exception:
+        # If saving cookies from the old browser fails, proceed with whatever is on disk
+        pass
 
     new_browser = await uc.start(
-        user_data_dir=user_data_dir,
+        user_data_dir=profile_dir,
         headless=headless,
     )
 
-    await new_browser.cookies.load()
+    try:
+        await new_browser.cookies.load()
+    except Exception:
+        # Continue even if cookies fail to load; caller can handle auth failures
+        pass
     return new_browser    
 
 

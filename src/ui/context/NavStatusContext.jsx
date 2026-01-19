@@ -3,7 +3,7 @@ import usePersistentState from '../hooks/usePersistentState';
 
 const NavStatusContext = createContext(null);
 
-const DEFAULT_TAQEEM = { state: 'idle', message: 'Taqeem not started yet' };
+const DEFAULT_TAQEEM = { state: 'idle', message: 'Taqeem login: Off' };
 const DEFAULT_COMPANY = { state: 'idle', message: 'No company selected' };
 
 export const useNavStatus = () => {

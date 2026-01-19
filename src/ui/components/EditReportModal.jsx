@@ -466,9 +466,9 @@ const EditReportModal = ({ report, isOpen, onClose, onSave, refreshData }) => {
                                 step="0.01"
                             />
                             <div className="xl:col-span-2 col-span-1 flex flex-col gap-2">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                                    <div className="flex items-center gap-2 text-[11px] text-slate-700 flex-1">
-                                        <FileText className="w-4 h-4 text-slate-500" />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-700 min-w-0">
+                                        <FileText className="w-4 h-4 text-slate-500 shrink-0" />
                                         <span className="truncate">
                                             {pdfFile
                                                 ? `Selected: ${pdfFile.name}`
@@ -477,31 +477,33 @@ const EditReportModal = ({ report, isOpen, onClose, onSave, refreshData }) => {
                                                     : "No PDF saved for this report"}
                                         </span>
                                     </div>
-                                    <label className="inline-flex items-center gap-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-md cursor-pointer hover:bg-blue-100 transition-colors">
-                                        <FileUp className="w-4 h-4" />
-                                        Replace PDF
+                                    <div className="flex items-center gap-2">
+                                        <label className="inline-flex items-center gap-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-md cursor-pointer hover:bg-blue-100 transition-colors">
+                                            <FileUp className="w-4 h-4" />
+                                            Replace PDF
+                                            <input
+                                                type="file"
+                                                accept="application/pdf"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] || null;
+                                                    setPdfFile(file);
+                                                    if (file) {
+                                                        handleFieldChange("pdf_path", file.name || "selected.pdf");
+                                                    }
+                                                }}
+                                            />
+                                        </label>
                                         <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            className="hidden"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0] || null;
-                                                setPdfFile(file);
-                                                if (file) {
-                                                    handleFieldChange("pdf_path", file.name || "selected.pdf");
-                                                }
-                                            }}
+                                            type="text"
+                                            value={formData.pdf_path}
+                                            readOnly
+                                            disabled
+                                            className="flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-md text-[11px] bg-gray-100 text-gray-600"
+                                            placeholder="Path saved in database"
                                         />
-                                    </label>
+                                    </div>
                                 </div>
-                                <InputField
-                                    label="PDF Path (stored)"
-                                    type="text"
-                                    value={formData.pdf_path}
-                                    readOnly
-                                    disabled
-                                    placeholder="Path saved in database"
-                                />
                             </div>
                         </div>
                     </Section>

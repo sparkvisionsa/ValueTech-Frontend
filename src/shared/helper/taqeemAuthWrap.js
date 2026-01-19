@@ -17,11 +17,18 @@ async function runPublicLogin(isAuth) {
 
 async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, assetCount = 0, login = null, setTaqeemStatus = null) {
     try {
+        // If the automation browser is already logged into Taqeem, skip any extra login flow.
+        if (isTaqeemLoggedIn) {
+            setTaqeemStatus?.("success", "Taqeem login: On");
+            return true;
+        }
+
         if (!token) {
             const loginFlow = await runPublicLogin(false);
             console.log("Login flow:", loginFlow);
 
             if (loginFlow.status === "CHECK") {
+                setTaqeemStatus?.("success", "Taqeem login: On");
                 const res = await window.electronAPI.apiRequest(
                     "POST",
                     "/api/users/new-bootstrap",
@@ -32,13 +39,13 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
                 console.log("res:", res);
 
                 if (res?.status === "BOOTSTRAP_GRANTED") {
-                    setTaqeemStatus?.("success", "Taqeem login completed");
+                    setTaqeemStatus?.("success", "Taqeem login: On");
                     login(res.userId, res.token);
                     return { success: true, token: res.token };
                 }
 
                 if (res?.status === "LOGIN_REQUIRED") {
-                    setTaqeemStatus?.("success", "Taqeem login completed");
+                    setTaqeemStatus?.("info", "Taqeem login: Off");
                     onViewChange?.("login");
                     return false;
                 }
@@ -58,7 +65,10 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
         if (res?.status === "AUTHORIZED" && !isTaqeemLoggedIn) {
             const loginFlow = await runPublicLogin(true);
             if (loginFlow.status === "SUCCESS") {
-                setTaqeemStatus?.("success", "Taqeem login completed");
+                setTaqeemStatus?.("success", "Taqeem login: On");
+                return true;
+            } else if (setTaqeemStatus) {
+                setTaqeemStatus("info", "Taqeem login: Off");
             }
             return loginFlow;
         }
@@ -67,9 +77,13 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
             return { status: "INSUFFICIENT_POINTS" };
         }
 
-        if (res?.status === "AUTHORIZED") return true;
+        if (res?.status === "AUTHORIZED") {
+            setTaqeemStatus?.("success", "Taqeem login: On");
+            return true;
+        }
 
         if (res?.status === "LOGIN_REQUIRED" || res?.data?.status === "LOGIN_REQUIRED") {
+            setTaqeemStatus?.("info", "Taqeem login: Off");
             onViewChange?.("login");
             return res;
         }
@@ -81,10 +95,12 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
         console.log("PROPS: ", Object.getOwnPropertyNames(err));
 
         if (err.message.includes("403")) {
+            setTaqeemStatus?.("info", "Taqeem login: Off");
             onViewChange?.("registration");
             return false;
         }
 
+        setTaqeemStatus?.("info", "Taqeem login: Off");
         onViewChange?.("taqeem-login");
         return false;
     }

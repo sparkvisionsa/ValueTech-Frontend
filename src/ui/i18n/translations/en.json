@@ -56,7 +56,8 @@
             "refreshTitle": "Refresh status",
             "refresh": "Refresh",
             "taqeem": "Taqeem",
-            "company": "Company"
+            "company": "Company",
+            "companyDefault": "No company selected"
         },
         "auth": {
             "userFallback": "User",
@@ -100,6 +101,13 @@
         "company": {
             "loading": "Loading companies...",
             "empty": "No companies found.",
+            "loginPrompt": "Login to Taqeem to list your companies",
+            "loginButton": "Login to Taqeem",
+            "loginStarting": "Opening Taqeem login...",
+            "loginUnavailable": "Login handler unavailable.",
+            "loginFailed": "Taqeem login failed.",
+            "loginSuccess": "Taqeem login: On",
+            "selectToContinue": "Select a company to view main links.",
             "fallback": "Company",
             "office": "Office {{officeId}}",
             "title": "Company",

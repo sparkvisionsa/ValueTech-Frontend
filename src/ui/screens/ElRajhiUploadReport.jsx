@@ -1,7 +1,7 @@
 import React, { use, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
-import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports } from "../../api/report";
+import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports, updateUrgentReport } from "../../api/report";
 import httpClient from "../../api/httpClient";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 import EditReportModal from "../components/EditReportModal";
@@ -35,6 +35,7 @@ import {
     Pause,
     Play,
     Square,
+    FileUp,
 } from "lucide-react";
 
 const normalizeCellValue = (value) => {
@@ -485,6 +486,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [certificateStatusByReport, setCertificateStatusByReport] = useState({});
     const [selectedReports, setSelectedReports] = useState(new Set());
     const [bulkActionBusy, setBulkActionBusy] = useState(null);
+    const [activeBulkActionBatchId, setActiveBulkActionBatchId] = useState(null);
     const [actionMenuBatch, setActionMenuBatch] = useState(null);
     const [actionMenuOpen, setActionMenuOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
@@ -495,6 +497,16 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [validationReportSnapshot, setValidationReportSnapshot] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("report-info");
     const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
+    const [statusFilterByBatch, setStatusFilterByBatch] = useState({});
+    const [pdfUploadBusy, setPdfUploadBusy] = useState({});
+    const [batchPaused, setBatchPaused] = useState({});
+    const [pdfUploadedThisSession, setPdfUploadedThisSession] = useState({});
+    const [reportProgressDisplay, setReportProgressDisplay] = useState({});
+    const reportProgressDisplayRef = useRef({});
+
+    useEffect(() => {
+        reportProgressDisplayRef.current = reportProgressDisplay;
+    }, [reportProgressDisplay]);
 
     const resetMainValidationState = () => {
         setMainReportIssues([]);
@@ -504,6 +516,174 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const resetValidationCardState = () => {
         setValidationReportIssues([]);
         setValidationReportSnapshot(null);
+    };
+
+    const deriveProgressFromFields = (report = {}) => {
+        const clamp = (val) => Math.max(0, Math.min(100, Math.round(val)));
+        const hasId = Boolean(report?.report_id || report?.reportId);
+        const rawStatus = (report.report_status || report.reportStatus || report.status || "").toString().toUpperCase();
+
+        const normalizeProgress = (val) => {
+            const num = Number(val);
+            if (Number.isNaN(num)) return null;
+            const pct = num <= 1 ? num * 100 : num;
+            return clamp(pct);
+        };
+
+        const progressCandidates = [
+            report.progress_percentage,
+            report.progressPercent,
+            report.progress_percent,
+            report.progress,
+            report.percentage,
+            report.progressValue,
+        ]
+            .map(normalizeProgress)
+            .filter((v) => v !== null);
+
+        const assetsDoneRaw =
+            report.assets_saved ??
+            report.assetsSaved ??
+            report.saved_assets ??
+            report.savedAssets ??
+            report.assets_done ??
+            report.assetsDone ??
+            report.assets_created ??
+            report.assetsCreated ??
+            report.assetsCount ??
+            0;
+        const assetsTotalRaw =
+            report.assets_total ??
+            report.assetsTotal ??
+            report.total_assets ??
+            report.totalAssets ??
+            0;
+        const assetsDone = Number(assetsDoneRaw);
+        const assetsTotal = Number(assetsTotalRaw);
+        const assetsComplete =
+            (assetsTotal > 0 && assetsDone >= assetsTotal) ||
+            assetsDone >= 1 && assetsTotal === 0 ||
+            report.assets_saved === true ||
+            report.assetsSaved === true ||
+            report.assets_filled === true ||
+            report.assetsFilled === true ||
+            report.assets_data_saved === true ||
+            report.assetsDataSaved === true;
+
+        // Stage baseline: 0 before creation, 50 right after creation, 50->100 during assets.
+        if (!hasId) {
+            const fallback = progressCandidates.length ? progressCandidates[progressCandidates.length - 1] : 0;
+            return { progress: clamp(fallback), hasId, assetsComplete };
+        }
+
+        const baseAfterCreation = 50;
+        if (assetsComplete || rawStatus.includes("COMPLETE")) {
+            return { progress: 100, hasId, assetsComplete: true };
+        }
+
+        if (assetsTotal > 0) {
+            const assetsPortion = Math.max(0, Math.min(1, assetsDone / assetsTotal));
+            const pct = clamp(baseAfterCreation + assetsPortion * 50);
+            const candidateMax = progressCandidates.length ? Math.max(...progressCandidates) : baseAfterCreation;
+            return { progress: Math.max(pct, candidateMax, baseAfterCreation), hasId, assetsComplete };
+        }
+
+        const candidateMax = progressCandidates.length ? Math.max(...progressCandidates) : 0;
+        return { progress: Math.max(candidateMax, baseAfterCreation), hasId, assetsComplete };
+    };
+
+    const computeReportStatus = (report) => {
+        const reportId = report.report_id || report.reportId || "";
+        const submitState = report.submit_state ?? report.submitState;
+        const rawStatus = (report.report_status || report.reportStatus || report.status || "").toString().toUpperCase();
+        const sentFlag =
+            rawStatus === "SENT" ||
+            submitState === 2 ||
+            report.sent_to_confirmer ||
+            report.sentToConfirmer ||
+            report.sent === true ||
+            report.submitted === true ||
+            report.submit_status === "sent" ||
+            report.submitStatus === "sent";
+
+        const { progress, assetsComplete } = deriveProgressFromFields(report);
+
+        if (submitState === -1) return "DELETED";
+        if (!reportId) return "MISSING_ID";
+        if (rawStatus === "CONFIRMED") return "CONFIRMED";
+        if (rawStatus.includes("COMPLETE")) return "COMPLETE";
+        if (sentFlag) return "SENT";
+        if (assetsComplete || progress >= 100) return "COMPLETE";
+        if (rawStatus === "SENT") return "SENT";
+        if (submitState === 1) return "COMPLETE";
+        return "INCOMPLETE";
+    };
+
+    const hasPdfPath = (report) => {
+        return Boolean(report?.pdf_path || report?.path_pdf);
+    };
+
+    const computeProgress = (report = {}) => deriveProgressFromFields(report).progress;
+
+    const getReportKey = (report) =>
+        report?.report_id ||
+        report?.reportId ||
+        report?._id ||
+        report?.id ||
+        report?.asset_name ||
+        report?.assetName ||
+        'unknown';
+
+    const getDisplayProgress = (report) => {
+        const key = getReportKey(report);
+        const target = computeProgress(report);
+        const current = reportProgressDisplay[key] ?? 0;
+        return Math.max(current, target);
+    };
+
+    // Animate towards target progress for each report to give a dynamic feel
+    useEffect(() => {
+        const animations = [];
+        Object.values(batchReports || {}).forEach((reports) => {
+            reports.forEach((report) => {
+                const key = getReportKey(report);
+                const target = computeProgress(report);
+                const current = reportProgressDisplayRef.current[key] ?? 0;
+                if (target > current) {
+                    const step = Math.max(1, Math.floor((target - current) / 5));
+                    const animate = () => {
+                        setReportProgressDisplay((prev) => {
+                            const prevVal = prev[key] ?? 0;
+                            if (target <= prevVal) return prev;
+                            const nextVal = Math.min(target, prevVal + step);
+                            return { ...prev, [key]: nextVal };
+                        });
+                        const latest = reportProgressDisplayRef.current[key] ?? 0;
+                        if (latest < target) {
+                            requestAnimationFrame(animate);
+                        }
+                    };
+                    animations.push(animate);
+                }
+            });
+        });
+
+        animations.forEach((fn) => requestAnimationFrame(fn));
+    }, [batchReports]);
+
+    const computeBatchProgress = (reports = []) => {
+        if (!reports.length) return 0;
+        const totalProgress = reports.reduce((sum, r) => sum + computeProgress(r), 0);
+        return Math.round(totalProgress / reports.length);
+    };
+
+    const requirePdfMessage = "Upload PDF first for missing-ID reports.";
+
+    const shouldBlockActionsForMissingId = (report) => {
+        const status = computeReportStatus(report);
+        const reportKey = report.report_id || report.reportId || report._id || report.id;
+        if (status !== "MISSING_ID") return false;
+        return !pdfUploadedThisSession[reportKey];
     };
 
     // Pause/Resume/Stop state management
@@ -1137,6 +1317,83 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             });
             return next;
         });
+    };
+
+    const attachPdfToReport = async (batchId, report, file) => {
+        if (!file) return;
+        const targetId = report.report_id || report.reportId || report._id || report.id;
+        const reportKey = targetId || report._id || report.id;
+        if (!targetId) {
+            setBatchMessage({
+                type: "error",
+                text: "Unable to attach PDF: report identifier is missing.",
+            });
+            return;
+        }
+
+        setPdfUploadBusy((prev) => ({ ...prev, [targetId]: true }));
+        setBatchMessage({
+            type: "info",
+            text: "Uploading PDF...",
+        });
+
+        try {
+            await updateUrgentReport(targetId, { pdf_path: file.name }, { pdfFile: file });
+            await loadBatchReports(batchId);
+            setPdfUploadedThisSession((prev) => ({ ...prev, [reportKey]: true }));
+            setBatchMessage({
+                type: "success",
+                text: "PDF attached. You can proceed with actions.",
+            });
+        } catch (err) {
+            setBatchMessage({
+                type: "error",
+                text: err?.response?.data?.error || err.message || "Failed to attach PDF.",
+            });
+        } finally {
+            setPdfUploadBusy((prev) => {
+                const next = { ...prev };
+                delete next[targetId];
+                return next;
+            });
+        }
+    };
+
+    const pauseBatchActions = async (batchId) => {
+        if (!batchId || !window?.electronAPI?.pauseElrajiBatch) return;
+        try {
+            await window.electronAPI.pauseElrajiBatch(batchId);
+            setBatchPaused((prev) => ({ ...prev, [batchId]: true }));
+            setBatchMessage({ type: "info", text: `Batch ${batchId} paused.` });
+        } catch (err) {
+            setBatchMessage({ type: "error", text: err?.message || "Failed to pause batch." });
+        }
+    };
+
+    const resumeBatchActions = async (batchId) => {
+        if (!batchId || !window?.electronAPI?.resumeElrajiBatch) return;
+        try {
+            await window.electronAPI.resumeElrajiBatch(batchId);
+            setBatchPaused((prev) => ({ ...prev, [batchId]: false }));
+            setBatchMessage({ type: "info", text: `Batch ${batchId} resumed.` });
+        } catch (err) {
+            setBatchMessage({ type: "error", text: err?.message || "Failed to resume batch." });
+        }
+    };
+
+    const stopBatchActions = async (batchId) => {
+        if (!batchId || !window?.electronAPI?.stopElrajiBatch) return;
+        const confirmed = window.confirm("Stop will terminate the current action and close the browser. Continue?");
+        if (!confirmed) return;
+        try {
+            await window.electronAPI.stopElrajiBatch(batchId);
+            setBulkActionBusy(null);
+            setActiveBulkActionBatchId((current) => (current === batchId ? null : current));
+            setBatchPaused((prev) => ({ ...prev, [batchId]: false }));
+            setBatchMessage({ type: "info", text: `Batch ${batchId} stopped.` });
+        } catch (err) {
+            setBatchMessage({ type: "error", text: err?.message || "Failed to stop batch." });
+        }
     };
 
     const downloadCertificatesForReports = async (batchId, reports, label) => {
@@ -2203,6 +2460,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         };
 
         setBulkActionBusy(action);
+        setActiveBulkActionBatchId(batchId);
+        setBatchPaused((prev) => ({ ...prev, [batchId]: false }));
         setBatchMessage({
             type: "info",
             text: `${readableAction} in progress for ${selected.length} report(s)...`,
@@ -2358,8 +2617,10 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             }
         } finally {
             setBulkActionBusy(null);
+            setActiveBulkActionBatchId((current) => (current === batchId ? null : current));
             setActionMenuOpen(false);
             setActionMenuBatch(null);
+            setBatchPaused((prev) => ({ ...prev, [batchId]: false }));
 
             // Clear selection after bulk action
             setSelectedReports(new Set());
@@ -3107,6 +3368,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             </button>
                         )}
                     </div>
+                    <div className="mt-2 mb-1 text-sm font-semibold text-blue-900 flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                            {batchList.length || 0}
+                        </span>
+                        Batches
+                    </div>
+                    <div className="mb-1 text-xs text-blue-900/80 font-semibold">All batches</div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-gray-50">
@@ -3164,22 +3432,34 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const checkReportsContent = (
         <div className="space-y-1.5 text-[10px]">
             {batchMessage && (
-                <div
-                    className={`rounded-xl border px-2 py-1 flex items-start gap-2 ${batchMessage.type === "error"
-                        ? "bg-red-50 border-red-100 text-red-700"
-                        : batchMessage.type === "success"
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                            : "bg-blue-50 border-blue-100 text-blue-700"
-                        }`}
-                >
-                    {batchMessage.type === "error" ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5" />
-                    ) : batchMessage.type === "success" ? (
-                        <CheckCircle2 className="w-4 h-4 mt-0.5" />
-                    ) : (
-                        <Info className="w-4 h-4 mt-0.5" />
-                    )}
-                    <div className="text-[10px]">{batchMessage.text}</div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+                    <div
+                        className={`w-full max-w-md rounded-xl border shadow-lg p-4 relative ${batchMessage.type === "error"
+                            ? "bg-red-50 border-red-100 text-red-700"
+                            : batchMessage.type === "success"
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                                : "bg-blue-50 border-blue-100 text-blue-700"
+                            }`}
+                    >
+                        <button
+                            type="button"
+                            className="absolute top-2 right-2 text-xs text-slate-500 hover:text-slate-700"
+                            onClick={() => setBatchMessage(null)}
+                            aria-label="Close alert"
+                        >
+                            ×
+                        </button>
+                        <div className="flex items-start gap-2">
+                            {batchMessage.type === "error" ? (
+                                <AlertTriangle className="w-4 h-4 mt-0.5" />
+                            ) : batchMessage.type === "success" ? (
+                                <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                            ) : (
+                                <Info className="w-4 h-4 mt-0.5" />
+                            )}
+                            <div className="text-[11px] leading-relaxed">{batchMessage.text}</div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -3191,6 +3471,12 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     </div>
                 ) : batchList.length ? (
                     <div className="overflow-x-auto">
+                        <div className="mb-1 text-xs font-semibold text-blue-900 flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                                {batchList.length || 0}
+                            </span>
+                            All batches
+                        </div>
                         <table className="min-w-full text-[10px] leading-tight">
                             <thead className="bg-blue-900/95 text-white/90">
                                 <tr>
@@ -3212,6 +3498,17 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                     const isCheckingThisBatch = checkingBatchId === batch.batchId;
                                     const isRetryingThisBatch = retryingBatchId === batch.batchId;
                                     const localNumber = batchList.length - (batchPageStart + idx);
+                                    const hasReportsData = Object.prototype.hasOwnProperty.call(batchReports, batch.batchId);
+                                    const reportsForBatch = batchReports[batch.batchId] || [];
+                                    const filteredReports = statusFilterByBatch[batch.batchId]
+                                        ? reportsForBatch.filter((r) => computeReportStatus(r) === statusFilterByBatch[batch.batchId])
+                                        : reportsForBatch;
+                                    const selectableReports = filteredReports.filter((r) => !shouldBlockActionsForMissingId(r));
+                                    const hasSelection = selectableReports.some((r) => isSelected(batch.batchId, r));
+                                    const isBulkActionRunning = activeBulkActionBatchId === batch.batchId && Boolean(bulkActionBusy);
+                                    const showBulkActionControls = isBulkActionRunning || batchPaused[batch.batchId];
+                                    const batchProgressValue = computeBatchProgress(reportsForBatch);
+                                    const showHeaderProgress = isBulkActionRunning;
                                     return (
                                         <React.Fragment key={batch.batchId}>
                                             <tr className="border-b border-blue-900/10 last:border-0">
@@ -3324,130 +3621,149 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                 <tr className="border-b border-blue-900/10 last:border-0">
                                                     <td colSpan={6} className="bg-blue-50/40">
                                                         <div className="p-2">
-                                                            {batchReports[batch.batchId] ? (
-                                                                <div className="overflow-x-auto rounded-xl border border-blue-900/15 bg-white">
+                                                        {hasReportsData ? (
+                                                            <div className="overflow-x-auto rounded-xl border border-blue-900/15 bg-white mt-[3px] mb-[3px]">
+                                                                <div className="px-2 py-2 text-[11px] font-semibold text-blue-900 flex items-center gap-2">
+                                                                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                                                                        {filteredReports.length}
+                                                                    </span>
+                                                                    Reports
+                                                                </div>
                                                                     <table className="min-w-full text-[10px] leading-tight">
                                                                         <thead className="bg-blue-900/95 text-white/90">
                                                                             <tr>
-                                                                                <th className="px-2 py-1 text-left">Report ID</th>
+                                                                                <th className="px-2 py-1 text-left">Report</th>
                                                                                 <th className="px-2 py-1 text-left">Client</th>
                                                                                 <th className="px-2 py-1 text-left">Asset</th>
                                                                                 <th className="px-2 py-1 text-left">Status</th>
-                                                                                <th className="px-2 py-1 text-left">Certificate status</th>
+                                                                                <th className="px-2 py-1 text-left">Certificate</th>
                                                                                 <th className="px-2 py-1 text-left">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            <input
-                                                                                                type="checkbox"
-                                                                                                className="h-3.5 w-3.5"
-                                                                                                checked={
-                                                                                                    batchReports[batch.batchId]?.length
-                                                                                                        ? batchReports[batch.batchId].every((r) =>
-                                                                                                            isSelected(batch.batchId, r)
-                                                                                                        )
-                                                                                                        : false
-                                                                                                }
-                                                                                                onChange={(e) =>
-                                                                                                    toggleSelectAllForBatch(
-                                                                                                        batch.batchId,
-                                                                                                        batchReports[batch.batchId] || [],
-                                                                                                        e.target.checked
-                                                                                                    )
-                                                                                                }
-                                                                                            />
-                                                                                            <span className="text-[10px] text-white/90">Select all</span>
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-1">
-                                                                                            {/* Bulk Actions Dropdown */}
-                                                                                            <div className="relative">
-                                                                                                <select
-                                                                                                    value={selectedBulkActions[batch.batchId] || ""}
-                                                                                                    onChange={(e) => {
-                                                                                                        setSelectedBulkActions(prev => ({
-                                                                                                            ...prev,
-                                                                                                            [batch.batchId]: e.target.value
-                                                                                                        }));
-                                                                                                    }}
-                                                                                                    disabled={bulkActionBusy}
-                                                                                                    className="px-2 py-1 text-black border border-gray-300 rounded-md text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer appearance-none bg-white min-w-[140px]"
-                                                                                                >
-                                                                                                    <option value="">Select Bulk Action</option>
-                                                                                                    <option value="retry-submit">Retry Submit</option>
-                                                                                                    <option value="delete">Delete Reports</option>
-                                                                                                    <option value="retry">Retry</option>
-                                                                                                    <option value="send">Send to Approver</option>
-                                                                                                    <option value="approve">Approve</option>
-                                                                                                    <option value="certificate">Download Certificate</option>
-                                                                                                </select>
-
-                                                                                                {/* Dropdown arrow */}
-                                                                                                <div className="absolute inset-y-0 right-0 flex items-center pr-1 pointer-events-none">
-                                                                                                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                                                                                                </div>
-                                                                                            </div>
-
-                                                                                            {/* Go Button for Bulk Actions */}
-                                                                                            <button
-                                                                                                onClick={() => {
-                                                                                                    const selectedAction = selectedBulkActions[batch.batchId];
-                                                                                                    if (selectedAction) {
-                                                                                                        handleBulkAction(selectedAction, batch.batchId, batchReports[batch.batchId] || []);
-                                                                                                        // Clear the selection after action is triggered
-                                                                                                        setSelectedBulkActions(prev => ({
-                                                                                                            ...prev,
-                                                                                                            [batch.batchId]: ""
-                                                                                                        }));
+                                                                                    <div className="flex items-center gap-2 flex-wrap justify-between w-full">
+                                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                                            <div className="flex items-center gap-2 bg-white/10 rounded-md px-2 py-1">
+                                                                                                <input
+                                                                                                    type="checkbox"
+                                                                                                    className="h-3.5 w-3.5"
+                                                                                                    checked={
+                                                                                                        selectableReports.length
+                                                                                                            ? selectableReports.every((r) =>
+                                                                                                                isSelected(batch.batchId, r)
+                                                                                                            )
+                                                                                                            : false
                                                                                                     }
+                                                                                                    onChange={(e) => {
+                                                                                                            if (!selectableReports.length) {
+                                                                                                                setBatchMessage({ type: "info", text: requirePdfMessage });
+                                                                                                                return;
+                                                                                                            }
+                                                                                                            toggleSelectAllForBatch(
+                                                                                                                batch.batchId,
+                                                                                                                selectableReports || [],
+                                                                                                                e.target.checked
+                                                                                                            );
+                                                                                                    }}
+                                                                                                />
+                                                                                                <span className="text-[10px] font-semibold text-white/90">Select all</span>
+                                                                                            </div>
+                                                                                            <select
+                                                                                                value={statusFilterByBatch[batch.batchId] || ""}
+                                                                                                onChange={(e) => {
+                                                                                                    const value = e.target.value || "";
+                                                                                                    setStatusFilterByBatch((prev) => ({
+                                                                                                        ...prev,
+                                                                                                        [batch.batchId]: value || undefined,
+                                                                                                    }));
                                                                                                 }}
-                                                                                                disabled={!selectedBulkActions[batch.batchId] || bulkActionBusy}
-                                                                                                className="px-2 py-1 bg-blue-600 text-white text-[10px] font-semibold rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed min-w-[40px]"
-                                                                                            >
-                                                                                                {bulkActionBusy ? (
-                                                                                                    <Loader2 className="w-3 h-3 animate-spin mx-auto" />
-                                                                                                ) : (
-                                                                                                    "Go"
+                                                                                                className="px-2 py-1 text-black border border-gray-200 rounded-md text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-200 cursor-pointer appearance-none bg-white min-w-[110px]"
+                                                                                                >
+                                                                                                    <option value="">All statuses</option>
+                                                                                                    <option value="MISSING_ID">Missing ID</option>
+                                                                                                    <option value="INCOMPLETE">Incomplete</option>
+                                                                                                    <option value="COMPLETE">Complete</option>
+                                                                                                    <option value="SENT">Sent</option>
+                                                                                                    <option value="CONFIRMED">Confirmed</option>
+                                                                                                    <option value="DELETED">Deleted</option>
+                                                                                                </select>
+                                                                                            <div className="flex items-center gap-1 bg-white/10 rounded-md px-2 py-1">
+                                                                                                <div className="relative">
+                                                                                                    <select
+                                                                                                        value={selectedBulkActions[batch.batchId] || ""}
+                                                                                                        onChange={(e) => {
+                                                                                                            setSelectedBulkActions(prev => ({
+                                                                                                                ...prev,
+                                                                                                                [batch.batchId]: e.target.value
+                                                                                                            }));
+                                                                                                        }}
+                                                                                                        disabled={bulkActionBusy}
+                                                                                                        className="px-2 py-1 text-black border border-gray-200 rounded-md text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-200 cursor-pointer appearance-none bg-white min-w-[120px]"
+                                                                                                    >
+                                                                                                        <option value="">Select Bulk Action</option>
+                                                                                                        <option value="retry-submit">Retry Submit</option>
+                                                                                                        <option value="delete">Delete Reports</option>
+                                                                                                        <option value="retry">Retry</option>
+                                                                                                        <option value="send">Send to Approver</option>
+                                                                                                        <option value="approve">Approve</option>
+                                                                                                        <option value="certificate">Download Certificate</option>
+                                                                                                    </select>
+                                                                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-1 pointer-events-none">
+                                                                                                        <ChevronDown className="w-3 h-3 text-gray-400" />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        const selectedAction = selectedBulkActions[batch.batchId];
+                                                                                                        if (selectedAction) {
+                                                                                                            handleBulkAction(selectedAction, batch.batchId, batchReports[batch.batchId] || []);
+                                                                                                            setSelectedBulkActions(prev => ({
+                                                                                                                ...prev,
+                                                                                                                [batch.batchId]: ""
+                                                                                                            }));
+                                                                                                        }
+                                                                                                    }}
+                                                                                                    disabled={!selectedBulkActions[batch.batchId] || bulkActionBusy || !hasSelection}
+                                                                                                    title={!hasSelection ? "Select at least one report first." : undefined}
+                                                                                                    className={`px-2 py-1 bg-white text-blue-700 border border-blue-200 text-[10px] font-semibold rounded-md hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed min-w-[38px] ${!hasSelection ? "opacity-50" : ""}`}
+                                                                                                >
+                                                                                                    {bulkActionBusy ? (
+                                                                                                        <Loader2 className="w-3 h-3 animate-spin mx-auto" />
+                                                                                                    ) : (
+                                                                                                        "Go"
+                                                                                                    )}
+                                                                                                </button>
+                                                                                                {showBulkActionControls && (
+                                                                                                    <ControlButtons
+                                                                                                        isPaused={!!batchPaused[batch.batchId]}
+                                                                                                        isRunning={isBulkActionRunning || batchPaused[batch.batchId]}
+                                                                                                        onPause={() => pauseBatchActions(batch.batchId)}
+                                                                                                        onResume={() => resumeBatchActions(batch.batchId)}
+                                                                                                        onStop={() => stopBatchActions(batch.batchId)}
+                                                                                                    />
                                                                                                 )}
-                                                                                            </button>
+                                                                                            </div>
                                                                                         </div>
+                                                                                        {showHeaderProgress && (
+                                                                                            <div className="flex items-center gap-2 ml-auto min-w-[160px]">
+                                                                                                <div className="h-2 flex-1 bg-white/20 rounded-full overflow-hidden">
+                                                                                                    <div
+                                                                                                        className="h-full bg-emerald-300 transition-all duration-500"
+                                                                                                        style={{ width: `${batchProgressValue}%` }}
+                                                                                                    ></div>
+                                                                                                </div>
+                                                                                                <span className="text-[10px] font-semibold text-white/90">{batchProgressValue}%</span>
+                                                                                            </div>
+                                                                                        )}
                                                                                     </div>
                                                                                 </th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
-                                                                            {batchReports[batch.batchId].map((report) => {
+                                                                            {filteredReports.map((report) => {
                                                                                 const reportId = report.report_id || report.reportId || "";
-                                                                                const submitState = report.submit_state ?? report.submitState;
-                                                                                const rawStatus = (report.report_status || report.reportStatus || report.status || "").toString().toUpperCase();
-
-                                                                                // Handle status based on submit_state
-                                                                                let normalizedStatus;
-                                                                                if (submitState === -1) {
-                                                                                    normalizedStatus = "DELETED";
-                                                                                } else if (submitState === 1) {
-                                                                                    normalizedStatus = "COMPLETE";
-                                                                                } else if (submitState === 0) {
-                                                                                    normalizedStatus = "INCOMPLETE";
-                                                                                } else {
-                                                                                    // Fallback to old logic if submit_state not set
-                                                                                    normalizedStatus = rawStatus || ((report.status === "COMPLETE") ? "COMPLETE" : "INCOMPLETE");
-                                                                                }
-
-                                                                                let status;
-                                                                                if (submitState === -1) {
-                                                                                    status = "DELETED";
-                                                                                } else if (!reportId) {
-                                                                                    status = "MISSING_ID";
-                                                                                } else if (rawStatus === "SENT") {
-                                                                                    status = "SENT";
-                                                                                }
-                                                                                else if (rawStatus === "CONFIRMED") {
-                                                                                    status = "CONFIRMED";
-                                                                                }
-
-                                                                                else {
-                                                                                    status = normalizedStatus;
-                                                                                }
-
+                                                                                const reportKey = reportId || report._id || report.id;
+                                                                                const status = computeReportStatus(report);
+                                                                                const needsPdfBeforeActions = shouldBlockActionsForMissingId(report);
+                                                                                const showUploadPdf = status === "MISSING_ID";
+                                                                
                                                                                 const certificateStatus =
                                                                                     certificateStatusByReport[reportId] === "downloaded"
                                                                                         ? "downloaded"
@@ -3462,43 +3778,45 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                         <td className="px-2.5 py-1.5 text-gray-800">{report.asset_name || "—"}</td>
                                                                                         <td className="px-2.5 py-1.5">
                                                                                             {/* Status display remains the same */}
-                                                                                            {status === "COMPLETE" ? (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
-                                                                                                    <CheckCircle2 className="w-3 h-3" />
-                                                                                                    Complete
-                                                                                                </span>
-                                                                                            ) : status === "DELETED" ? (
-                                                                                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-red-700 border border-red-100 text-xs">
-                                                                                                    <Trash2 className="w-3 h-3" />
-                                                                                                    Deleted
-                                                                                                </span>)
-                                                                                                : status === "SENT" ? (
-                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
-                                                                                                        <Send className="w-3 h-3" />
-                                                                                                        Sent
-                                                                                                    </span>
-                                                                                                ) : status === "CONFIRMED" ? (
+                                                                                            <div className="flex flex-col gap-1">
+                                                                                                {status === "COMPLETE" ? (
                                                                                                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
-                                                                                                        <CheckCircle2 className="w-3 h-3" /> Confirmed
-
+                                                                                                        <CheckCircle2 className="w-3 h-3" />
+                                                                                                        Complete
                                                                                                     </span>
-                                                                                                )
-                                                                                                    : status === "CONFIRMED" ? (
+                                                                                                ) : status === "DELETED" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-red-700 border border-red-100 text-xs">
+                                                                                                        <Trash2 className="w-3 h-3" />
+                                                                                                        Deleted
+                                                                                                    </span>)
+                                                                                                    : status === "SENT" ? (
+                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 border border-blue-100 text-xs">
+                                                                                                            <Send className="w-3 h-3" />
+                                                                                                            Sent
+                                                                                                        </span>
+                                                                                                    ) : status === "CONFIRMED" ? (
                                                                                                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
-                                                                                                            <CheckCircle2 className="w-3 h-3" />
-                                                                                                            Confirmed
+                                                                                                            <CheckCircle2 className="w-3 h-3" /> Confirmed
+
                                                                                                         </span>
-                                                                                                    ) : status === "MISSING_ID" ? (
-                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                            <AlertTriangle className="w-3 h-3" />
-                                                                                                            Missing report ID
-                                                                                                        </span>
-                                                                                                    ) : (
-                                                                                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
-                                                                                                            <AlertTriangle className="w-3 h-3" />
-                                                                                                            Incomplete
-                                                                                                        </span>
-                                                                                                    )}
+                                                                                                    )
+                                                                                                        : status === "CONFIRMED" ? (
+                                                                                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 border border-emerald-100 text-xs">
+                                                                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                                                                Confirmed
+                                                                                                            </span>
+                                                                                                ) : status === "MISSING_ID" ? (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                        <AlertTriangle className="w-3 h-3" />
+                                                                                                        Missing report ID
+                                                                                                    </span>
+                                                                                                ) : (
+                                                                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100 text-xs">
+                                                                                                        <AlertTriangle className="w-3 h-3" />
+                                                                                                        Incomplete
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
                                                                                         </td>
                                                                                         <td className="px-2.5 py-1.5">
                                                                                             {certificateStatus === "downloaded" ? (
@@ -3519,7 +3837,15 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                                     type="checkbox"
                                                                                                     className="h-4 w-4"
                                                                                                     checked={isSelected(batch.batchId, report)}
-                                                                                                    onChange={(e) => toggleReportSelection(batch.batchId, report, e.target.checked)}
+                                                                                                    onChange={(e) => {
+                                                                                                        if (needsPdfBeforeActions) {
+                                                                                                            setBatchMessage({ type: "info", text: requirePdfMessage });
+                                                                                                            return;
+                                                                                                        }
+                                                                                                        toggleReportSelection(batch.batchId, report, e.target.checked);
+                                                                                                    }}
+                                                                                                    disabled={needsPdfBeforeActions}
+                                                                                                    title={needsPdfBeforeActions ? "Upload PDF before selecting" : undefined}
                                                                                                 />
                                                                                                 <button
                                                                                                     type="button"
@@ -3531,11 +3857,46 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                                                                         setIsEditModalOpen(true);
                                                                                                     }}
                                                                                                     className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md border border-gray-300 transition-colors"
-                                                                                                    title="Edit report"
+                                                                                                    title={needsPdfBeforeActions ? "Upload PDF first" : "Edit report"}
+                                                                                                    disabled={needsPdfBeforeActions}
                                                                                                 >
                                                                                                     <Edit2 className="w-3 h-3" />
                                                                                                     Edit
                                                                                                 </button>
+                                                                                                {showUploadPdf && (
+                                                                                                    <>
+                                                                                                        <label className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md cursor-pointer hover:bg-blue-100 transition-colors">
+                                                                                                            <FileUp className="w-3 h-3" />
+                                                                                                            {pdfUploadBusy[reportKey] ? "Uploading..." : needsPdfBeforeActions ? "Upload PDF" : "Replace PDF"}
+                                                                                                            <input
+                                                                                                                type="file"
+                                                                                                                accept="application/pdf"
+                                                                                                                className="hidden"
+                                                                                                                disabled={pdfUploadBusy[reportKey]}
+                                                                                                                onChange={(e) => {
+                                                                                                                    const file = e.target.files?.[0] || null;
+                                                                                                                    if (file) {
+                                                                                                                        attachPdfToReport(batch.batchId, report, file);
+                                                                                                                    }
+                                                                                                                }}
+                                                                                                            />
+                                                                                                        </label>
+                                                                                                        {needsPdfBeforeActions && (
+                                                                                                            <span className="text-[10px] text-gray-600 whitespace-nowrap">
+                                                                                                                upload pdf file to update path
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <div className="mt-1 w-full min-w-[160px]">
+                                                                                                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                                                                    <div
+                                                                                                        className="h-full bg-blue-500 transition-all duration-300"
+                                                                                                        style={{ width: `${getDisplayProgress(report)}%` }}
+                                                                                                    ></div>
+                                                                                                </div>
+                                                                                                <div className="text-[9px] text-slate-500 font-semibold text-right">{getDisplayProgress(report)}%</div>
                                                                                             </div>
                                                                                         </td>
                                                                                     </tr>

@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopRetryMacroIds: (reportId) => safeInvoke('stop-retry-macro-ids', reportId),
 
     macroFill: (reportId, tabsNum) => safeInvoke('macro-fill', reportId, tabsNum),
-    macroFillRetry: (reportId, tabsNum) => safeInvoke('run-macro-edit-retry', reportId, tabsNum),
+    macroFillRetry: (reportId, tabsNum, recordId = null, assetData = null) => safeInvoke('run-macro-edit-retry', reportId, tabsNum, recordId, assetData),
 
     elrajhiUploadReport: (batchId, tabsNum, pdfOnly, finalizeSubmission = true) => safeInvoke('elrajhi-filler', batchId, tabsNum, pdfOnly, finalizeSubmission),
 
@@ -156,6 +156,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('delete-assets-progress', subscription);
         return () => {
             ipcRenderer.removeListener('delete-assets-progress', subscription);
+        };
+    },
+
+    onAuthExpired: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const subscription = (event, data) => callback(data);
+        ipcRenderer.on('auth-expired', subscription);
+        return () => {
+            ipcRenderer.removeListener('auth-expired', subscription);
         };
     },
 

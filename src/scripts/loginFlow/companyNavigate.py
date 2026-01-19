@@ -13,19 +13,17 @@ def repair_mojibake(value: str) -> str:
 
 async def navigate_to_company(browser, company):
     try:
-        if not browser:
-            print(json.dumps({"type": "ERROR", "message": "No browser instance"}), flush=True)
-            return {"status": "FAILED", "error": "No browser instance"}
-        
         if not company:
             print(json.dumps({"type": "ERROR", "message": "No company URL provided"}), flush=True)
             return {"status": "FAILED", "error": "No company URL provided"}
 
+        skip_navigation = False
         if isinstance(company, dict):
             url = company.get("url")
             name = repair_mojibake(company.get("name"))
             office_id = company.get("officeId") or company.get("office_id")
             sector_id = company.get("sectorId") or company.get("sector_id")
+            skip_navigation = bool(company.get("skipNavigation"))
         else:
             url = company
             name = None
@@ -37,6 +35,18 @@ async def navigate_to_company(browser, company):
             msg = "Could not determine office id from company URL"
             print(json.dumps({"type": "ERROR", "message": msg}), flush=True)
             return {"status": "FAILED", "error": msg}
+
+        if skip_navigation:
+            return {
+                "status": "SUCCESS",
+                "message": "Company context stored without navigation",
+                "url": selected.get("url") or url,
+                "selectedCompany": selected
+            }
+
+        if not browser:
+            print(json.dumps({"type": "ERROR", "message": "No browser instance"}), flush=True)
+            return {"status": "FAILED", "error": "No browser instance"}
 
         target_url = selected.get("url") or url
         await browser.get(target_url)

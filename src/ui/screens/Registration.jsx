@@ -72,7 +72,8 @@ const Registration = ({ onViewChange }) => {
                 const token = res.data?.token ?? res.token;
                 if (user) {
                     login(user, token);
-                    onViewChange('taqeem-login');
+                    // Stay inside the main app; do not auto-redirect to Taqeem login/get-companies
+                    onViewChange('apps');
                 } else {
                     onViewChange('login');
                 }

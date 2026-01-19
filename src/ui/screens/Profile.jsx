@@ -1,15 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LogOut, Phone, User, Calendar } from 'lucide-react';
 import { useSession } from '../context/SessionContext';
+import { useValueNav } from '../context/ValueNavContext';
 
 const API_BASE_URL = 'http://localhost:3000';
 
 const Profile = ({ onViewChange }) => {
     const { user, token, logout, updateUser } = useSession();
+    const {
+        companies,
+        loadingCompanies,
+        ensureCompaniesLoaded,
+        preferredCompany,
+        preferredCompanyKey,
+        setPreferredCompany,
+        resetAll
+    } = useValueNav();
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
+    const [defaultCompanyIndex, setDefaultCompanyIndex] = useState(0);
+    const [savingDefaultCompany, setSavingDefaultCompany] = useState(false);
 
     const handleLogout = () => {
+        resetAll();
         logout();
         onViewChange('login');
     };
@@ -60,6 +73,30 @@ const Profile = ({ onViewChange }) => {
             setUploadError(err.message || 'Failed to upload profile image');
         } finally {
             setUploading(false);
+        }
+    };
+
+    useEffect(() => {
+        ensureCompaniesLoaded('equipment');
+    }, [ensureCompaniesLoaded]);
+
+    useEffect(() => {
+        if (!companies || companies.length === 0) return;
+        const idx = companies.findIndex((c) => {
+            const key = c?.officeId || c?.office_id || c?.url || c?.id || c?.name || '';
+            return key && key === preferredCompanyKey;
+        });
+        setDefaultCompanyIndex(idx >= 0 ? idx : 0);
+    }, [companies, preferredCompanyKey]);
+
+    const handleSaveDefaultCompany = async () => {
+        const chosen = companies?.[defaultCompanyIndex] || companies?.[0];
+        if (!chosen) return;
+        setSavingDefaultCompany(true);
+        try {
+            await setPreferredCompany(chosen, { applySelection: true, skipNavigation: true });
+        } finally {
+            setSavingDefaultCompany(false);
         }
     };
 
@@ -129,6 +166,47 @@ const Profile = ({ onViewChange }) => {
                                 {user.type || 'Individual'}
                             </p>
                         </div>
+                    </div>
+
+                    {/* Default Company */}
+                    <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-medium text-gray-600">Default company</p>
+                                <p className="text-xs text-gray-500">Used for uploading reports and main links.</p>
+                            </div>
+                            {preferredCompany && (
+                                <span className="text-[11px] rounded-full bg-green-100 text-green-700 px-2 py-1 font-semibold">
+                                    {preferredCompany.name}
+                                </span>
+                            )}
+                        </div>
+                        {loadingCompanies ? (
+                            <div className="text-xs text-gray-600">Loading companies...</div>
+                        ) : companies && companies.length > 0 ? (
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <select
+                                    value={String(defaultCompanyIndex)}
+                                    onChange={(e) => setDefaultCompanyIndex(Number(e.target.value))}
+                                    className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                >
+                                    {companies.map((company, idx) => (
+                                        <option key={company.officeId || company.office_id || company.url || company.id || company.name || idx} value={String(idx)}>
+                                            {company.name || 'Company'}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={handleSaveDefaultCompany}
+                                    disabled={savingDefaultCompany || !companies || companies.length === 0}
+                                    className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                >
+                                    {savingDefaultCompany ? 'Saving...' : 'Set as default'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="text-xs text-gray-500">Connect to Taqeem to sync your companies.</div>
+                        )}
                     </div>
 
                     {/* Member Since */}

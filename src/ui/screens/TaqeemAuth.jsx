@@ -21,7 +21,7 @@ const TaqeemAuth = ({ onViewChange }) => {
 
     useEffect(() => {
         if (taqeemStatus?.state !== 'success') {
-            setTaqeemStatus('info', 'Taqeem login is required to proceed');
+            setTaqeemStatus('info', 'Taqeem login: Off');
         }
     }, [setTaqeemStatus, taqeemStatus?.state]);
 
@@ -34,7 +34,7 @@ const TaqeemAuth = ({ onViewChange }) => {
     const goToCompanies = () => {
         if (onViewChange) {
             // Small delay so the success message is visible
-            setTimeout(() => onViewChange('get-companies'), 400);
+            setTimeout(() => onViewChange('apps'), 400);
         }
     };
 
@@ -89,7 +89,7 @@ const TaqeemAuth = ({ onViewChange }) => {
                         type: "success",
                     });
 
-                    setTaqeemStatus("success", "Taqeem login completed");
+                    setTaqeemStatus("success", "Taqeem login: On");
                     goToCompanies();
                     return;
                 }
@@ -112,10 +112,10 @@ const TaqeemAuth = ({ onViewChange }) => {
                     type: "success",
                 });
 
-                setTaqeemStatus("success", "Taqeem login completed");
-                goToCompanies();
-            } else {
-                throw new Error(result.error || "OTP verification failed");
+                    setTaqeemStatus("success", "Taqeem login: On");
+                    goToCompanies();
+                } else {
+                    throw new Error(result.error || "OTP verification failed");
             }
         };
 
@@ -243,7 +243,7 @@ const TaqeemAuth = ({ onViewChange }) => {
                         text: result.message || '✅ Login successful! Starting automation...',
                         type: 'success'
                     });
-                    setTaqeemStatus('success', 'Taqeem login completed');
+                    setTaqeemStatus('success', 'Taqeem login: On');
                     goToCompanies();
                 } else {
                     throw new Error(result.error || 'Login failed');
@@ -266,7 +266,7 @@ const TaqeemAuth = ({ onViewChange }) => {
         resetFormData();
         resetShowOtp();
         resetMessage();
-        setTaqeemStatus('info', 'Taqeem login is required to proceed');
+        setTaqeemStatus('info', 'Taqeem login: Off');
     };
 
     const handleOpenSecondaryLogin = async () => {

@@ -88,6 +88,7 @@ from scripts.delete.cancelledReportHandler import handle_cancelled_report
 
 from scripts.loginFlow.getCompanies import get_companies
 from scripts.loginFlow.companyNavigate import navigate_to_company
+from scripts.core.company_context import set_selected_company
 
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -186,6 +187,63 @@ async def handle_command(cmd):
         result = await check_browser_status()
         result["commandId"] = cmd.get("commandId")
         
+        print(json.dumps(result), flush=True)
+
+    elif action == "open-login-page":
+        login_url = cmd.get("loginUrl") or (
+            "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
+            "?client_id=cli-qima-valuers&redirect_uri=https%3A%2F%2Fqima.taqeem.sa%2Fkeycloak%2Flogin%2Fcallback"
+            "&scope=openid&response_type=code"
+        )
+        only_if_closed = bool(cmd.get("onlyIfClosed", True))
+        navigate_if_open = bool(cmd.get("navigateIfOpen", False))
+        force_new = bool(cmd.get("forceNew", False))
+        opened_new = False
+        navigated = False
+
+        try:
+            browser_status = await check_browser_status()
+            browser_open = bool(browser_status.get("browserOpen"))
+
+            if only_if_closed and browser_open and not force_new:
+                result = {
+                    "status": "SUCCESS",
+                    "message": "Browser already running; skipped opening login page",
+                    "browserOpen": True,
+                    "alreadyOpen": True,
+                    "openedNewBrowser": False,
+                    "navigated": False
+                }
+            else:
+                opened_new = force_new or not browser_open
+                b = await get_browser(force_new=force_new, headless_override=False)
+                page = b.main_tab
+                if page is None:
+                    page = await b.get("about:blank")
+
+                if opened_new or navigate_if_open or force_new:
+                    await page.get(login_url)
+                    navigated = True
+
+                result = {
+                    "status": "SUCCESS",
+                    "message": "Opened Taqeem login page in automation browser",
+                    "browserOpen": True,
+                    "alreadyOpen": not opened_new,
+                    "openedNewBrowser": opened_new,
+                    "navigated": navigated,
+                    "url": login_url
+                }
+        except Exception as e:
+            result = {
+                "status": "FAILED",
+                "error": str(e),
+                "browserOpen": False,
+                "openedNewBrowser": opened_new,
+                "navigated": navigated
+            }
+
+        result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
     elif action == "validate-report":
@@ -292,15 +350,33 @@ async def handle_command(cmd):
         print(json.dumps(result), flush=True)
 
     elif action == "run-macro-edit-retry":
-        browser = await get_browser()
+        # Force a visible browser for retries
+        base_browser = await get_browser(force_new=True, headless_override=False)
+        retry_browser = None
 
         report_id = cmd.get("reportId")
+        record_id = cmd.get("recordId")
         tabs_num = int(cmd.get("tabsNum", 3))
+        asset_data = cmd.get("assetData")
 
-        result = await run_macro_edit_retry(browser, report_id, tabs_num)
+        try:
+            retry_browser = await spawn_new_browser(base_browser, headless=False)
+        except Exception:
+            retry_browser = None
+
+        try:
+            target_browser = retry_browser or base_browser
+            result = await run_macro_edit_retry(target_browser, report_id, tabs_num, record_id=record_id, asset_data=asset_data)
+        finally:
+            try:
+                if retry_browser:
+                    retry_browser.stop()
+            except Exception:
+                pass
+
         result["commandId"] = cmd.get("commandId")
 
-        print(json.dumps(result), flush=True)   
+        print(json.dumps(result, default=str), flush=True)   
 
     elif action == "pause-macro-edit":
         report_id = cmd.get("reportId")
@@ -798,13 +874,27 @@ async def handle_command(cmd):
         print(json.dumps(result), flush=True)
 
     elif action == "navigate-to-company":
-        browser = await get_browser()
-
         company = cmd.get("company") or cmd.get("url")
 
-        result = await navigate_to_company(browser, company)
-        result["commandId"] = cmd.get("commandId")
+        # If caller only wants to persist selection, avoid launching browser
+        if isinstance(company, dict) and company.get("skipNavigation"):
+            selected = set_selected_company(
+                company.get("url"),
+                name=company.get("name"),
+                office_id=company.get("officeId") or company.get("office_id"),
+                sector_id=company.get("sectorId") or company.get("sector_id"),
+            )
+            result = {
+                "status": "SUCCESS",
+                "message": "Company context stored without navigation",
+                "url": selected.get("url"),
+                "selectedCompany": selected,
+            }
+        else:
+            browser = await get_browser()
+            result = await navigate_to_company(browser, company)
 
+        result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
     
@@ -904,7 +994,7 @@ async def handle_command(cmd):
                 "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
                 "full-check", "half-check", "register", "close", "ping",
                 "duplicate-report", "get-reports-by-batch", "create-report-by-id",
-                "download-registration-certificates"
+                "download-registration-certificates", "open-login-page"
             ],
             "commandId": cmd.get("commandId")
         }

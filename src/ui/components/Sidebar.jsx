@@ -3,6 +3,7 @@ import { AppWindow, CircleDot, Wrench, Truck, Loader2, AlertCircle, Home, Monito
 import { useSystemControl } from '../context/SystemControlContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { useSession } from '../context/SessionContext';
+import { useNavStatus } from '../context/NavStatusContext';
 import navigation from '../constants/navigation';
 import { useTranslation } from 'react-i18next';
 
@@ -11,7 +12,8 @@ const { valueSystemGroups } = navigation;
 const Sidebar = ({ currentView, onViewChange }) => {
     const { t } = useTranslation();
     const { isFeatureBlocked, isAdmin } = useSystemControl();
-    const { user } = useSession();
+    const { user, isAuthenticated } = useSession();
+    const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
     const {
         selectedCard,
         selectedDomain,
@@ -23,10 +25,14 @@ const Sidebar = ({ currentView, onViewChange }) => {
         setActiveGroup,
         setActiveTab,
         resetAll,
+        resetNavigation,
         chooseCard,
         chooseDomain,
-        loadSavedCompanies,
-        setSelectedCompany
+        ensureCompaniesLoaded,
+        autoSelectDefaultCompany,
+        replaceCompanies,
+        setSelectedCompany,
+        syncCompanies
     } = useValueNav();
 
     const isAppsActive = currentView === 'apps';
@@ -44,6 +50,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
         { id: 'real-estate', label: 'Real Estate', icon: Home },
         { id: 'equipments', label: 'Equipment', icon: Truck }
     ];
+
+    const defaultUploadTab = valueSystemGroups.uploadReports?.tabs?.[0]?.id || 'submit-reports-quickly';
 
     const mainLinks = [
         { id: 'uploadReports', label: 'Upload Reports' },
@@ -70,6 +78,101 @@ const Sidebar = ({ currentView, onViewChange }) => {
         ...(isAdmin ? [{ id: 'admin-console', label: 'Super Admin', icon: ShieldCheck, groupId: 'adminConsole' }] : [])
     ];
 
+    const goToSubmitReportsQuickly = async () => {
+        // Force the navigation state into Upload Reports -> Submit Reports Quickly
+        chooseCard('uploading-reports');
+        chooseDomain('equipments');
+        setActiveGroup('uploadReports');
+        setActiveTab(defaultUploadTab);
+        if (onViewChange) {
+            onViewChange(defaultUploadTab);
+        }
+
+        // Prime companies/default selection in the background
+        if (!selectedCompany) {
+            (async () => {
+                try {
+                    const loadedCompanies = await ensureCompaniesLoaded('equipment');
+                    await autoSelectDefaultCompany({ skipNavigation: true, companiesList: loadedCompanies });
+                } catch (err) {
+                    console.warn('Failed to prepare companies for upload reports', err);
+                }
+            })();
+        }
+    };
+
+    const handleTaqeemLogin = async () => {
+        const waitForManualLogin = async (timeoutMs = 180000, intervalMs = 2000) => {
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+                const res = await window.electronAPI.checkStatus();
+                const statusText = String(res?.status || '').toUpperCase();
+                const loggedIn = res?.browserOpen && statusText.includes('SUCCESS');
+                const notLogged = statusText.includes('NOT_LOGGED_IN');
+                if (loggedIn) return res;
+                if (!res?.browserOpen && !notLogged) {
+                    throw new Error(t('sidebar.company.loginClosed', { defaultValue: 'Login window closed.' }));
+                }
+                await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+            throw new Error(t('sidebar.company.loginTimeout', { defaultValue: 'Timed out waiting for Taqeem login.' }));
+        };
+
+        try {
+            setTaqeemStatus('info', t('sidebar.company.loginStarting', { defaultValue: 'Opening Taqeem login...' }));
+            setCompanyStatus('info', t('sidebar.company.loginPrompt', { defaultValue: 'Login to Taqeem to list your companies.' }));
+            if (!window?.electronAPI?.openTaqeemLogin) {
+                throw new Error(t('sidebar.company.loginUnavailable', { defaultValue: 'Login handler unavailable.' }));
+            }
+            chooseDomain('equipments');
+            const loginResult = await window.electronAPI.openTaqeemLogin({
+                automationOnly: true,
+                onlyIfClosed: true,
+                navigateIfOpen: false
+            });
+            if (loginResult?.status !== 'SUCCESS') {
+                throw new Error(loginResult?.error || t('sidebar.company.loginFailed', { defaultValue: 'Taqeem login failed.' }));
+            }
+
+            setTaqeemStatus('info', t('sidebar.company.waitingForLogin', { defaultValue: 'Waiting for you to finish login...' }));
+            await waitForManualLogin();
+            setTaqeemStatus('success', t('sidebar.company.loginSuccess', { defaultValue: 'Taqeem login: On' }));
+
+            if (window?.electronAPI?.getCompanies) {
+                setCompanyStatus('info', t('sidebar.company.fetching', { defaultValue: 'Fetching companies from Taqeem...' }));
+                const data = await window.electronAPI.getCompanies();
+                const fetched = Array.isArray(data?.data) ? data.data : Array.isArray(data?.companies) ? data.companies : [];
+                if (fetched.length > 0) {
+                    const prepared = fetched.map((c) => ({ ...c, type: c.type || 'equipment' }));
+                    let synced = prepared;
+                    try {
+                        const syncedRes = await syncCompanies(prepared, 'equipment');
+                        if (Array.isArray(syncedRes) && syncedRes.length > 0) {
+                            synced = syncedRes;
+                        }
+                    } catch (err) {
+                        console.warn('Failed to sync companies after Taqeem login', err);
+                    }
+                    await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: true });
+                    const defaultCompany = synced?.[0];
+                    if (defaultCompany) {
+                        setCompanyStatus('success', t('sidebar.company.companySelected', {
+                            defaultValue: `Company: ${defaultCompany.name || t('sidebar.company.fallback')}`
+                        }));
+                    } else {
+                        setCompanyStatus('success', t('sidebar.company.selectToContinue', { defaultValue: 'Select a company to view main links.' }));
+                    }
+                } else {
+                    setCompanyStatus('error', t('sidebar.company.empty', { defaultValue: 'No companies found.' }));
+                }
+            }
+        } catch (err) {
+            setTaqeemStatus('error', err?.message || t('sidebar.company.loginFailed', { defaultValue: 'Taqeem login failed.' }));
+            setCompanyStatus('error', err?.message || t('sidebar.company.loginFailed', { defaultValue: 'Taqeem login failed.' }));
+            alert(err?.message || t('sidebar.company.loginFailed', { defaultValue: 'Taqeem login failed.' }));
+        }
+    };
+
     const renderDomains = () => {
         if (selectedCard !== 'uploading-reports') return null;
         return (
@@ -91,7 +194,6 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                     onClick={async () => {
                                         chooseDomain(item.id);
                                         setActiveGroup(null);
-                                        setSelectedCompany(null);
 
                                         if (item.id === 'real-estate') {
                                             delayViewChange('coming-soon');
@@ -99,8 +201,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                         }
 
                                         if (item.id === 'equipments') {
-                                            await loadSavedCompanies('equipment');
-                                            delayViewChange('apps');
+                                            await goToSubmitReportsQuickly();
                                             return;
                                         }
 
@@ -135,6 +236,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         const showPlaceholder = !selectedCompany && !loadingCompanies && !companyError && (!companies || companies.length === 0);
         const visibleCompanies = selectedCompany ? [selectedCompany] : companies;
         const hasCompanies = visibleCompanies && visibleCompanies.length > 0;
+        const showLoginPrompt = !isAuthenticated || taqeemStatus?.state !== 'success';
         return (
             <div
                 className="rounded-lg border border-slate-800/70 bg-slate-900/45 px-2 py-1.5 space-y-1.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)] sidebar-animate"
@@ -153,8 +255,26 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     </div>
                 )}
                 {showPlaceholder && (
-                    <div className="text-[10px] text-slate-300 bg-slate-900/60 border border-slate-800 rounded-md px-2 py-1">
-                        {t('sidebar.company.empty')}
+                    <div className="space-y-2 bg-slate-900/60 border border-slate-800 rounded-md px-2 py-2">
+                        {showLoginPrompt && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleTaqeemLogin}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 px-3 py-1.75 text-[10px] font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.35)] hover:from-emerald-500 hover:via-green-500 hover:to-emerald-600 transition-colors"
+                                >
+                                    {t('sidebar.company.loginButton', { defaultValue: 'Login to Taqeem' })}
+                                </button>
+                                <div className="text-[10px] text-emerald-100 text-center">
+                                    {t('sidebar.company.loginPrompt', { defaultValue: 'Login to Taqeem to select a company.' })}
+                                </div>
+                            </>
+                        )}
+                        {!showLoginPrompt && (
+                            <div className="text-[10px] text-slate-300">
+                                {t('sidebar.company.empty')}
+                            </div>
+                        )}
                     </div>
                 )}
                 {hasCompanies && (
@@ -169,12 +289,12 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                     style={{ animationDelay: `${200 + index * 35}ms` }}
                                 >
                                     <button
-                                        onClick={() => {
-                                                if (isDisabled) return;
-                                                setSelectedCompany(company);
-                                                setActiveGroup(null);
-                                                delayViewChange('apps');
-                                            }}
+                                        onClick={async () => {
+                                            if (isDisabled) return;
+                                            await setSelectedCompany(company);
+                                            setActiveGroup(null);
+                                            delayViewChange('apps');
+                                        }}
                                         disabled={isDisabled}
                                         className={`group relative w-full text-left px-2.5 py-1.5 rounded-md flex flex-col gap-0.5 ${
                                             isActive
@@ -207,6 +327,17 @@ const Sidebar = ({ currentView, onViewChange }) => {
 
     const renderMainLinks = () => {
         if (selectedDomain !== 'equipments') return null;
+        const hasCompanies = companies && companies.length > 0;
+        if (hasCompanies && !selectedCompany) {
+            return (
+                <div
+                    className="rounded-lg border border-amber-400/30 bg-amber-900/30 px-3 py-2 text-[11px] text-amber-100 shadow-[inset_0_1px_0_rgba(248,180,0,0.12)] sidebar-animate"
+                    style={{ animationDelay: '220ms' }}
+                >
+                    {t('sidebar.company.selectToContinue', { defaultValue: 'Select a company to view main links.' })}
+                </div>
+            );
+        }
         return (
             <div
                 className="rounded-lg border border-slate-800/70 bg-slate-900/45 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)] sidebar-animate"
@@ -227,6 +358,10 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                 <button
                                     onClick={() => {
                                         if (blocked) return;
+                                        if (item.id === 'uploadReports') {
+                                            goToSubmitReportsQuickly();
+                                            return;
+                                        }
                                         setActiveGroup(item.id);
                                         // Automatically set and navigate to the first tab immediately if it exists
                                         if (firstTab) {
@@ -507,7 +642,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     <div className="mt-1.5 flex gap-1">
                         <button
                             onClick={() => {
-                                resetAll();
+                                resetNavigation();
                                 chooseCard(null);
                                 delayViewChange('apps');
                             }}

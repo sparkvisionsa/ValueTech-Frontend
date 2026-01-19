@@ -3,6 +3,30 @@ const { ipcMain, session } = require('electron');
 const axios = require('axios');
 const process = require('process');
 
+const AUTH_EXPIRED_CHANNEL = 'auth-expired';
+
+const isAuthExpired = (status, message) => {
+  const code = Number(status || 0);
+  if ([401, 403, 419].includes(code)) return true;
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('expired token') ||
+    text.includes('token expired') ||
+    text.includes('session expired') ||
+    text.includes('please login')
+  );
+};
+
+const notifyAuthExpired = (event, status, message) => {
+  if (!event?.sender?.send) return;
+  if (!isAuthExpired(status, message)) return;
+  try {
+    event.sender.send(AUTH_EXPIRED_CHANNEL, { status, message });
+  } catch (err) {
+    console.warn('[API] Failed to notify auth-expired', err);
+  }
+};
+
 const parseSetCookieString = (cookieStr) => {
   const parts = cookieStr.split(';').map(p => p.trim());
   const [nameValue, ...attrs] = parts;
@@ -158,8 +182,9 @@ const packageHandlers = {
         throw err;
       } catch (error) {
         lastError = error;
-        const status = error.response?.status;
+        const status = error.response?.status ?? error.status;
         const message = error.response?.data?.message || error.message;
+        notifyAuthExpired(event, status, message);
         console.log(`[API] Failed (${status || 'error'}): ${baseUrl}${url} - ${message}`);
 
         // If 404, try next candidate

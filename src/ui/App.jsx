@@ -43,13 +43,14 @@ import { ValueNavProvider } from './context/ValueNavContext';
 import ComingSoon from './screens/ComingSoon';
 import { useValueNav } from './context/ValueNavContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { AUTH_EXPIRED_EVENT, installAuthExpiryInterceptor } from './utils/authInterceptor';
 
 
 const AppContent = () => {
     const [currentView, setCurrentView] = useState('apps');
     const [pendingProtectedView, setPendingProtectedView] = useState(null);
-    const { isAuthenticated } = useSession();
-    const { syncNavForView, setActiveTab } = useValueNav();
+    const { isAuthenticated, logout } = useSession();
+    const { syncNavForView, setActiveTab, selectedCompany, resetAll, resetNavigation } = useValueNav();
 
     const handleViewChange = (nextView) => {
         const protectedViews = ['get-companies'];
@@ -63,9 +64,25 @@ const AppContent = () => {
         }
         if (!nextView || nextView === 'apps') {
             setActiveTab(null);
+            resetNavigation();
         }
         setCurrentView(nextView);
     };
+
+    // Redirect to Apps once a company is auto-selected after login
+    const hasRedirectedAfterLogin = React.useRef(false);
+    React.useEffect(() => {
+        if (!isAuthenticated) {
+            hasRedirectedAfterLogin.current = false;
+            return;
+        }
+        if (!selectedCompany || hasRedirectedAfterLogin.current) return;
+        const canRedirect = currentView === 'login' || currentView === 'registration' || currentView === 'apps';
+        if (!canRedirect) return;
+        setActiveTab(null);
+        setCurrentView('apps');
+        hasRedirectedAfterLogin.current = true;
+    }, [currentView, isAuthenticated, selectedCompany, setActiveTab]);
 
     useEffect(() => {
         if (isAuthenticated && pendingProtectedView) {
@@ -76,6 +93,34 @@ const AppContent = () => {
             setPendingProtectedView(null);
         }
     }, [isAuthenticated, pendingProtectedView, syncNavForView]);
+
+    useEffect(() => {
+        try {
+            const hash = currentView ? `#/${currentView}` : '#/apps';
+            window.history.replaceState(null, '', hash);
+        } catch (err) {
+            // ignore navigation errors in desktop shell
+        }
+    }, [currentView]);
+
+    useEffect(() => {
+        const cleanupInterceptor = installAuthExpiryInterceptor();
+        const handleAuthExpired = () => {
+            if (!isAuthenticated) return;
+            logout();
+            resetAll();
+            setActiveTab(null);
+            setPendingProtectedView(null);
+            setCurrentView('login');
+        };
+        window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+        return () => {
+            window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+            if (typeof cleanupInterceptor === 'function') {
+                cleanupInterceptor();
+            }
+        };
+    }, [isAuthenticated, logout, resetAll, setActiveTab]);
 
     const renderCurrentView = () => {
         switch (currentView) {

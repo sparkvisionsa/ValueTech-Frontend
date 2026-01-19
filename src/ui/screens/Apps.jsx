@@ -59,7 +59,11 @@ const Apps = ({ onViewChange }) => {
         selectedCompany,
         activeGroup,
         setActiveGroup,
-        chooseCard
+        chooseCard,
+        chooseDomain,
+        ensureCompaniesLoaded,
+        setActiveTab,
+        autoSelectDefaultCompany
     } = useValueNav();
 
     const stageHint = useMemo(() => {
@@ -75,13 +79,40 @@ const Apps = ({ onViewChange }) => {
         return '';
     }, [selectedCard, selectedDomain, selectedCompany, activeGroup, t]);
 
-    const handleCardClick = (card) => {
+    const openUploadingReports = (card) => {
+        const uploadTabs = valueSystemGroups.uploadReports?.tabs || [];
+        const firstUploadTab = uploadTabs[0]?.id || 'submit-reports-quickly';
+
+        // Prime navigation immediately so users land on the main page without waiting for company loading
+        chooseCard(card.id);
+        chooseDomain('equipments');
+        setActiveGroup('uploadReports');
+        setActiveTab(firstUploadTab);
+        if (onViewChange) onViewChange(firstUploadTab);
+
+        // Load companies and auto-select default in the background
+        (async () => {
+            try {
+                const loadedCompanies = await ensureCompaniesLoaded('equipment');
+                await autoSelectDefaultCompany({ skipNavigation: true, companiesList: loadedCompanies });
+            } catch (err) {
+                console.warn('Failed to preload companies', err);
+            }
+        })();
+    };
+
+    const handleCardClick = async (card) => {
+        if (card.id === 'uploading-reports') {
+            await openUploadingReports(card);
+            return;
+        }
         chooseCard(card.id);
         setActiveGroup(card.defaultGroup || null);
         if (onViewChange) onViewChange('apps');
     };
 
-    const showCards = !selectedDomain && !selectedCompany && !activeGroup;
+    // Show entry cards as long as no card/group is active; allow preselected company.
+    const showCards = !selectedCard && !activeGroup;
     const showHint = Boolean(activeGroup && stageHint);
 
     return (

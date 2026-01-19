@@ -60,6 +60,16 @@ class AuthCommands {
         });
     }
 
+    async openLoginPage(loginUrl, options = {}) {
+        return this._sendCommand({
+            action: 'open-login-page',
+            loginUrl,
+            onlyIfClosed: options.onlyIfClosed !== false,
+            navigateIfOpen: !!options.navigateIfOpen,
+            forceNew: !!options.forceNew
+        });
+    }
+
     async ping() {
         return this._sendCommand({
             action: 'ping'

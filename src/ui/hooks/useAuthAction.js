@@ -2,11 +2,13 @@
 import { useState, useCallback } from 'react';
 import { useSession } from '../context/SessionContext';
 import { useNavStatus } from '../context/NavStatusContext';
+import { useValueNav } from '../context/ValueNavContext';
 import { ensureTaqeemAuthorized } from '../../shared/helper/taqeemAuthWrap';
 
 export const useAuthAction = () => {
     const { token, login } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+    const { selectedCompany } = useValueNav();
     const [authLoading, setAuthLoading] = useState(false);
     const [authError, setAuthError] = useState(null);
 
@@ -63,6 +65,22 @@ export const useAuthAction = () => {
             }
 
             onAuthSuccess(authStatus);
+
+            // Navigate to selected company using the active Taqeem browser/session right before the action
+            if (selectedCompany && window?.electronAPI?.navigateToCompany) {
+                try {
+                    await window.electronAPI.navigateToCompany({
+                        name: selectedCompany.name,
+                        url: selectedCompany.url,
+                        officeId: selectedCompany.officeId || selectedCompany.office_id,
+                        sectorId: selectedCompany.sectorId || selectedCompany.sector_id,
+                        skipNavigation: false
+                    });
+                } catch (err) {
+                    console.warn('[useAuthAction] navigateToCompany skipped:', err?.message || err);
+                }
+            }
+
             return await action(actionParams);
 
         } catch (error) {

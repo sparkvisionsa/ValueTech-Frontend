@@ -30,6 +30,7 @@ import {
 } from "../../api/report";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { downloadTemplateFile } from "../utils/templateDownload";
+import { useValueNav } from "../context/ValueNavContext";
 
 const DUMMY_PDF_NAME = "dummy_placeholder.pdf";
 
@@ -225,7 +226,14 @@ const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB in bytes
 
 const SubmitReportsQuickly = ({ onViewChange }) => {
     const { token } = useSession();
-    const { taqeemStatus } = useNavStatus();
+    const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
+    const {
+        companies,
+        selectedCompany,
+        replaceCompanies,
+        ensureCompaniesLoaded,
+        setSelectedCompany
+    } = useValueNav();
     const { ramInfo } = useRam();
     const recommendedTabs = ramInfo?.recommendedTabs || 3;
     const [excelFiles, setExcelFiles] = useState([]);
@@ -1106,6 +1114,48 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         []
     );
 
+    const ensureCompanySelected = useCallback(async () => {
+        if (selectedCompany) return selectedCompany;
+
+        let list = companies;
+        try {
+            if ((!list || list.length === 0) && window?.electronAPI?.getCompanies) {
+                const data = await window.electronAPI.getCompanies();
+                const fetched = Array.isArray(data?.data) ? data.data : Array.isArray(data?.companies) ? data.companies : [];
+                if (fetched.length > 0 && replaceCompanies) {
+                    list = await replaceCompanies(fetched.map((c) => ({ ...c, type: c.type || "equipment" })), {
+                        autoSelect: false,
+                        skipNavigation: true,
+                        quiet: true
+                    });
+                }
+            }
+            if ((!list || list.length === 0) && ensureCompaniesLoaded) {
+                list = await ensureCompaniesLoaded("equipment");
+            }
+        } catch (err) {
+            console.warn("Failed to fetch companies for submission", err);
+        }
+
+        if (!list || list.length === 0) {
+            throw new Error("No companies available. Login to Taqeem and try again.");
+        }
+
+        const menu = list
+            .map((c, idx) => `${idx + 1}. ${c.name || c.url || c.officeId || "Company"}`)
+            .join("\n");
+        const input = window.prompt(`Select a company to submit under:\n${menu}`, "1");
+        if (input === null) {
+            throw new Error("Company selection cancelled.");
+        }
+        const choice = Number.parseInt(input, 10);
+        const idx = Number.isFinite(choice) ? Math.min(Math.max(choice - 1, 0), list.length - 1) : 0;
+        const chosen = list[idx];
+        await setSelectedCompany(chosen, { skipNavigation: false, quiet: true });
+        setCompanyStatus?.("success", `Company: ${chosen.name || "Selected"}`);
+        return chosen;
+    }, [companies, ensureCompaniesLoaded, replaceCompanies, selectedCompany, setCompanyStatus, setSelectedCompany]);
+
     const submitToTaqeem = useCallback(
         async (recordId, tabsNum, options = {}) => {
             const { withLoading = true, resume = false } = options;
@@ -1127,11 +1177,13 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
             try {
-                const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
+                const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, 0, null, setTaqeemStatus);
                 if (!ok) {
                     setError("Taqeem login required. Finish login and choose a company to continue.");
                     return;
                 }
+
+                await ensureCompanySelected();
 
                 setSuccess(resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...");
 
@@ -1159,7 +1211,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
             }
         },
-        [isTaqeemLoggedIn, loadReports, onViewChange, token, recommendedTabs]
+        [ensureCompanySelected, isTaqeemLoggedIn, loadReports, onViewChange, token, recommendedTabs, setTaqeemStatus, taqeemStatus?.state]
     );
 
     const handleDeleteReport = async (recordId) => {
@@ -1238,6 +1290,14 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         }
 
         if (bulkAction === "upload-submit" || bulkAction === "retry-submit") {
+            // Ensure login and company selection before any submission/retry
+            const ok = await ensureTaqeemAuthorized(token, onViewChange, taqeemStatus?.state === "success", 0, null, setTaqeemStatus);
+            if (!ok) {
+                setError("Taqeem login required. Finish login and choose a company to continue.");
+                return;
+            }
+            await ensureCompanySelected();
+
             // Calculate initial tabs per browser (distribute evenly)
             const totalTabs = Math.max(1, Number(recommendedTabs) || 3);
             const numReports = selectedIds.length;
@@ -1270,27 +1330,55 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     [id]: { percentage: 0, status: 'starting', message: 'Opening browser...' }
                 }));
 
-                clearReportCreatedCache(id);
-                const reportCreatedPromise = waitForReportCreated(id);
+                if (bulkAction === "upload-submit") {
+                    clearReportCreatedCache(id);
+                    const reportCreatedPromise = waitForReportCreated(id);
 
-                const submissionPromise = submitToTaqeem(id, tabsNum, { withLoading: false }).catch((err) => {
-                    setReportProgress((prev) => ({
-                        ...prev,
-                        [id]: { percentage: 0, status: 'error', message: err.message || 'Submission failed' }
-                    }));
-                    throw err;
-                });
-                submissionPromises.push(submissionPromise);
+                    const submissionPromise = submitToTaqeem(id, tabsNum, { withLoading: false }).catch((err) => {
+                        setReportProgress((prev) => ({
+                            ...prev,
+                            [id]: { percentage: 0, status: 'error', message: err.message || 'Submission failed' }
+                        }));
+                        throw err;
+                    });
+                    submissionPromises.push(submissionPromise);
 
-                try {
-                    await reportCreatedPromise;
-                } catch (err) {
-                    queueError = err;
-                    setReportProgress((prev) => ({
-                        ...prev,
-                        [id]: { percentage: 0, status: 'error', message: err.message || 'Failed to create report id' }
-                    }));
-                    break;
+                    try {
+                        await reportCreatedPromise;
+                    } catch (err) {
+                        queueError = err;
+                        setReportProgress((prev) => ({
+                            ...prev,
+                            [id]: { percentage: 0, status: 'error', message: err.message || 'Failed to create report id' }
+                        }));
+                        break;
+                    }
+                } else if (bulkAction === "retry-submit") {
+                    // Retry incomplete assets for already submitted reports
+                    const report = reports.find((r) => getReportRecordId(r) === id);
+                    const taqeemId = report?.report_id;
+                    if (!taqeemId) {
+                        setReportProgress((prev) => ({
+                            ...prev,
+                            [id]: { percentage: 0, status: 'error', message: 'Missing Taqeem report id' }
+                        }));
+                        continue;
+                    }
+                    const retryPromise = window.electronAPI?.macroFillRetry?.(taqeemId, tabsNum, id, report?.asset_data || [])
+                        .then(() => {
+                            setReportProgress((prev) => ({
+                                ...prev,
+                                [id]: { percentage: 100, status: 'completed', message: 'Retry started in a new browser' }
+                            }));
+                        })
+                        .catch((err) => {
+                            setReportProgress((prev) => ({
+                                ...prev,
+                                [id]: { percentage: 0, status: 'error', message: err.message || 'Retry failed' }
+                            }));
+                            throw err;
+                        });
+                    submissionPromises.push(retryPromise);
                 }
             }
 
@@ -1379,11 +1467,32 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const handleReportAction = async (report, action) => {
         const recordId = getReportRecordId(report);
         if (!recordId) return;
+        const assetList = report?.asset_data || [];
 
         if (action === "retry") {
-            // Use global recommendedTabs for retry
+            // Retry only incomplete assets (macro fill retry), similar to Upload Assets screen
+            const taqeemReportId = report.report_id;
+            if (!taqeemReportId) {
+                setError("Report must have a Taqeem report_id to retry assets. Submit it first.");
+                return;
+            }
             const tabsNum = Math.max(1, Number(recommendedTabs) || 3);
-            submitToTaqeem(recordId, tabsNum);
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
+            try {
+                const ok = await ensureTaqeemAuthorized(token, onViewChange, taqeemStatus?.state === "success", 0, null, setTaqeemStatus);
+                if (!ok) {
+                    setError("Taqeem login required. Finish login and choose a company to continue.");
+                    return;
+                }
+                await ensureCompanySelected();
+                await window.electronAPI?.macroFillRetry?.(taqeemReportId, tabsNum, recordId, assetList);
+                setSuccess("Opened a new browser to retry incomplete assets.");
+                await loadReports();
+            } catch (err) {
+                setError(err?.message || "Failed to retry asset submission.");
+            } finally {
+                setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
+            }
         } else if (action === "delete") {
             handleDeleteReport(recordId);
         } else if (action === "edit") {
@@ -2356,6 +2465,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                             <table className="w-full text-xs text-slate-700">
                                                                                 <thead className="bg-slate-50 text-slate-800 border-b border-slate-200 sticky top-0">
                                                                                     <tr>
+                                                                                        <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Macro ID</th>
                                                                                         <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Asset name</th>
                                                                                         <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Final value</th>
                                                                                         <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Sheet</th>
@@ -2379,6 +2489,9 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
                                                                                             return (
                                                                                                 <tr key={`${recordId}-${assetIdx}`} className="border-t border-slate-200 hover:bg-slate-50/50">
+                                                                                                    <td className="px-2 py-1.5 text-slate-700 text-xs font-mono">
+                                                                                                        {asset.id || asset.macro_id || "-"}
+                                                                                                    </td>
                                                                                                     <td className="px-2 py-1.5 text-slate-700 text-xs font-medium">
                                                                                                         {asset.asset_name || "-"}
                                                                                                     </td>

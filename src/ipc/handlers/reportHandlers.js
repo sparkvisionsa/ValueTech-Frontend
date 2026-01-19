@@ -386,9 +386,9 @@ async handleValidateReport(event, reportId, userId = null) {
         }
     },
 
-    async handleMacroFillRetry(event, reportId, tabsNum) {
+    async handleMacroFillRetry(event, reportId, tabsNum, recordId = null, assetData = null) {
         try {
-            return await pythonAPI.report.macroFillRetry(reportId, tabsNum);
+            return await pythonAPI.report.macroFillRetry(reportId, tabsNum, recordId, assetData);
         } catch (err) {
             console.error('[MAIN] Macro fill retry error:', err && err.stack ? err.stack : err);
             return { status: 'FAILED', error: err.message || String(err) };

@@ -179,11 +179,13 @@ class ReportCommands {
         });
     }
 
-    async macroFillRetry(reportId, tabsNum) {
+    async macroFillRetry(reportId, tabsNum, recordId = null, assetData = null) {
         return this._sendCommand({
             action: 'run-macro-edit-retry',
             reportId,
-            tabsNum
+            tabsNum,
+            recordId,
+            assetData
         });
     }
 

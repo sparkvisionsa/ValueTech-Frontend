@@ -159,19 +159,21 @@ const Layout = ({ children, currentView, onViewChange }) => {
         updateBlocked,
         updateSystemState
     } = useSystemControl();
-    const { taqeemStatus, companyStatus } = useNavStatus();
+    const { taqeemStatus, setCompanyStatus } = useNavStatus();
     const {
         breadcrumbs,
         activeGroup,
         activeTab,
         selectedDomain,
         selectedCompany,
+        companies,
         chooseCard,
         chooseDomain,
         setSelectedCompany,
         setActiveGroup,
         setActiveTab,
-        resetAll
+        resetAll,
+        resetNavigation
     } = useValueNav();
 
     // Use RAM context
@@ -198,11 +200,48 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const modeLabel = t(`layout.modes.${mode}`, { defaultValue: mode });
     const [downtimeParts, setDowntimeParts] = useState(null);
     const [hideUpdateNotice, setHideUpdateNotice] = useState(false);
+    const [forceCompanyModal, setForceCompanyModal] = useState(false);
+    const [companyModalSelection, setCompanyModalSelection] = useState(selectedCompany?.url || '');
+    const [companyModalBusy, setCompanyModalBusy] = useState(false);
+    const uploadViewsRequiringCompany = useMemo(
+        () => new Set([
+            'submit-reports-quickly',
+            'upload-assets',
+            'multi-excel-upload',
+            'duplicate-report',
+            'upload-report-elrajhi'
+        ]),
+        []
+    );
 
     useEffect(() => {
         // Reset notice dismissal whenever a new update arrives
         setHideUpdateNotice(false);
     }, [latestUpdate]);
+
+    useEffect(() => {
+        if (selectedCompany?.url) {
+            setCompanyModalSelection(selectedCompany.url);
+        }
+    }, [selectedCompany]);
+
+    useEffect(() => {
+        const needsCompany = uploadViewsRequiringCompany.has(currentView);
+        const taqeemOn = taqeemStatus?.state === 'success';
+        const hasCompanies = companies && companies.length > 0;
+        if (needsCompany && taqeemOn && hasCompanies && !selectedCompany) {
+            setCompanyStatus('info', 'Select a company to complete uploading');
+            setForceCompanyModal(true);
+            return;
+        }
+        setForceCompanyModal(false);
+    }, [companies, currentView, selectedCompany, setCompanyStatus, taqeemStatus?.state, uploadViewsRequiringCompany]);
+
+    useEffect(() => {
+        if (forceCompanyModal && !selectedCompany) {
+            setCompanyModalSelection('');
+        }
+    }, [forceCompanyModal, selectedCompany]);
 
     useEffect(() => {
         // Start RAM polling when component mounts
@@ -315,25 +354,33 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const isMandatoryUpdate = latestUpdate?.rolloutType === 'mandatory';
     const shouldShowUpdateNotice = isAuthenticated && !isAdmin && latestUpdate && userUpdateState?.status !== 'applied' && !hideUpdateNotice;
 
-    const statusStyles = (state) => {
-        switch (state) {
-            case 'success':
-                return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200';
-            case 'error':
-                return 'border-rose-400/30 bg-rose-500/15 text-rose-200';
-            case 'info':
-                return 'border-sky-400/30 bg-sky-500/15 text-sky-200';
-            default:
-                return 'border-slate-600/40 bg-slate-900/50 text-slate-200';
+    const taqeemLoggedIn = taqeemStatus?.state === 'success';
+
+    const handleCompanyChange = async (value) => {
+        if (!value) {
+            await setSelectedCompany(null, { skipNavigation: true });
+            return;
+        }
+        const company = companies?.find((c) => c.url === value);
+        if (company) {
+            await setSelectedCompany(company);
         }
     };
 
-    const renderStatusPill = (label, status) => (
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${statusStyles(status?.state)}`}>
-            <span className="font-semibold">{label}:</span>
-            <span className="truncate">{status?.message}</span>
-        </div>
-    );
+    const handleCompanyModalSubmit = async () => {
+        if (!companyModalSelection) return;
+        const company = companies?.find((c) => c.url === companyModalSelection);
+        if (!company) return;
+        setCompanyModalBusy(true);
+        try {
+            await setSelectedCompany(company);
+            setForceCompanyModal(false);
+        } finally {
+            setCompanyModalBusy(false);
+        }
+    };
+
+    const showCompanyModal = forceCompanyModal && uploadViewsRequiringCompany.has(currentView);
 
     const updateNotice = shouldShowUpdateNotice ? (
         <div className="relative mb-2 overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/60 px-4 py-2.5 text-[10px] text-slate-200 shadow-[0_10px_24px_rgba(2,6,23,0.45)]">
@@ -414,6 +461,9 @@ const Layout = ({ children, currentView, onViewChange }) => {
     );
 
     const handleAuthNav = (view) => {
+        setActiveGroup(null);
+        setActiveTab(null);
+        resetNavigation();
         if (onViewChange) onViewChange(view);
     };
 
@@ -424,7 +474,15 @@ const Layout = ({ children, currentView, onViewChange }) => {
             </div>
             <div className="text-[10px] text-slate-100 font-medium">{user?.phone || t('layout.auth.userFallback')}</div>
             <button
-                onClick={logout}
+                onClick={() => {
+                    setActiveGroup(null);
+                    setActiveTab(null);
+                    resetAll();
+                    logout();
+                    if (onViewChange) {
+                        onViewChange('login');
+                    }
+                }}
                 className="text-[9px] font-semibold text-rose-300 hover:text-rose-200 underline decoration-dotted"
             >
                 {t('layout.auth.logout')}
@@ -539,7 +597,17 @@ const Layout = ({ children, currentView, onViewChange }) => {
             case 'domain':
                 chooseCard('uploading-reports');
                 chooseDomain(item.key);
-                onViewChange('apps');
+                if (item.key === 'equipments') {
+                    const uploadTabs = valueSystemGroups.uploadReports?.tabs || [];
+                    const firstUploadTab = uploadTabs?.[0]?.id || 'submit-reports-quickly';
+                    setActiveGroup('uploadReports');
+                    setActiveTab(firstUploadTab);
+                    onViewChange(firstUploadTab || 'apps');
+                } else if (item.key === 'real-estate') {
+                    onViewChange('coming-soon');
+                } else {
+                    onViewChange('apps');
+                }
                 break;
             case 'company':
                 chooseCard('uploading-reports');
@@ -659,6 +727,52 @@ const Layout = ({ children, currentView, onViewChange }) => {
 
     return (
         <div className="flex h-screen bg-transparent overflow-x-hidden max-w-full">
+            {showCompanyModal && (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl p-5 space-y-4">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <AlertTriangle className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-sm font-semibold text-slate-900">Select a company to continue</h3>
+                                <p className="text-[11px] text-slate-600">
+                                    Taqeem login is active. Choose one of your companies to continue uploading reports.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[11px] font-semibold text-slate-800">Companies</label>
+                            <select
+                                value={companyModalSelection}
+                                onChange={(e) => setCompanyModalSelection(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-cyan-500 focus:outline-none"
+                            >
+                                <option value="">{t('sidebar.company.selectToContinue', { defaultValue: 'Select a company' })}</option>
+                                {(companies || []).map((company) => (
+                                    <option key={company.url || company.name} value={company.url}>
+                                        {company.name || t('sidebar.company.fallback')}
+                                        {company.officeId ? ` (Office ${company.officeId})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleCompanyModalSubmit}
+                            disabled={!companyModalSelection || companyModalBusy}
+                            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${
+                                companyModalSelection && !companyModalBusy
+                                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                                    : 'bg-slate-400 cursor-not-allowed'
+                            }`}
+                        >
+                            {companyModalBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                            {companyModalBusy ? 'Applying...' : 'Select company & continue'}
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* Sidebar */}
             <Sidebar currentView={currentView} onViewChange={onViewChange} />
 
@@ -677,11 +791,11 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                     {headerTitle}
                                 </h1>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap justify-end">
-                                <LanguageToggle />
-                                <NotificationBell onViewChange={onViewChange} mode="unread" />
-                                <NotificationBell onViewChange={onViewChange} mode="all" />
-                                {userBadge}
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                            <LanguageToggle />
+                            <NotificationBell onViewChange={onViewChange} mode="unread" />
+                            <NotificationBell onViewChange={onViewChange} mode="all" />
+                            {userBadge}
                                 {statusBanner}
                                 <button
                                     type="button"
@@ -700,8 +814,55 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            {renderStatusPill(t('layout.status.taqeem'), taqeemStatus)}
-                            {renderStatusPill(t('layout.status.company'), companyStatus)}
+                            <div
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${
+                                    taqeemLoggedIn
+                                        ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100'
+                                        : 'border-rose-400/40 bg-rose-500/20 text-rose-100'
+                                }`}
+                            >
+                                <span>Taqeem login:</span>
+                                <span className="uppercase">{taqeemLoggedIn ? 'On' : 'Off'}</span>
+                            </div>
+
+                            <div
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${
+                                    selectedCompany
+                                        ? 'border-emerald-400/80 bg-emerald-500/15 text-emerald-100'
+                                        : 'border-rose-400/60 bg-rose-500/15 text-rose-100'
+                                }`}
+                            >
+                                <span className="font-semibold">Company:</span>
+                                <select
+                                    value={selectedCompany?.url || ''}
+                                    onChange={(e) => handleCompanyChange(e.target.value)}
+                                    className="bg-transparent text-[10px] font-semibold focus:outline-none border-none px-1 py-0.5 rounded"
+                                    style={{ color: selectedCompany ? '#22c55e' : '#ef4444' }} // lighter green when selected, lighter red otherwise
+                                >
+                                    <option
+                                        value=""
+                                        style={{ color: '#ef4444', fontWeight: 700 }}
+                                    >
+                                        {t('layout.status.companyDefault', { defaultValue: 'No company selected' })}
+                                    </option>
+                                    {(companies || []).map((company) => (
+                                        <option
+                                            key={company.url || company.name}
+                                            value={company.url}
+                                            style={{ color: '#22c55e', fontWeight: 600 }}
+                                        >
+                                            {company.name || t('sidebar.company.fallback')}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {taqeemLoggedIn && companies && companies.length > 0 && !selectedCompany && (
+                                <div className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
+                                    {t('sidebar.company.selectToContinue', { defaultValue: 'Select a company to complete uploading.' })}
+                                </div>
+                            )}
+
                             {(ramInfo || ramError) && (
                                 <div
                                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${ramError
