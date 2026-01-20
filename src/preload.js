@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-function safeInvoke(channel, payload) {
-    return ipcRenderer.invoke(channel, payload).catch((err) => {
+function safeInvoke(channel, ...args) {
+    return ipcRenderer.invoke(channel, ...args).catch((err) => {
         if (err && typeof err.message === 'string') {
             // Strip Electron IPC prefix
             err.message = err.message.replace(
