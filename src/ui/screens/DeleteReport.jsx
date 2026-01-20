@@ -870,66 +870,45 @@ const DeleteReport = () => {
 
 
 
-// const validateReportForDelete = async (id) => {
-//   try {
-//     if (userId) {
-//       const deletedRes = await window.electronAPI.getReportDeletions(userId, null, 1, 1, id);
-//       if (deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0) {
-//         return { id, proceed: false, autoDeleted: true, alreadyDeleted: true };
-//       }
-//     }
-
-//     const result = await window.electronAPI.validateReport(id, userId);
-//     const status = result?.status;
-//     const hasMacros = status === "MACROS_EXIST" || result?.hasMacros;
-//     if (hasMacros) {
-//       return { id, proceed: true, result };
-//     }
-//     if (status === "SUCCESS") {
-//       await window.electronAPI.handleCancelledReport(id);
-//       return { id, proceed: false, autoDeleted: true, result };
-//     }
-//     if (status === "NOT_FOUND") {
-//       return { id, proceed: false, autoDeleted: false, error: "Report not found", result };
-//     }
-//     return { id, proceed: false, autoDeleted: false, error: result?.error || "Validation failed", result };
-//   } catch (err) {
-//     return { id, proceed: false, autoDeleted: false, error: err?.message || String(err) };
-//   }
-// };
-
-
-
-  
-
 const validateReportForDelete = async (id) => {
-    try {
-      if (userId) {
-        const deletedRes = await window.electronAPI.getReportDeletions(userId, null, 1, 1, id);
-        if (deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0) {
-          return { id, proceed: false, alreadyDeleted: true };
-        }
-      }
-  
-      const result = await window.electronAPI.validateReport(id, userId);
-      const status = result?.status;
-  
-      if (status === "NOT_FOUND") {
-        return { id, proceed: false, error: "Report not found", result };
-      }
-  
-      // ✅ proceed on SUCCESS also
-      if (status === "SUCCESS" || status === "MACROS_EXIST" || result?.hasMacros) {
-        return { id, proceed: true, result };
-      }
-  
-      return { id, proceed: false, error: result?.error || "Validation failed", result };
-    } catch (err) {
-      return { id, proceed: false, error: err?.message || String(err) };
-    }
-  };
-  
+  try {
+    let alreadyDeleted = false;
 
+    if (userId) {
+      const deletedRes = await window.electronAPI.getReportDeletions(userId, null, 1, 1, id);
+      alreadyDeleted =
+        deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0;
+
+      // ✅ IMPORTANT: do NOT block deletion when alreadyDeleted
+      if (alreadyDeleted) {
+        return {
+          id,
+          proceed: true,              // ✅ allow deleteReport to run
+          alreadyDeleted: true,
+          result: { status: "ALREADY_DELETED_LOCAL" } // optional placeholder
+        };
+      }
+    }
+
+    const result = await window.electronAPI.validateReport(id, userId);
+    const status = result?.status;
+
+    if (status === "NOT_FOUND") {
+      // You can decide: still proceed or not.
+      // If you want deleteReport to attempt anyway, set proceed:true.
+      return { id, proceed: true, error: "Report not found", result };
+    }
+
+    if (status === "SUCCESS" || status === "MACROS_EXIST" || result?.hasMacros) {
+      return { id, proceed: true, result };
+    }
+
+    return { id, proceed: true, error: result?.error || "Validation failed", result }; // still proceed if you insist
+  } catch (err) {
+    // If you want "always run deleteReport", even on errors:
+    return { id, proceed: true, error: err?.message || String(err) };
+  }
+};
 
 
 const parseReportIds = (input) => {
@@ -1071,7 +1050,7 @@ const handleDeleteReport = async () => {
 
     let resultText = "";
     if (validation.alreadyDeleted) {
-      resultText = "Already Deleted";
+       resultText = "Already Deleted (will re-run delete)";
     } else if (status === "NOT_FOUND") {
       resultText = "Not Found";
     } else if (validation.proceed) {
