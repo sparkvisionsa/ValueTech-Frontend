@@ -12,7 +12,7 @@ const { valueSystemGroups } = navigation;
 const Sidebar = ({ currentView, onViewChange }) => {
     const { t } = useTranslation();
     const { isFeatureBlocked, isAdmin } = useSystemControl();
-    const { user, isAuthenticated } = useSession();
+    const { user, isAuthenticated, isGuest } = useSession();
     const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
     const {
         selectedCard,
@@ -153,8 +153,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     } catch (err) {
                         console.warn('Failed to sync companies after Taqeem login', err);
                     }
-                    await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: true });
-                    const defaultCompany = synced?.[0];
+                    await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: !isGuest });
+                    const defaultCompany = !isGuest ? synced?.[0] : null;
                     if (defaultCompany) {
                         setCompanyStatus('success', t('sidebar.company.companySelected', {
                             defaultValue: `Company: ${defaultCompany.name || t('sidebar.company.fallback')}`
@@ -255,19 +255,22 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     </div>
                 )}
                 {showPlaceholder && (
-                    <div className="space-y-2 bg-slate-900/60 border border-slate-800 rounded-md px-2 py-2">
+                    <div className="space-y-2 bg-gradient-to-br from-slate-950/70 via-slate-900/70 to-slate-900/50 border border-slate-800 rounded-md px-2.5 py-2 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
                         {showLoginPrompt && (
                             <>
+                                <div className="flex items-start gap-2 rounded-md border border-cyan-400/20 bg-cyan-950/40 px-2 py-1.5 text-[10px] text-cyan-100">
+                                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-cyan-200" />
+                                    <div className="text-[9px] font-semibold text-cyan-100">
+                                        {t('sidebar.company.loginPrompt', { defaultValue: 'Login to Taqeem to list your companies.' })}
+                                    </div>
+                                </div>
                                 <button
                                     type="button"
                                     onClick={handleTaqeemLogin}
-                                    className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 px-3 py-1.75 text-[10px] font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.35)] hover:from-emerald-500 hover:via-green-500 hover:to-emerald-600 transition-colors"
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 px-3 py-2 text-[10px] font-semibold text-white shadow-[0_12px_24px_rgba(16,185,129,0.35)] hover:from-emerald-400 hover:via-green-400 hover:to-emerald-500 transition-colors"
                                 >
-                                    {t('sidebar.company.loginButton', { defaultValue: 'Login to Taqeem' })}
+                                    {t('sidebar.company.loginButton', { defaultValue: 'Login to Taqeem to get companies' })}
                                 </button>
-                                <div className="text-[10px] text-emerald-100 text-center">
-                                    {t('sidebar.company.loginPrompt', { defaultValue: 'Login to Taqeem to select a company.' })}
-                                </div>
                             </>
                         )}
                         {!showLoginPrompt && (

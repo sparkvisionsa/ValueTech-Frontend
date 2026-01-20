@@ -102,7 +102,7 @@
             "loading": "Loading companies...",
             "empty": "No companies found.",
             "loginPrompt": "Login to Taqeem to list your companies",
-            "loginButton": "Login to Taqeem",
+            "loginButton": "get your companies",
             "loginStarting": "Opening Taqeem login...",
             "loginUnavailable": "Login handler unavailable.",
             "loginFailed": "Taqeem login failed.",

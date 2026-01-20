@@ -4,10 +4,12 @@ import { useSession } from '../context/SessionContext';
 import { useNavStatus } from '../context/NavStatusContext';
 import { useValueNav } from '../context/ValueNavContext';
 import { ensureTaqeemAuthorized } from '../../shared/helper/taqeemAuthWrap';
+import { useSystemControl } from '../context/SystemControlContext';
 
 export const useAuthAction = () => {
-    const { token, login } = useSession();
+    const { token, login, isGuest } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+    const { systemState } = useSystemControl();
     const { selectedCompany } = useValueNav();
     const [authLoading, setAuthLoading] = useState(false);
     const [authError, setAuthError] = useState(null);
@@ -37,13 +39,18 @@ export const useAuthAction = () => {
 
             // Check authentication
             const isTaqeemLoggedIn = taqeemStatus?.state === "success";
+            const guestSession = isGuest || !token;
             const authStatus = await ensureTaqeemAuthorized(
                 token,
                 onViewChange, // onViewChange - can be passed via options if needed
                 isTaqeemLoggedIn,
                 requiredPoints,
                 login,
-                setTaqeemStatus
+                setTaqeemStatus,
+                {
+                    isGuest: guestSession,
+                    guestAccessEnabled: systemState?.guestAccessEnabled ?? true
+                }
             );
 
             console.log("[useAuthAction] authStatus:", authStatus);
@@ -92,7 +99,7 @@ export const useAuthAction = () => {
         } finally {
             setAuthLoading(false);
         }
-    }, [token, login, taqeemStatus, setTaqeemStatus]);
+    }, [token, login, taqeemStatus, setTaqeemStatus, isGuest, systemState?.guestAccessEnabled]);
 
     return {
         executeWithAuth,

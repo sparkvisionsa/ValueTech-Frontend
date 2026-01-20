@@ -18,7 +18,10 @@ export const useSystemControl = () => {
 const DEFAULT_STATE = {
     systemName: 'Electron System',
     mode: 'active',
-    allowedModules: []
+    allowedModules: [],
+    guestAccessEnabled: true,
+    guestAccessLimit: 1,
+    ramTabsPerGb: 5
 };
 
 const DEMO_MODULES = ['apps', 'taqeem-login', 'profile', 'asset-create', 'packages', 'get-companies'];
@@ -112,6 +115,16 @@ export const SystemControlProvider = ({ children }) => {
         fetchSystemState();
         fetchUpdateNotice();
     }, [fetchSystemState, fetchUpdateNotice]);
+
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            fetchSystemState();
+            if (token) {
+                fetchUpdateNotice();
+            }
+        }, 5000);
+        return () => clearInterval(intervalId);
+    }, [fetchSystemState, fetchUpdateNotice, token]);
 
     const updateSystemState = useCallback(async (payload) => {
         if (!token) {

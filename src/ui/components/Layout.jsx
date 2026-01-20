@@ -142,7 +142,7 @@ const HeroArt = ({ label, theme, Icon }) => {
 };
 
 const Layout = ({ children, currentView, onViewChange }) => {
-    const { isAuthenticated, user, logout } = useSession();
+    const { isAuthenticated, user, logout, isGuest } = useSession();
     const { t, i18n } = useTranslation();
     const {
         systemState,
@@ -229,13 +229,14 @@ const Layout = ({ children, currentView, onViewChange }) => {
         const needsCompany = uploadViewsRequiringCompany.has(currentView);
         const taqeemOn = taqeemStatus?.state === 'success';
         const hasCompanies = companies && companies.length > 0;
-        if (needsCompany && taqeemOn && hasCompanies && !selectedCompany) {
+        const shouldPrompt = needsCompany && hasCompanies && !selectedCompany && (taqeemOn || isGuest);
+        if (shouldPrompt) {
             setCompanyStatus('info', 'Select a company to complete uploading');
             setForceCompanyModal(true);
             return;
         }
         setForceCompanyModal(false);
-    }, [companies, currentView, selectedCompany, setCompanyStatus, taqeemStatus?.state, uploadViewsRequiringCompany]);
+    }, [companies, currentView, isGuest, selectedCompany, setCompanyStatus, taqeemStatus?.state, uploadViewsRequiringCompany]);
 
     useEffect(() => {
         if (forceCompanyModal && !selectedCompany) {
@@ -467,7 +468,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
         if (onViewChange) onViewChange(view);
     };
 
-    const userBadge = isAuthenticated ? (
+    const userBadge = isAuthenticated && !isGuest ? (
         <div className="flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1 text-[10px] shadow-[0_8px_20px_rgba(2,6,23,0.45)]">
             <div className="h-6 w-6 rounded-full bg-slate-800 text-cyan-200 border border-slate-700 flex items-center justify-center text-[10px] font-semibold">
                 {(user?.phone || '').charAt(0) || '?'}
@@ -490,6 +491,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
         </div>
     ) : (
         <div className="flex items-center gap-2 text-[10px]">
+            <div className="flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1 text-[10px] text-slate-100 shadow-[0_8px_20px_rgba(2,6,23,0.45)]">
+                <div className="h-6 w-6 rounded-full bg-slate-800 text-cyan-200 border border-slate-700 flex items-center justify-center text-[10px] font-semibold">
+                    G
+                </div>
+                <div className="text-[10px] font-medium text-slate-100">Guest</div>
+            </div>
             <button
                 onClick={() => handleAuthNav('registration')}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-[10px] font-semibold text-slate-200 hover:border-slate-600 hover:text-white"

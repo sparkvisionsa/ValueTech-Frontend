@@ -14,6 +14,7 @@ export const SessionProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isGuest, setIsGuest] = useState(false);
 
     // Initialize session from localStorage on mount
     useEffect(() => {
@@ -21,7 +22,14 @@ export const SessionProvider = ({ children }) => {
         const savedToken = localStorage.getItem('token');
         if (savedUser) {
             try {
-                setUser(JSON.parse(savedUser));
+                const parsed = JSON.parse(savedUser);
+                if (typeof parsed === 'string') {
+                    setUser({ id: parsed, guest: true });
+                    setIsGuest(true);
+                } else {
+                    setUser(parsed);
+                    setIsGuest(Boolean(parsed?.guest));
+                }
             } catch (e) {
                 console.error('Failed to parse saved user:', e);
                 localStorage.removeItem('user');
@@ -34,8 +42,17 @@ export const SessionProvider = ({ children }) => {
     }, []);
 
     const login = (userData, accessToken) => {
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
+        let normalizedUser = userData;
+        let guestFlag = false;
+        if (typeof userData === 'string') {
+            normalizedUser = { id: userData, guest: true };
+            guestFlag = true;
+        } else if (userData?.guest) {
+            guestFlag = true;
+        }
+        setUser(normalizedUser);
+        setIsGuest(guestFlag);
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
         if (accessToken) {
             setToken(accessToken);
             localStorage.setItem('token', accessToken);
@@ -48,12 +65,14 @@ export const SessionProvider = ({ children }) => {
     const logout = () => {
         setUser(null);
         setToken(null);
+        setIsGuest(false);
         localStorage.removeItem('user');
         localStorage.removeItem('token');
     };
 
     const updateUser = (userData) => {
         setUser(userData);
+        setIsGuest(Boolean(userData?.guest));
         localStorage.setItem('user', JSON.stringify(userData));
     };
 
@@ -66,7 +85,8 @@ export const SessionProvider = ({ children }) => {
                 login,
                 logout,
                 updateUser,
-                isAuthenticated: !!user
+                isAuthenticated: !!user,
+                isGuest
             }}
         >
             {children}

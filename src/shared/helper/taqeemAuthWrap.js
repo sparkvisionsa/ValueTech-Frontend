@@ -15,7 +15,34 @@ async function runPublicLogin(isAuth) {
 }
 
 
-async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, assetCount = 0, login = null, setTaqeemStatus = null) {
+async function ensureTaqeemAuthorized(
+    token,
+    onViewChange,
+    isTaqeemLoggedIn,
+    assetCount = 0,
+    login = null,
+    setTaqeemStatus = null,
+    options = {}
+) {
+    const {
+        allowLoginRedirect = true,
+        isGuest = false,
+        guestAccessEnabled
+    } = options || {};
+    const suppressSystemRedirect = isGuest && guestAccessEnabled !== undefined;
+    const canRedirect = allowLoginRedirect && typeof onViewChange === 'function' && !suppressSystemRedirect;
+
+    const redirectToSystemLogin = () => {
+        if (canRedirect) {
+            onViewChange('login');
+        }
+    };
+
+    const redirectToRegistration = () => {
+        if (canRedirect) {
+            onViewChange('registration');
+        }
+    };
     try {
         // Check browser status first to see if we're actually logged in
         const browserStatus = await window.electronAPI.checkStatus();
@@ -47,13 +74,13 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
 
                 if (res?.status === "BOOTSTRAP_GRANTED") {
                     setTaqeemStatus?.("success", "Taqeem login: On");
-                    login(res.userId, res.token);
+                    login({ id: res.userId, guest: true }, res.token);
                     return { success: true, token: res.token };
                 }
 
                 if (res?.status === "LOGIN_REQUIRED") {
                     setTaqeemStatus?.("info", "Taqeem login: Off");
-                    onViewChange?.("login");
+                    redirectToSystemLogin();
                     return res;
                 }
             }
@@ -91,7 +118,7 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
 
         if (res?.status === "LOGIN_REQUIRED" || res?.data?.status === "LOGIN_REQUIRED") {
             setTaqeemStatus?.("info", "Taqeem login: Off");
-            onViewChange?.("login");
+            redirectToSystemLogin();
             return res;
         }
 
@@ -103,7 +130,7 @@ async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, ass
 
         if (err.message.includes("403")) {
             setTaqeemStatus?.("info", "Taqeem login: Off");
-            onViewChange?.("registration");
+            redirectToRegistration();
             return false;
         }
 

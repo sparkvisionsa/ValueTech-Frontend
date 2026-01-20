@@ -144,7 +144,7 @@ const TaqeemAuth = ({ onViewChange }) => {
                     type: "info",
                 });
 
-                login(bootstrapResponse.userId, bootstrapResponse.token);
+                login({ id: bootstrapResponse.userId, guest: true }, bootstrapResponse.token);
 
                 await runTaqeemLoginFlow();
                 return;
@@ -284,7 +284,11 @@ const TaqeemAuth = ({ onViewChange }) => {
             if (!window.electronAPI?.openTaqeemLogin) {
                 throw new Error('Cannot open external browser from this environment');
             }
-            const result = await window.electronAPI.openTaqeemLogin({ batchId: secondaryBatchId.trim() });
+            const result = await window.electronAPI.openTaqeemLogin({
+                batchId: secondaryBatchId.trim(),
+                preferChrome: false,
+                waitForLogin: true
+            });
             setSecondaryStatus({
                 text: [
                     result?.message || 'Opened Taqeem login in a separate browser window.',

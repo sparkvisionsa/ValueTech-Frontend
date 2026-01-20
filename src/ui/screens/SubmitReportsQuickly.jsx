@@ -3,6 +3,7 @@ import { useNavStatus } from "../context/NavStatusContext";
 import { useRam } from "../context/RAMContext";
 import usePersistentState from "../hooks/usePersistentState";
 import { useSession } from "../context/SessionContext";
+import { useSystemControl } from "../context/SystemControlContext";
 import { useAuthAction } from "../hooks/useAuthAction";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
@@ -227,22 +228,31 @@ const validateMarketSheet = (rows = []) => {
 const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB in bytes
 
 const SubmitReportsQuickly = ({ onViewChange }) => {
-    const { token, login } = useSession();
+    const { token, login, user, isGuest } = useSession();
+    const { systemState } = useSystemControl();
     const { executeWithAuth } = useAuthAction();
     const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
     const {
         companies,
         selectedCompany,
+        preferredCompany,
         replaceCompanies,
         ensureCompaniesLoaded,
         setSelectedCompany
     } = useValueNav();
     const { ramInfo } = useRam();
     const recommendedTabs = ramInfo?.recommendedTabs || 3;
+    const guestAccessEnabled = systemState?.guestAccessEnabled ?? true;
+    const guestSession = isGuest || !token;
+    const authOptions = useMemo(
+        () => ({ isGuest: guestSession, guestAccessEnabled }),
+        [guestSession, guestAccessEnabled]
+    );
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [storeAndSubmitLoading, setStoreAndSubmitLoading] = useState(false);
+    const [storeOnlyLoading, setStoreOnlyLoading] = useState(false);
     const [error, setError] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
     const [success, setSuccess] = useState("");
@@ -288,6 +298,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const pdfInputRef = useRef(null);
     const reportCreationWaitersRef = useRef(new Map());
     const reportCreatedCacheRef = useRef(new Map());
+    const pendingCompanySelectionRef = useRef(null);
     const isTaqeemLoggedIn = taqeemStatus?.state === "success";
 
     const handleExcelChange = (e) => {
@@ -315,7 +326,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     const handleStoreAndSubmit = async () => {
         try {
-            setLoading(true);
+            setStoreAndSubmitLoading(true);
             resetMessages();
 
             if (excelFiles.length === 0) {
@@ -337,7 +348,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 isTaqeemLoggedIn,
                 excelFiles.length || 0,
                 login,
-                setTaqeemStatus
+                setTaqeemStatus,
+                authOptions
             );
 
             if (authStatus?.status === "INSUFFICIENT_POINTS") {
@@ -427,7 +439,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setError(apiError);
             }
         } finally {
-            setLoading(false);
+            setStoreAndSubmitLoading(false);
             setSubmitting(false);
         }
     };
@@ -476,6 +488,19 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     const loadReports = useCallback(async () => {
         try {
+            if (!token) {
+                setReports([]);
+                setReportsPagination({
+                    page: 1,
+                    limit: itemsPerPage,
+                    total: 0,
+                    totalPages: 1,
+                    hasNextPage: false,
+                    hasPrevPage: false,
+                });
+                setError("");
+                return [];
+            }
             setReportsLoading(true);
 
             // Build query parameters for backend pagination
@@ -514,7 +539,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         } finally {
             setReportsLoading(false);
         }
-    }, [token, currentPage, itemsPerPage, setReports]);
+    }, [token, currentPage, itemsPerPage, setReports, setReportsPagination, setError]);
 
     const clearReportCreatedCache = useCallback((recordId) => {
         reportCreatedCacheRef.current.delete(recordId);
@@ -565,10 +590,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     // Load reports when page, filter, or page size changes
     useEffect(() => {
-        if (!reportsLoading) {
-            loadReports();
-        }
-    }, [currentPage, itemsPerPage]);
+        loadReports();
+    }, [currentPage, itemsPerPage, token, loadReports]);
 
     useEffect(() => {
         return () => {
@@ -578,6 +601,53 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             reportCreationWaitersRef.current.clear();
         };
     }, []);
+
+    useEffect(() => {
+        if (selectedCompany && pendingCompanySelectionRef.current?.resolve) {
+            pendingCompanySelectionRef.current.resolve(selectedCompany);
+            pendingCompanySelectionRef.current = null;
+        }
+    }, [selectedCompany]);
+
+    useEffect(() => {
+        return () => {
+            if (pendingCompanySelectionRef.current?.timeoutId) {
+                clearTimeout(pendingCompanySelectionRef.current.timeoutId);
+            }
+            pendingCompanySelectionRef.current = null;
+        };
+    }, []);
+
+    const waitForCompanySelection = useCallback(
+        (timeoutMs = 120000) => {
+            if (selectedCompany) return Promise.resolve(selectedCompany);
+            if (pendingCompanySelectionRef.current?.promise) {
+                return pendingCompanySelectionRef.current.promise;
+            }
+
+            let resolveFn;
+            let timeoutId;
+            const promise = new Promise((resolve, reject) => {
+                resolveFn = resolve;
+                timeoutId = setTimeout(() => {
+                    pendingCompanySelectionRef.current = null;
+                    reject(new Error("Company selection timed out."));
+                }, timeoutMs);
+            });
+
+            pendingCompanySelectionRef.current = {
+                promise,
+                timeoutId,
+                resolve: (company) => {
+                    clearTimeout(timeoutId);
+                    resolveFn(company);
+                }
+            };
+
+            return promise;
+        },
+        [selectedCompany]
+    );
 
     // Set up real-time progress listener via IPC
     useEffect(() => {
@@ -901,7 +971,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     const handleUpload = async () => {
         try {
-            setLoading(true);
+            setStoreOnlyLoading(true);
             resetMessages();
 
             if (excelFiles.length === 0) {
@@ -1172,20 +1242,33 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             throw new Error("No companies available. Login to Taqeem and try again.");
         }
 
-        const menu = list
-            .map((c, idx) => `${idx + 1}. ${c.name || c.url || c.officeId || "Company"}`)
-            .join("\n");
-        const input = window.prompt(`Select a company to submit under:\n${menu}`, "1");
-        if (input === null) {
-            throw new Error("Company selection cancelled.");
+        if (preferredCompany) {
+            const chosen = await setSelectedCompany(preferredCompany, { skipNavigation: false, quiet: true });
+            setCompanyStatus?.("success", `Company: ${chosen?.name || "Selected"}`);
+            return chosen;
         }
-        const choice = Number.parseInt(input, 10);
-        const idx = Number.isFinite(choice) ? Math.min(Math.max(choice - 1, 0), list.length - 1) : 0;
-        const chosen = list[idx];
-        await setSelectedCompany(chosen, { skipNavigation: false, quiet: true });
-        setCompanyStatus?.("success", `Company: ${chosen.name || "Selected"}`);
-        return chosen;
-    }, [companies, ensureCompaniesLoaded, replaceCompanies, selectedCompany, setCompanyStatus, setSelectedCompany]);
+
+        if (list.length === 1) {
+            const chosen = list[0];
+            await setSelectedCompany(chosen, { skipNavigation: false, quiet: true });
+            setCompanyStatus?.("success", `Company: ${chosen.name || "Selected"}`);
+            return chosen;
+        }
+
+        setCompanyStatus?.("info", "Select a company to continue.");
+        setSuccess("Select a company to continue.");
+        return waitForCompanySelection();
+    }, [
+        companies,
+        ensureCompaniesLoaded,
+        preferredCompany,
+        replaceCompanies,
+        selectedCompany,
+        setCompanyStatus,
+        setSelectedCompany,
+        setSuccess,
+        waitForCompanySelection
+    ]);
 
     const submitToTaqeem = useCallback(
         async (recordId, tabsNum, options = {}) => {
@@ -1214,7 +1297,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
             try {
                 if (!skipAuth) {
-                    const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, 0, null, setTaqeemStatus);
+                    const ok = await ensureTaqeemAuthorized(
+                        token,
+                        onViewChange,
+                        isTaqeemLoggedIn,
+                        0,
+                        null,
+                        setTaqeemStatus,
+                        authOptions
+                    );
                     if (!ok) {
                         setError("Taqeem login required. Finish login and choose a company to continue.");
                         return;
@@ -1251,23 +1342,71 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
             }
         },
-        [ensureCompanySelected, isTaqeemLoggedIn, loadReports, onViewChange, token, recommendedTabs, setTaqeemStatus, taqeemStatus?.state]
+        [
+            authOptions,
+            ensureCompanySelected,
+            isTaqeemLoggedIn,
+            loadReports,
+            onViewChange,
+            token,
+            recommendedTabs,
+            setTaqeemStatus,
+            taqeemStatus?.state
+        ]
     );
 
-    const handleDeleteReport = async (recordId) => {
-        if (!recordId) return;
-        if (!window.confirm("Are you sure you want to delete this report?")) return;
+    const userId = useMemo(
+        () => user?._id || user?.id || user?.userId || user?.user?._id || null,
+        [user]
+    );
+
+    const getReportByRecordId = useCallback(
+        (recordId) => reports.find((report) => getReportRecordId(report) === recordId),
+        [reports]
+    );
+
+    const handleDeleteReport = async (reportOrId, options = {}) => {
+        const { confirm = true } = options;
+        const report = typeof reportOrId === "string"
+            ? getReportByRecordId(reportOrId)
+            : reportOrId;
+        const recordId = getReportRecordId(report);
+        const taqeemReportId = report?.report_id;
+
+        if (!report || !recordId) {
+            setError("Report not found.");
+            return;
+        }
+
+        if (!taqeemReportId) {
+            setError("Report must be submitted to Taqeem first (must have a report_id).");
+            return;
+        }
+
+        if (confirm && !window.confirm("Are you sure you want to delete this report?")) return;
 
         setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
         try {
-            const result = await deleteSubmitReportsQuickly(recordId);
-            if (result?.success) {
-                setSuccess("Report deleted successfully.");
-                await loadReports();
-            } else {
-                setError(result?.message || "Failed to delete report.");
+            if (!window?.electronAPI?.deleteReport) {
+                throw new Error("Desktop integration unavailable. Restart the app.");
             }
+
+            setSuccess(`Deleting report ${taqeemReportId}...`);
+            const result = await window.electronAPI.deleteReport(taqeemReportId, 10, userId);
+            const status = result?.status;
+
+            if (status !== "SUCCESS") {
+                throw new Error(result?.message || result?.error || "Failed to delete report.");
+            }
+
+            const deleteResult = await deleteSubmitReportsQuickly(recordId);
+            if (!deleteResult?.success) {
+                throw new Error(deleteResult?.message || "Report deleted in Taqeem, but failed to remove it locally.");
+            }
+
+            setSuccess(result?.message || "Report deleted successfully.");
+            await loadReports();
         } catch (err) {
             setError(err?.message || "Failed to delete report.");
         } finally {
@@ -1321,8 +1460,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
         if (bulkAction === "delete") {
             if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} report(s)?`)) return;
-            for (const id of selectedIds) {
-                await handleDeleteReport(id);
+            const selectedReports = selectedIds
+                .map((id) => getReportByRecordId(id))
+                .filter(Boolean);
+
+            for (const report of selectedReports) {
+                await handleDeleteReport(report, { confirm: false });
             }
             setSelectedReportIds([]);
             setBulkAction("");
@@ -1331,7 +1474,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
         if (bulkAction === "upload-submit" || bulkAction === "retry-submit") {
             // Ensure login and company selection before any submission/retry
-            const ok = await ensureTaqeemAuthorized(token, onViewChange, taqeemStatus?.state === "success", 0, null, setTaqeemStatus);
+            const ok = await ensureTaqeemAuthorized(
+                token,
+                onViewChange,
+                taqeemStatus?.state === "success",
+                0,
+                null,
+                setTaqeemStatus,
+                authOptions
+            );
             if (!ok) {
                 setError("Taqeem login required. Finish login and choose a company to continue.");
                 return;
@@ -1543,7 +1694,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             const tabsNum = resolveTabsForAssets(assetCount);
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
             try {
-                const ok = await ensureTaqeemAuthorized(token, onViewChange, taqeemStatus?.state === "success", 0, null, setTaqeemStatus);
+                const ok = await ensureTaqeemAuthorized(
+                    token,
+                    onViewChange,
+                    taqeemStatus?.state === "success",
+                    0,
+                    null,
+                    setTaqeemStatus,
+                    authOptions
+                );
                 if (!ok) {
                     setError("Taqeem login required. Finish login and choose a company to continue.");
                     return;
@@ -1562,7 +1721,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setReportActionBusy((prev) => ({ ...prev, [recordId]: false }));
             }
         } else if (action === "delete") {
-            handleDeleteReport(recordId);
+            handleDeleteReport(report);
         } else if (action === "edit") {
             handleEditReport(report);
         } else if (action === "send-approver") {
@@ -1826,7 +1985,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     <button
                         type="button"
                         onClick={handleStoreAndSubmit}
-                        disabled={loading || !isReadyToUpload}
+                        disabled={storeAndSubmitLoading || !isReadyToUpload}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-md
                                 bg-green-600 hover:bg-green-700
                                 text-white text-xs font-semibold
@@ -1834,17 +1993,17 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
                                 transition-all"
                     >
-                        {loading || submitting ? (
+                        {storeAndSubmitLoading || submitting ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                             <Send className="w-4 h-4" />
                         )}
-                        {loading ? "Uploading..." : submitting ? "Submitting..." : "Store and Submit Now"}
+                        {storeAndSubmitLoading ? "Uploading..." : submitting ? "Submitting..." : "Store and Submit Now"}
                     </button>
                     <button
                         type="button"
                         onClick={handleUpload}
-                        disabled={loading || !isReadyToUpload}
+                        disabled={storeOnlyLoading || !isReadyToUpload}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-md
                                 bg-blue-600 hover:bg-blue-700
                                 text-white text-xs font-semibold
@@ -1852,12 +2011,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
                                 transition-all"
                     >
-                        {loading ? (
+                        {storeOnlyLoading ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                             <FileIcon className="w-4 h-4" />
                         )}
-                        {loading ? "Uploading..." : "Store and Submit Later"}
+                        {storeOnlyLoading ? "Uploading..." : "Store and Submit Later"}
                     </button>
 
                 </div>

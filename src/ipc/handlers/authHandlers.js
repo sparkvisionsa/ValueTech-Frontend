@@ -75,6 +75,21 @@ async function confirmReportsBatch(win, reportIds = []) {
     return summary;
 }
 
+async function waitForSecondaryLogin(win, timeoutMs = 180000, intervalMs = 1500) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        if (!win || win.isDestroyed()) {
+            throw new Error('Secondary login window closed.');
+        }
+        const currentUrl = String(win.webContents.getURL() || '').toLowerCase();
+        if (currentUrl.startsWith('https://qima.taqeem.sa/')) {
+            return true;
+        }
+        await delay(intervalMs);
+    }
+    throw new Error('Timed out waiting for Taqeem login.');
+}
+
 const authHandlers = {
     async handleLogin(event, credentials) {
         try {
@@ -304,6 +319,8 @@ const authHandlers = {
         const openIfClosed = opts.onlyIfClosed !== false;
         const navigateIfOpen = !!opts.navigateIfOpen;
         const forceNewAutomation = !!opts.forceNewAutomation;
+        const waitForLogin = opts.waitForLogin === true;
+        const loginTimeoutMs = Number(opts.loginTimeoutMs) || 180000;
 
         let reportIds = [];
         if (batchId) {
@@ -403,6 +420,9 @@ const authHandlers = {
 
             let batchSummary = null;
             if (reportIds.length > 0) {
+                if (waitForLogin) {
+                    await waitForSecondaryLogin(secondaryLoginWindow, loginTimeoutMs);
+                }
                 batchSummary = await confirmReportsBatch(secondaryLoginWindow, reportIds);
             }
 

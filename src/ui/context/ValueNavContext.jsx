@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import navigation from '../constants/navigation';
 import { useSession } from './SessionContext';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,7 @@ const getCompanyKey = (company) => {
 };
 
 export const ValueNavProvider = ({ children }) => {
-    const { user, token } = useSession();
+    const { user, token, isGuest } = useSession();
     const { t } = useTranslation();
     const { taqeemStatus, setCompanyStatus, setTaqeemStatus } = useNavStatus();
     const [selectedCard, setSelectedCard] = useState(null);
@@ -61,6 +61,7 @@ export const ValueNavProvider = ({ children }) => {
         storage: 'local'
     });
     const [companies, setCompanies] = useState([]);
+    const companiesRef = useRef(companies);
     const [loadingCompanies, setLoadingCompanies] = useState(false);
     const [companyError, setCompanyError] = useState('');
     const [activeGroup, setActiveGroup] = useState(null);
@@ -68,6 +69,10 @@ export const ValueNavProvider = ({ children }) => {
     const [companySyncDone, setCompanySyncDone] = useState(false);
     const [autoLoadedCompanies, setAutoLoadedCompanies] = useState(false);
     const [initialDefaultApplied, setInitialDefaultApplied] = useState(false);
+
+    useEffect(() => {
+        companiesRef.current = companies;
+    }, [companies]);
 
     const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
     const preferredCompanyMatches = useCallback((company) => {
@@ -159,6 +164,10 @@ export const ValueNavProvider = ({ children }) => {
             setCompanyError('');
             return [];
         }
+        if (!user.phone) {
+            setCompanyError('');
+            return companiesRef.current || [];
+        }
 
         setLoadingCompanies(true);
         setCompanyError('');
@@ -182,6 +191,9 @@ export const ValueNavProvider = ({ children }) => {
         }
         if (!user) {
             throw new Error(t('navigation.loginRequiredToSaveCompanies'));
+        }
+        if (!user.phone) {
+            return items;
         }
 
         const payload = {
@@ -337,7 +349,7 @@ export const ValueNavProvider = ({ children }) => {
         const normalized = Array.isArray(list) ? list.map(normalizeCompany) : [];
         setCompanies(normalized);
         setCompanyError('');
-        const autoSelect = options.autoSelect !== false;
+        const autoSelect = options.autoSelect !== false && !isGuest;
         if (autoSelect && normalized.length > 0) {
             await setPreferredCompany(normalized[0], {
                 applySelection: true,
@@ -346,7 +358,7 @@ export const ValueNavProvider = ({ children }) => {
             });
         }
         return normalized;
-    }, [setPreferredCompany]);
+    }, [isGuest, setPreferredCompany]);
 
     useEffect(() => {
         if (taqeemStatus?.state !== 'success') {
@@ -365,6 +377,7 @@ export const ValueNavProvider = ({ children }) => {
     }, [companies, loadSavedCompanies]);
 
     const autoSelectDefaultCompany = useCallback(async (options = {}) => {
+        if (isGuest) return null;
         const { type = 'equipment', skipNavigation = true, quiet = false, companiesList = null } = options;
         const availableCompanies = companiesList && companiesList.length > 0
             ? companiesList
@@ -374,17 +387,22 @@ export const ValueNavProvider = ({ children }) => {
         const candidate = preferredCompany || availableCompanies?.[0];
         if (!candidate) return null;
         return setPreferredCompany(candidate, { applySelection: true, skipNavigation, quiet });
-    }, [companies, ensureCompaniesLoaded, preferredCompany, setPreferredCompany]);
+    }, [companies, ensureCompaniesLoaded, isGuest, preferredCompany, setPreferredCompany]);
 
     useEffect(() => {
         if (selectedDomain !== 'equipments') return;
         if (!companies || companies.length === 0) return;
         if (selectedCompany) return;
+        if (isGuest) return;
         autoSelectDefaultCompany({ skipNavigation: true }).catch(() => {});
-    }, [autoSelectDefaultCompany, companies, selectedCompany, selectedDomain]);
+    }, [autoSelectDefaultCompany, companies, isGuest, selectedCompany, selectedDomain]);
 
     useEffect(() => {
         if (!user) {
+            setInitialDefaultApplied(false);
+            return;
+        }
+        if (isGuest) {
             setInitialDefaultApplied(false);
             return;
         }
@@ -397,7 +415,7 @@ export const ValueNavProvider = ({ children }) => {
         autoSelectDefaultCompany({ skipNavigation: true, quiet: true }).finally(() => {
             setInitialDefaultApplied(true);
         });
-    }, [autoSelectDefaultCompany, companies, initialDefaultApplied, selectedCompany, user]);
+    }, [autoSelectDefaultCompany, companies, initialDefaultApplied, isGuest, selectedCompany, user]);
 
     const syncNavForView = useCallback((viewId) => {
         const info = findTabInfo(viewId);

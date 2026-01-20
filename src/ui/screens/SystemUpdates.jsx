@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
-import { AlertTriangle, Download, RefreshCcw, Send, ShieldCheck, Bell } from 'lucide-react';
+import { AlertTriangle, Download, RefreshCcw, Send, ShieldCheck, Bell, Settings } from 'lucide-react';
 
 const typeLabels = {
     feature: 'Feature Addition',
@@ -21,8 +21,20 @@ const humanDate = (value) => (value ? new Date(value).toLocaleString() : 'Not sc
 
 const SystemUpdates = () => {
     const { user, token, isAuthenticated } = useSession();
-    const { latestUpdate, userUpdateState, fetchUpdateNotice, markDownloaded, applyUpdate } = useSystemControl();
+    const {
+        systemState,
+        updateSystemState,
+        fetchSystemState,
+        latestUpdate,
+        userUpdateState,
+        fetchUpdateNotice,
+        markDownloaded,
+        applyUpdate
+    } = useSystemControl();
     const isAdmin = user?.phone === '011111';
+    const guestAccessEnabled = systemState?.guestAccessEnabled !== false;
+    const guestAccessLimit = Number(systemState?.guestAccessLimit);
+    const guestAccessCap = Number.isFinite(guestAccessLimit) && guestAccessLimit > 0 ? guestAccessLimit : 1;
 
     const [form, setForm] = useState({
         version: '',
@@ -43,6 +55,10 @@ const SystemUpdates = () => {
     const [dismissed, setDismissed] = useState(false);
     const [loading, setLoading] = useState(false);
     const [listLoading, setListLoading] = useState(false);
+    const [guestAccess, setGuestAccess] = useState({ enabled: true, limit: 1 });
+    const [guestSaving, setGuestSaving] = useState(false);
+    const [ramTabsPerGb, setRamTabsPerGb] = useState(5);
+    const [ramTabsSaving, setRamTabsSaving] = useState(false);
 
     const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -67,6 +83,16 @@ const SystemUpdates = () => {
         setDismissed(false);
         setShowCard(true);
     }, [latestUpdate]);
+
+    useEffect(() => {
+        if (!systemState) return;
+        const enabled = systemState.guestAccessEnabled !== false;
+        const limitValue = Number(systemState.guestAccessLimit);
+        const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 1;
+        setGuestAccess({ enabled, limit });
+        const tabsValue = Number(systemState.ramTabsPerGb);
+        setRamTabsPerGb(Number.isFinite(tabsValue) && tabsValue > 0 ? tabsValue : 5);
+    }, [systemState]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -93,6 +119,55 @@ const SystemUpdates = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleGuestAccessSave = async () => {
+        setGuestSaving(true);
+        try {
+            const limitValue = Number(guestAccess.limit);
+            const normalizedLimit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 1;
+            await updateSystemState({
+                guestAccessEnabled: guestAccess.enabled,
+                guestAccessLimit: normalizedLimit
+            });
+            await fetchSystemState();
+            alert('Guest access settings updated.');
+        } catch (err) {
+            const msg = err?.response?.data?.message || err.message || 'Failed to update guest access settings';
+            alert(msg);
+        } finally {
+            setGuestSaving(false);
+        }
+    };
+
+    const handleGuestAccessReset = () => {
+        if (!systemState) return;
+        const enabled = systemState.guestAccessEnabled !== false;
+        const limitValue = Number(systemState.guestAccessLimit);
+        const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 1;
+        setGuestAccess({ enabled, limit });
+    };
+
+    const handleRamTabsSave = async () => {
+        setRamTabsSaving(true);
+        try {
+            const normalized = Math.max(1, Number(ramTabsPerGb) || 1);
+            await updateSystemState({
+                ramTabsPerGb: normalized
+            });
+            await fetchSystemState();
+            alert('RAM tab settings updated.');
+        } catch (err) {
+            const msg = err?.response?.data?.message || err.message || 'Failed to update RAM tab settings';
+            alert(msg);
+        } finally {
+            setRamTabsSaving(false);
+        }
+    };
+
+    const handleRamTabsReset = () => {
+        const tabsValue = Number(systemState?.ramTabsPerGb);
+        setRamTabsPerGb(Number.isFinite(tabsValue) && tabsValue > 0 ? tabsValue : 5);
     };
 
     const patchStatus = async (id, payload) => {
@@ -159,31 +234,74 @@ const SystemUpdates = () => {
 
     return (
         <div className="p-6 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-900/15 bg-gradient-to-r from-white via-blue-50 to-white px-3 py-2 shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-xl bg-blue-900 text-white flex items-center justify-center shadow-sm">
-                        <Bell className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-blue-900/60 font-semibold">
-                            Electron System
+            <div className="relative overflow-hidden rounded-3xl border border-blue-900/20 bg-gradient-to-br from-slate-950 via-blue-900 to-blue-700 p-6 text-white shadow-lg">
+                <div className="absolute -right-16 -top-12 h-44 w-44 rounded-full bg-blue-400/30 blur-3xl" />
+                <div className="absolute -left-16 -bottom-16 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" />
+                <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="h-11 w-11 rounded-2xl border border-white/20 bg-white/10 flex items-center justify-center shadow-sm">
+                            <Settings className="w-5 h-5" />
                         </div>
-                        <h2 className="text-lg font-bold text-blue-950">System Updates</h2>
-                        <p className="text-[11px] text-slate-600">
-                            Publish updates and notify users. Mandatory updates block non-admin access until applied.
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.35em] text-blue-100/70 font-semibold">
+                                Control Room
+                            </div>
+                            <h2 className="text-[20px] font-semibold">System Updates</h2>
+                            <p className="text-[11px] text-blue-100/70">
+                                Release management and login-free access settings.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => {
+                            fetchUpdateNotice();
+                            loadUpdates();
+                            fetchSystemState();
+                        }}
+                        className="inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-3 py-2 text-[11px] font-semibold text-white hover:bg-white/20"
+                    >
+                        <RefreshCcw className="w-4 h-4" />
+                        Refresh
+                    </button>
+                </div>
+                <div className="relative z-10 mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Guest access</p>
+                        <p className="text-[15px] font-semibold">
+                            {guestAccessEnabled ? `${guestAccessCap} tries` : 'Unlimited'}
+                        </p>
+                        <p className="text-[10px] text-blue-100/70">
+                            {guestAccessEnabled ? 'Limit before login required' : 'No login limit applied'}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Latest release</p>
+                        <p className="text-[15px] font-semibold">
+                            {latestUpdate?.version || 'No release'}
+                        </p>
+                        <p className="text-[10px] text-blue-100/70">
+                            {latestUpdate?.updateType ? (typeLabels[latestUpdate.updateType] || latestUpdate.updateType) : 'Waiting for updates'}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Update queue</p>
+                        <p className="text-[15px] font-semibold">
+                            {isAdmin ? updates.length : 'Admin only'}
+                        </p>
+                        <p className="text-[10px] text-blue-100/70">
+                            {isAdmin ? (listLoading ? 'Loading releases' : 'Total updates logged') : 'Sign in with admin to view'}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Tabs per GB</p>
+                        <p className="text-[15px] font-semibold">
+                            {Math.max(1, Number(ramTabsPerGb) || 1)}
+                        </p>
+                        <p className="text-[10px] text-blue-100/70">
+                            Free RAM multiplier for tab sizing
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={() => {
-                        fetchUpdateNotice();
-                        loadUpdates();
-                    }}
-                    className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-                >
-                    <RefreshCcw className="w-4 h-4" />
-                    Refresh
-                </button>
             </div>
 
             {!isAdmin && latestUpdate && showCard && !dismissed && userUpdateState?.status !== 'applied' && (
@@ -252,8 +370,171 @@ const SystemUpdates = () => {
 
             {isAdmin ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    <form onSubmit={handleSubmit} className="lg:col-span-1 rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
-                        <h2 className="text-[15px] font-semibold text-blue-950">Create update</h2>
+                    <div className="lg:col-span-1 space-y-5">
+                        <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${guestAccess.enabled ? 'bg-blue-900/10 text-blue-900' : 'bg-slate-200 text-slate-600'}`}>
+                                    <ShieldCheck className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Guest access</p>
+                                    <p className="text-[15px] font-semibold text-blue-950">Login-free usage</p>
+                                    <p className="text-[11px] text-slate-600">
+                                        Control how many actions are allowed before login is required.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Status</p>
+                                    <p className="text-[13px] font-semibold text-blue-950">
+                                        {guestAccess.enabled ? 'Limited' : 'Unlimited'}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Max tries</p>
+                                    <p className="text-[13px] font-semibold text-blue-950">
+                                        {guestAccess.enabled ? guestAccess.limit : 'No limit'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between rounded-xl border border-blue-900/10 bg-white px-3 py-2">
+                                <div>
+                                    <p className="text-[11px] font-semibold text-blue-950">Limit login-free access</p>
+                                    <p className="text-[10px] text-slate-500">
+                                        Turn off to allow unlimited access without login.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setGuestAccess((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${guestAccess.enabled ? 'bg-blue-900' : 'bg-slate-300'}`}
+                                >
+                                    <span
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${guestAccess.enabled ? 'translate-x-5' : 'translate-x-1'}`}
+                                    />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-blue-950 mb-1">Allowed tries</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={guestAccess.limit}
+                                        onChange={(e) => setGuestAccess((prev) => ({ ...prev, limit: e.target.value }))}
+                                        className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 disabled:bg-slate-50 disabled:text-slate-400"
+                                        disabled={!guestAccess.enabled}
+                                    />
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    {[1, 3, 5].map((value) => (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            onClick={() => setGuestAccess((prev) => ({ ...prev, limit: value }))}
+                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={!guestAccess.enabled}
+                                        >
+                                            {value}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleGuestAccessSave}
+                                    disabled={guestSaving}
+                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                                >
+                                    {guestSaving ? 'Saving...' : 'Save settings'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleGuestAccessReset}
+                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
+                                    <Settings className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">RAM scaling</p>
+                                    <p className="text-[15px] font-semibold text-blue-950">Tabs per 1 GB</p>
+                                    <p className="text-[11px] text-slate-600">
+                                        Tune parallel tabs based on free RAM.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Current value</p>
+                                <p className="text-[13px] font-semibold text-blue-950">
+                                    {Math.max(1, Number(ramTabsPerGb) || 1)} tab{Number(ramTabsPerGb) !== 1 ? 's' : ''} / GB
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-blue-950 mb-1">Tabs per GB</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        value={ramTabsPerGb}
+                                        onChange={(e) => setRamTabsPerGb(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    />
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    {[3, 5, 8].map((value) => (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            onClick={() => setRamTabsPerGb(value)}
+                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                        >
+                                            {value}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleRamTabsSave}
+                                    disabled={ramTabsSaving}
+                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                                >
+                                    {ramTabsSaving ? 'Saving...' : 'Save tabs'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleRamTabsReset}
+                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
+                            <div>
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Release builder</p>
+                                <h2 className="text-[15px] font-semibold text-blue-950">Create update</h2>
+                            </div>
                         <div>
                             <label className="block text-[11px] font-semibold text-blue-950 mb-1">Version</label>
                             <input
@@ -367,6 +648,7 @@ const SystemUpdates = () => {
                             {loading ? 'Publishing...' : 'Publish update'}
                         </button>
                     </form>
+                </div>
 
                     <div className="lg:col-span-2 rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
                         <div className="px-6 py-4 border-b border-blue-900/10 flex items-center justify-between">

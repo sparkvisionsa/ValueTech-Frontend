@@ -49,7 +49,7 @@ import { AUTH_EXPIRED_EVENT, installAuthExpiryInterceptor } from './utils/authIn
 const AppContent = () => {
     const [currentView, setCurrentView] = useState('apps');
     const [pendingProtectedView, setPendingProtectedView] = useState(null);
-    const { isAuthenticated, logout } = useSession();
+    const { isAuthenticated, isGuest, logout } = useSession();
     const { syncNavForView, setActiveTab, selectedCompany, resetAll, resetNavigation } = useValueNav();
 
     const handleViewChange = (nextView) => {
@@ -107,11 +107,14 @@ const AppContent = () => {
         const cleanupInterceptor = installAuthExpiryInterceptor();
         const handleAuthExpired = () => {
             if (!isAuthenticated) return;
+            const allowGuestSession = isGuest;
             logout();
             resetAll();
             setActiveTab(null);
             setPendingProtectedView(null);
-            setCurrentView('login');
+            if (!allowGuestSession) {
+                setCurrentView('login');
+            }
         };
         window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
         return () => {
@@ -120,7 +123,7 @@ const AppContent = () => {
                 cleanupInterceptor();
             }
         };
-    }, [isAuthenticated, logout, resetAll, setActiveTab]);
+    }, [isAuthenticated, isGuest, logout, resetAll, setActiveTab]);
 
     const renderCurrentView = () => {
         switch (currentView) {

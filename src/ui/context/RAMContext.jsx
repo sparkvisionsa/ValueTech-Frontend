@@ -1,15 +1,22 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import { useSystemControl } from './SystemControlContext';
 
 const RamContext = createContext();
 
-const calculateRecommendedTabs = (freeGb, first = 300, after = 200) => {
+const DEFAULT_TABS_PER_GB = 5;
+
+const calculateRecommendedTabs = (freeGb, tabsPerGb = DEFAULT_TABS_PER_GB) => {
     if (freeGb == null) return 1;
 
+    const perGb = Number(tabsPerGb);
+    if (Number.isFinite(perGb) && perGb > 0) {
+        return Math.max(1, Math.floor(freeGb * perGb));
+    }
+
     const freeMb = freeGb * 1024;
+    if (freeMb < 300) return 1;
 
-    if (freeMb < first) return 1;
-
-    const extraTabs = Math.floor((freeMb - first) / after);
+    const extraTabs = Math.floor((freeMb - 300) / 200);
     return 1 + extraTabs;
 };
 
@@ -23,6 +30,7 @@ export const useRam = () => {
 };
 
 export const RamProvider = ({ children }) => {
+    const { systemState } = useSystemControl();
     const [ramInfo, setRamInfo] = useState(null);
     const [readingRam, setReadingRam] = useState(false);
     const [error, setError] = useState(null);
@@ -30,6 +38,9 @@ export const RamProvider = ({ children }) => {
 
     const ramInFlight = useRef(false);
     const pollIntervalRef = useRef(null);
+
+    const tabsPerGbRaw = Number(systemState?.ramTabsPerGb);
+    const tabsPerGb = Number.isFinite(tabsPerGbRaw) && tabsPerGbRaw > 0 ? tabsPerGbRaw : DEFAULT_TABS_PER_GB;
 
     const readRam = useCallback(async () => {
         if (ramInFlight.current) return;
@@ -47,7 +58,7 @@ export const RamProvider = ({ children }) => {
         try {
             const result = await window.electronAPI.readRam();
             if (result?.ok) {
-                const recommendedTabs = calculateRecommendedTabs(result.freeGb);
+                const recommendedTabs = calculateRecommendedTabs(result.freeGb, tabsPerGb);
                 const ramData = {
                     usedGb: result.usedGb,
                     totalGb: result.totalGb,
@@ -72,7 +83,16 @@ export const RamProvider = ({ children }) => {
             setReadingRam(false);
             ramInFlight.current = false;
         }
-    }, []);
+    }, [tabsPerGb]);
+
+    useEffect(() => {
+        if (!ramInfo) return;
+        const recommendedTabs = calculateRecommendedTabs(ramInfo.freeGb, tabsPerGb);
+        setRamInfo((prev) => {
+            if (!prev || prev.recommendedTabs === recommendedTabs) return prev;
+            return { ...prev, recommendedTabs };
+        });
+    }, [ramInfo, tabsPerGb]);
 
     const startPolling = useCallback((interval = 5000) => {
         // Clear existing interval

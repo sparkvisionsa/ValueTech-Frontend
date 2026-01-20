@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRam } from "../context/RAMContext";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { useSystemControl } from "../context/SystemControlContext";
 import { useAuthAction } from "../hooks/useAuthAction";
 import usePersistentState from "../hooks/usePersistentState";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
@@ -571,9 +572,10 @@ const isReportInfoIssue = (issue) => {
 };
 
 const MultiExcelUpload = ({ onViewChange }) => {
-    const { token } = useSession();
+    const { token, isGuest } = useSession();
+    const { systemState } = useSystemControl();
     const { executeWithAuth } = useAuthAction();
-    const { taqeemStatus } = useNavStatus();
+    const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
     const [selectedReportActions, setSelectedReportActions] = useState({});
@@ -716,6 +718,12 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
     const { ramInfo } = useRam();
     const recommendedTabs = ramInfo?.recommendedTabs || 1;
+    const guestAccessEnabled = systemState?.guestAccessEnabled ?? true;
+    const guestSession = isGuest || !token;
+    const authOptions = useMemo(
+        () => ({ isGuest: guestSession, guestAccessEnabled }),
+        [guestSession, guestAccessEnabled]
+    );
     const isTaqeemLoggedIn = taqeemStatus?.state === "success";
 
     const excelInputRef = useRef(null);
@@ -784,6 +792,19 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
     const loadReports = useCallback(async (append = false) => {
         try {
+            if (!token) {
+                setReports([]);
+                setReportsPagination({
+                    page: 1,
+                    limit: itemsPerPage,
+                    total: 0,
+                    totalPages: 1,
+                    hasNextPage: false,
+                    hasPrevPage: false,
+                });
+                setReportsError(null);
+                return;
+            }
             setReportsLoading(true);
             setReportsError(null);
 
@@ -826,7 +847,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
         } finally {
             setReportsLoading(false);
         }
-    }, [setReports, token, currentPage, itemsPerPage]);
+    }, [setReports, setReportsPagination, setReportsError, token, currentPage, itemsPerPage]);
 
     const handlePageChange = useCallback(async (newPage) => {
         if (newPage < 1 || reportsLoading) return;
@@ -838,10 +859,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
     // Load reports automatically when filter or page size changes
     // Load reports when page, filter, or page size changes
     useEffect(() => {
-        if (!reportsLoading) {
-            loadReports(false);
-        }
-    }, [currentPage, itemsPerPage]);
+        loadReports(false);
+    }, [currentPage, itemsPerPage, token, loadReports]);
 
     const pdfMatchInfo = useMemo(() => {
         if (!wantsPdfUpload) {
@@ -938,6 +957,27 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     return;
                 }
 
+                const ok = await ensureTaqeemAuthorized(
+                    token,
+                    onViewChange,
+                    isTaqeemLoggedIn,
+                    0,
+                    null,
+                    setTaqeemStatus,
+                    authOptions
+                );
+                if (!ok) {
+                    setError("Taqeem login required. Finish login and choose a company to continue.");
+                    setPendingBatch({
+                        batchId,
+                        tabsNum: resolvedTabs,
+                        insertedCount,
+                        resumeOnLoad: true,
+                    });
+                    setReturnView("multi-excel-upload");
+                    return;
+                }
+
                 setSuccess(
                     resume
                         ? "Resuming report creation in Taqeem..."
@@ -1030,12 +1070,14 @@ const MultiExcelUpload = ({ onViewChange }) => {
             }
         },
         [
+            authOptions,
             isTaqeemLoggedIn,
             loadReports,
             onViewChange,
             recommendedTabs,
             resetPendingBatch,
             resetReturnView,
+            setTaqeemStatus,
             setPendingBatch,
             setReturnView,
             token,

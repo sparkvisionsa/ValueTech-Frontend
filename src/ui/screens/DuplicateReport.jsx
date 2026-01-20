@@ -11,6 +11,7 @@ import {
   deleteDuplicateReportAsset,
 } from "../../api/report";
 import { useSession } from "../context/SessionContext";
+import { useSystemControl } from "../context/SystemControlContext";
 import { useRam } from "../context/RAMContext";
 import { useNavStatus } from "../context/NavStatusContext";
 import usePersistentState from "../hooks/usePersistentState";
@@ -366,7 +367,8 @@ const getAssetApproach = (asset) => {
 };
 
 const DuplicateReport = ({ onViewChange }) => {
-  const { user, token, isLoading } = useSession();
+  const { user, token, isLoading, isGuest } = useSession();
+  const { systemState } = useSystemControl();
   const { ramInfo } = useRam();
   const { executeWithAuth, authLoading, authError } = useAuthAction();
 
@@ -421,6 +423,12 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   const [, setReturnView, resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
   const pdfInputRef = useRef(null);
   const recommendedTabs = ramInfo?.recommendedTabs || 1;
+  const guestAccessEnabled = systemState?.guestAccessEnabled ?? true;
+  const guestSession = isGuest || !token;
+  const authOptions = useMemo(
+    () => ({ isGuest: guestSession, guestAccessEnabled }),
+    [guestSession, guestAccessEnabled]
+  );
   const isTaqeemLoggedIn = taqeemStatus?.state === "success";
   const previewLimit = 200;
   const isEditing = Boolean(editingReportId);
@@ -955,28 +963,24 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
 
   const submitToTaqeem = useCallback(
-  async (recordId, tabsNum, options = {}) => {
-    const { withLoading = true, resume = false } = options;
-    const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
+    async (recordId, tabsNum, options = {}) => {
+      const { withLoading = true, resume = false } = options;
+      const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
 
-    if (withLoading) setSubmitting(true);
+      if (withLoading) setSubmitting(true);
 
-    try {
-      if (!recordId) {
-        setStatus({ type: "error", message: "Missing record id for submission." });
-        return;
-      }
+      try {
+        if (!recordId) {
+          setStatus({ type: "error", message: "Missing record id for submission." });
+          return;
+        }
 
-      // useAuthAction will:
-      // - ensureTaqeemAuthorized(...) with login + setTaqeemStatus (fixes UI)
-      // - navigate to selectedCompany
-      // - handle LOGIN_REQUIRED / INSUFFICIENT_POINTS
-      const requiredPoints = 0; 
-      // If you want points tied to assets, use:
-      // const requiredPoints = excelValidation?.counts?.total || 1;
-
-      const result = await executeWithAuth(
-        async () => {
+        const ok = await ensureTaqeemAuthorized(
+          token,
+          onViewChange,
+          isTaqeemLoggedIn
+        );
+        if (!ok) {
           setStatus({
             type: "info",
             message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
@@ -992,78 +996,53 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
             resolvedTabs
           );
 
-          if (res?.status === "SUCCESS") return res;
+          if (res?.status === "SUCCESS") {
+            setStatus({
+              type: "success",
+              message: "Report submitted to Taqeem. Browser closed after completion.",
+            });
+            resetPendingSubmit();
+            resetReturnView();
+            return;
+          }
 
           const errMsg =
             res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
 
-          // keep your current behavior for company selection
           if (/no company selected/i.test(errMsg)) {
             setStatus({ type: "warning", message: errMsg });
             setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
             setReturnView("duplicate-report");
             onViewChange?.("get-companies");
-            return { status: "NO_COMPANY_SELECTED" };
+            return;
           }
 
           throw new Error(errMsg);
-        },
-        {},
-        {
-          requiredPoints,
-          onViewChange,
-          onAuthFailure: (reason) => {
-            if (reason === "LOGIN_REQUIRED") {
-              setStatus({
-                type: "info",
-                message: "Taqeem login required. Finish login and choose a company to continue.",
-              });
-              setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-              setReturnView("duplicate-report");
-              return;
-            }
-            if (reason === "INSUFFICIENT_POINTS") {
-              setStatus({ type: "warning", message: "Insufficient points." });
-              return;
-            }
-            setStatus({ type: "error", message: String(reason?.message || reason) });
-          },
         }
-      );
-
-      // If auth failed, executeWithAuth returns null
-      if (!result) return;
-
-      if (result?.status === "SUCCESS") {
+      } catch (err) {
         setStatus({
-          type: "success",
-          message: "Report submitted to Taqeem. Browser closed after completion.",
+          type: "error",
+          message: err?.message || "Failed to submit report to Taqeem.",
         });
         resetPendingSubmit();
         resetReturnView();
-        return;
+      } finally {
+        if (withLoading) {
+          setSubmitting(false);
+        }
       }
-    } catch (err) {
-      setStatus({
-        type: "error",
-        message: err?.message || "Failed to submit report to Taqeem.",
-      });
-      resetPendingSubmit();
-      resetReturnView();
-    } finally {
-      if (withLoading) setSubmitting(false);
-    }
-  },
-  [
-    executeWithAuth,
-    onViewChange,
-    resolveTabsForAssets,
-    resetPendingSubmit,
-    resetReturnView,
-    setPendingSubmit,
-    setReturnView,
-  ]
-);
+    },
+    [
+      isTaqeemLoggedIn,
+      onViewChange,
+      resetPendingSubmit,
+      resetReturnView,
+      resolveTabsForAssets,
+      setPendingSubmit,
+      setReturnView,
+      token,
+    ]
+  );
 
   useEffect(() => {
     if (submitting) return;
