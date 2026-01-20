@@ -1040,7 +1040,6 @@ const handleCheckReportInTaqeem = async () => {
 
 
 
-
 const handleDeleteReport = async () => {
   const ids = parseReportIds(reportId);
   if (!ids.length) {
@@ -1060,50 +1059,45 @@ const handleDeleteReport = async () => {
   // Reset the text area
   setReportId("");
 
+  // ✅ Use the same validateReportForDelete function
   const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-    try {
-      const result = await window.electronAPI.validateReport(id, userId);
-      const status = result?.status;
-      const reportStatus = result?.reportStatus;
-      const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+    const validation = await validateReportForDelete(id);
+    
+    // Update the row with validation result
+    const result = validation.result;
+    const status = result?.status;
+    const reportStatus = result?.reportStatus;
+    const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-      let proceed = false;
-      let resultText = "";
-
-      if (status === "NOT_FOUND") {
-        resultText = "Not Found";
-      } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
-        proceed = true;
-        resultText = "Validated";
-      } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
-        resultText = "Report - Can't be Deleted";
-      } else {
-        resultText = "Validated";
-      }
-
-      // Update the row
-      setReportSummaryRow(prev => prev.map(row => 
-        row.reportId === id ? {
-          reportId: id,
-          reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-          totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-          result: resultText
-        } : row
-      ));
-
-      return { id, proceed, result, reportStatus, totalAssets, resultText };
-    } catch (err) {
-      // Update row with error
-      setReportSummaryRow(prev => prev.map(row => 
-        row.reportId === id ? {
-          ...row,
-          reportStatus: "Error",
-          totalAssets: 0,
-          result: "Error"
-        } : row
-      ));
-      return { id, proceed: false, error: err?.message || String(err) };
+    let resultText = "";
+    if (validation.alreadyDeleted) {
+      resultText = "Already Deleted";
+    } else if (status === "NOT_FOUND") {
+      resultText = "Not Found";
+    } else if (validation.proceed) {
+      resultText = "Validated";
+    } else {
+      resultText = validation.error || "Cannot Delete";
     }
+
+    setReportSummaryRow(prev => prev.map(row => 
+      row.reportId === id ? {
+        reportId: id,
+        reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+        totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+        result: resultText
+      } : row
+    ));
+
+    return {
+      id,
+      proceed: validation.proceed,
+      result,
+      reportStatus,
+      totalAssets,
+      resultText,
+      error: validation.error
+    };
   });
 
   const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
@@ -1112,7 +1106,7 @@ const handleDeleteReport = async () => {
     return acc;
   }, {});
 
-  // Store ALL validation results in REPORT_DELETIONS (both validated and cannot delete)
+  // Store ALL validation results in REPORT_DELETIONS
   for (const res of validationResults) {
     await window.electronAPI.storeReportDeletion({
       reportId: res.id,
@@ -1126,8 +1120,16 @@ const handleDeleteReport = async () => {
   }
 
   if (!idsToDelete.length) {
+    // Clear states
+    setRowActionById(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { delete next[id]; });
+      return next;
+    });
+    setError("No reports are eligible for deletion");
     return;
   }
+
 
   setDeleteRequested(true);
   setStatusChangeResult(null);
