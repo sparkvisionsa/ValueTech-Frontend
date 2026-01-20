@@ -1,7 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-function safeInvoke(channel, ...args) {
-    return ipcRenderer.invoke(channel, ...args);
+function safeInvoke(channel, payload) {
+    return ipcRenderer.invoke(channel, payload).catch((err) => {
+        if (err && typeof err.message === 'string') {
+            // Strip Electron IPC prefix
+            err.message = err.message.replace(
+                new RegExp(`^Error invoking remote method '${channel}':\\s*`),
+                ''
+            );
+
+            // Strip redundant "Error: " if present
+            err.message = err.message.replace(/^Error:\s*/, '');
+        }
+
+        throw err;
+    });
 }
 
 
@@ -169,7 +182,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     onAuthExpired: (callback) => {
-        if (typeof callback !== 'function') return () => {};
+        if (typeof callback !== 'function') return () => { };
         const subscription = (event, data) => callback(data);
         ipcRenderer.on('auth-expired', subscription);
         return () => {
@@ -177,7 +190,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         };
     },
 
-     
+
 
 
     // Progress listener for submit-reports-quickly

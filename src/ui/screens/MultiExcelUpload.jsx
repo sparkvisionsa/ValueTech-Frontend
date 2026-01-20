@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 import { multiExcelUpload, updateMultiApproachReport, updateMultiApproachAsset } from "../../api/report";
-import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 
 const InputField = ({
@@ -581,6 +580,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [wantsPdfUpload, setWantsPdfUpload] = useState(false);
     const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [batchId, setBatchId] = useState("");
+    const [reportProgress, setReportProgress] = useState({});
     const [selectedAssetBulkActions, setSelectedAssetBulkActions] = useState({});
     const [uploadResult, setUploadResult] = useState(null);
     const [searchQuery, setSearchQuery] = useState("");
@@ -821,6 +821,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
             setReportsPagination(paginationInfo);
 
         } catch (err) {
+            console.log("err props", Object.keys(err));
             setReportsError(err?.message || "Failed to load reports.");
         } finally {
             setReportsLoading(false);
@@ -873,6 +874,44 @@ const MultiExcelUpload = ({ onViewChange }) => {
         },
         [recommendedTabs]
     );
+
+    // Add this useEffect to listen for individual report progress updates
+    useEffect(() => {
+        if (!window?.electronAPI?.onSubmitReportsQuicklyProgress) return;
+
+        const unsubscribe = window.electronAPI.onSubmitReportsQuicklyProgress((progressData) => {
+            const { reportId, processId, current, total, percentage, message, status } = progressData;
+            const id = reportId || processId;
+
+            if (id) {
+                setReportProgress(prev => ({
+                    ...prev,
+                    [id]: {
+                        current: current || 0,
+                        total: total || 0,
+                        percentage: percentage || 0,
+                        message: message || "Processing...",
+                        status: status || "processing"
+                    }
+                }));
+
+                // Clear progress after completion or error
+                if (status === "completed" || status === "error") {
+                    setTimeout(() => {
+                        setReportProgress(prev => {
+                            const next = { ...prev };
+                            delete next[id];
+                            return next;
+                        });
+                    }, 3000);
+                }
+            }
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
 
     const createReportsByBatch = useCallback(
         async (batchId, tabsNum, insertedCount, options = {}) => {
@@ -1895,16 +1934,27 @@ const MultiExcelUpload = ({ onViewChange }) => {
         }
 
         if (action === "submit-taqeem") {
-            const batchId = report?.batch_id || report?.batchId;
-            if (!batchId) {
-                setActionStatus({ type: "error", message: "Missing batch ID. Cannot submit to Taqeem." });
-                return;
-            }
-
+            // Changed: Use submitToTaqeem for individual report instead of batch creation
             const assetCount = Array.isArray(report.asset_data) ? report.asset_data.length : 0;
             const tabsForAssets = resolveTabsForAssets(assetCount);
 
-            await createReportsByBatch(batchId, tabsForAssets, 1, { resume: false });
+            setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
+
+            try {
+                await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+                await loadReports();
+            } catch (err) {
+                setActionStatus({
+                    type: "error",
+                    message: err?.response?.data?.message || err?.message || "Action failed.",
+                });
+            } finally {
+                setReportActionBusy((prev) => {
+                    const next = { ...prev };
+                    delete next[recordId];
+                    return next;
+                });
+            }
             return;
         }
 
@@ -2879,8 +2929,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                 </tr>
                                                 {batchProg && (
                                                     <tr>
-                                                        <td colSpan={8} className="px-2 py-2 bg-blue-50/20">
-                                                            <div className="px-2">
+                                                        <td colSpan={8} className="px-4 py-3 bg-blue-50/30"> {/* Increased padding */}
+                                                            <div className="px-4"> {/* Increased padding */}
                                                                 <BatchProgressBar
                                                                     current={batchProg.current}
                                                                     total={batchProg.total}
@@ -2890,6 +2940,19 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                     currentRecordId={batchProg.currentRecordId}
                                                                 />
                                                             </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                {reportProgress[recordId] && (
+                                                    <tr>
+                                                        <td colSpan={8} className="px-4 py-3 border-b border-blue-200">
+                                                            <BatchProgressBar
+                                                                current={reportProgress[recordId].current}
+                                                                total={reportProgress[recordId].total}
+                                                                percentage={reportProgress[recordId].percentage}
+                                                                message={reportProgress[recordId].message}
+                                                                status={reportProgress[recordId].status}
+                                                            />
                                                         </td>
                                                     </tr>
                                                 )}

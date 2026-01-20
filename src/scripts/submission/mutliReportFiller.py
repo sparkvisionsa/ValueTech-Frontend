@@ -376,6 +376,14 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
             {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
         )
 
+        emit_progress_update(
+            record_id, 
+            100, 
+            "Report completed successfully", 
+            "completed",
+            created_report_id=form_id
+        )
+
         return {"status": "SUCCESS", "results": results}
 
     except Exception as e:
