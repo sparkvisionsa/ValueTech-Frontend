@@ -48,7 +48,7 @@ async def get_user_id(page):
 
 async def public_login_flow(login_url, is_auth = False):
     # Step 1: show login UI
-    browser = await get_browser(force_new=True, headless_override=False)
+    browser = await get_browser(force_new=False, headless_override=False)
     page = await browser.get(login_url)
 
     print("Please log in manually...")

@@ -17,6 +17,13 @@ async function runPublicLogin(isAuth) {
 
 async function ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, assetCount = 0, login = null, setTaqeemStatus = null) {
     try {
+        // Check browser status first to see if we're actually logged in
+        const browserStatus = await window.electronAPI.checkStatus();
+        if (browserStatus?.browserOpen && browserStatus?.status === "SUCCESS") {
+            setTaqeemStatus?.("success", "Taqeem login: On");
+            return true;
+        }
+
         // If the automation browser is already logged into Taqeem, skip any extra login flow.
         if (isTaqeemLoggedIn) {
             setTaqeemStatus?.("success", "Taqeem login: On");

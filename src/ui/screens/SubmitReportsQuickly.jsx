@@ -1189,7 +1189,12 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
     const submitToTaqeem = useCallback(
         async (recordId, tabsNum, options = {}) => {
-            const { withLoading = true, resume = false } = options;
+            const {
+                withLoading = true,
+                resume = false,
+                skipAuth = false,
+                skipCompanySelect = false
+            } = options;
 
             if (!recordId) {
                 setError("Missing report record id.");
@@ -1208,13 +1213,17 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
             try {
-                const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, 0, null, setTaqeemStatus);
-                if (!ok) {
-                    setError("Taqeem login required. Finish login and choose a company to continue.");
-                    return;
+                if (!skipAuth) {
+                    const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn, 0, null, setTaqeemStatus);
+                    if (!ok) {
+                        setError("Taqeem login required. Finish login and choose a company to continue.");
+                        return;
+                    }
                 }
 
-                await ensureCompanySelected();
+                if (!skipCompanySelect) {
+                    await ensureCompanySelected();
+                }
 
                 setSuccess(resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...");
 
