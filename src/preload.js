@@ -67,6 +67,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resumeElrajiBatch: (batchId) => safeInvoke('resume-elrajhi-batch', batchId),
     stopElrajiBatch: (batchId) => safeInvoke('stop-elrajhi-batch', batchId),
 
+    onCreateReportsByBatchProgress: (callback) => {
+        const subscription = (event, data) => callback(data);
+        ipcRenderer.on('create-reports-by-batch-progress', subscription);
+        return () => {
+            ipcRenderer.removeListener('create-reports-by-batch-progress', subscription);
+        };
+    },
+
     checkElrajhiBatches: (batchId, tabsNum) => safeInvoke('elrajhi-check-batches', batchId, tabsNum),
     downloadRegistrationCertificates: (payload) => safeInvoke('download-registration-certificates', payload),
     reuploadElrajhiReport: (reportId) => safeInvoke('elrajhi-reupload-report', reportId),

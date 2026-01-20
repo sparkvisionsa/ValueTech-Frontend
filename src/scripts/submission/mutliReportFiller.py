@@ -603,19 +603,34 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
                 "error": f"No records found for batch_id: {batch_id}"
             }
 
+        total_records = len(records)
         batch_results = {
             "batch_id": batch_id,
-            "totalRecords": len(records),
+            "totalRecords": total_records,
             "successCount": 0,
             "failureCount": 0,
             "records": []
         }
 
+        # Emit initial progress
+        emit_batch_progress(batch_id, 0, total_records, 0, f"Starting batch with {total_records} reports...", "processing")
+
         new_browser = await spawn_new_browser(browser) 
 
-        for record in records:
+        for index, record in enumerate(records):
             record_id_str = str(record["_id"])
             try:
+                # Emit progress for current report
+                emit_batch_progress(
+                    batch_id, 
+                    index, 
+                    total_records, 
+                    (index / total_records) * 100,
+                    f"Processing report {index + 1}/{total_records}: {record_id_str[:8]}...",
+                    "processing",
+                    current_record_id=record_id_str
+                )
+
                 result = await create_report_for_record(
                     browser=new_browser,
                     record=record,
@@ -624,6 +639,15 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
 
                 if result.get("status") == "SUCCESS":
                     batch_results["successCount"] += 1
+                    emit_batch_progress(
+                        batch_id,
+                        index + 1,
+                        total_records,
+                        ((index + 1) / total_records) * 100,
+                        f"Completed {index + 1}/{total_records} reports",
+                        "processing",
+                        current_record_id=record_id_str
+                    )
                 else:
                     batch_results["failureCount"] += 1
 
@@ -647,9 +671,27 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             else "PARTIAL_SUCCESS"
         )
 
+        # Emit completion
+        emit_batch_progress(
+            batch_id,
+            total_records,
+            total_records,
+            100,
+            f"Batch complete: {batch_results['successCount']} succeeded, {batch_results['failureCount']} failed",
+            "completed" if batch_results["failureCount"] == 0 else "partial"
+        )
+
         return batch_results
 
     except Exception as e:
+        emit_batch_progress(
+            batch_id,
+            0,
+            0,
+            0,
+            f"Batch failed: {str(e)}",
+            "error"
+        )
         return {
             "status": "FAILED",
             "batch_id": batch_id,
@@ -661,3 +703,22 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
         if new_browser:
             new_browser.stop()
 
+
+def emit_batch_progress(batch_id, current, total, percentage, message, status="processing", current_record_id=None):
+    """Emit batch progress update to stdout for frontend to receive"""
+    progress_data = {
+        "type": "progress",  # Changed from "batch-progress" to "progress"
+        "processId": str(batch_id),
+        "batchId": str(batch_id),
+        "reportId": str(batch_id),  # Add reportId for compatibility
+        "current": current,
+        "total": total,
+        "percentage": percentage,
+        "message": message,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "processType": "batch_creation"  # Add processType to distinguish
+    }
+    if current_record_id:
+        progress_data["currentRecordId"] = str(current_record_id)
+    print(json.dumps(progress_data), flush=True)

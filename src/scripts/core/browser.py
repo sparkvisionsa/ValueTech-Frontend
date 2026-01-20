@@ -77,7 +77,7 @@ async def switch_to_headless():
 
         global refresh_task
         if refresh_task is None or refresh_task.done():
-            refresh_task = asyncio.create_task(_periodic_refresh(interval_minutes=20))
+            refresh_task = asyncio.create_task(_periodic_refresh(interval_minutes=1))
 
 
         return {"status": "SUCCESS"}

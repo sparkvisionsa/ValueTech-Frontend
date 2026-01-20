@@ -141,10 +141,64 @@ const reportHandlers = {
     },
 
     async handleCreateReportsByBatch(event, batchId, tabsNum) {
+        // Get the window that sent the event
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+        if (!senderWindow || senderWindow.isDestroyed()) {
+            return { status: 'FAILED', error: 'Window not available' };
+        }
+
+        // Store the cleanup function
+        const unregisterProgress = () => {
+            pythonAPI.workerService.unregisterProgressCallback(batchId);
+        };
+
         try {
-            return await pythonAPI.report.createReportsByBatch(batchId, tabsNum);
+            // Register progress callback for the entire batch
+            pythonAPI.workerService.registerProgressCallback(batchId, (progressData) => {
+                console.log('[MAIN] Batch progress update:', progressData);
+
+                // Make sure we have a valid sender window
+                if (!senderWindow || senderWindow.isDestroyed()) {
+                    console.warn('[MAIN] Window destroyed, cannot send progress');
+                    unregisterProgress();
+                    return;
+                }
+
+                // Send progress to renderer via IPC
+                senderWindow.webContents.send('create-reports-by-batch-progress', {
+                    ...progressData,
+                    batchId: batchId,
+                    processId: batchId
+                });
+            });
+
+            // Execute the batch creation
+            const result = await pythonAPI.report.createReportsByBatch(batchId, tabsNum);
+
+            // Ensure cleanup
+            unregisterProgress();
+
+            return result;
+
         } catch (err) {
-            console.error('[MAIN] Create reports by batch error:', err && err.stack ? err.stack : err);
+            console.error('[MAIN] Create reports by batch error:', err);
+
+            // Ensure cleanup on error
+            unregisterProgress();
+
+            // Also send an error progress update
+            if (senderWindow && !senderWindow.isDestroyed()) {
+                senderWindow.webContents.send('create-reports-by-batch-progress', {
+                    batchId: batchId,
+                    status: 'FAILED',
+                    error: err.message,
+                    current: 0,
+                    total: 1,
+                    percentage: 0
+                });
+            }
+
             return { status: 'FAILED', error: err.message || String(err) };
         }
     },

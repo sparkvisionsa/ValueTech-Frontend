@@ -21,7 +21,7 @@ import {
     Download,
 } from "lucide-react";
 
-import { multiExcelUpload, updateMultiApproachReport, deleteMultiApproachReport, updateMultiApproachAsset, deleteMultiApproachAsset } from "../../api/report";
+import { multiExcelUpload, updateMultiApproachReport, updateMultiApproachAsset } from "../../api/report";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
 
@@ -637,16 +637,97 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
     const pdfInputRef = useRef(null);
 
+    // Update state to track batch progress instead of individual report progress
+    const [batchProgress, setBatchProgress] = useState({});
+
+    // Add this useEffect to listen for batch progress updates
+    useEffect(() => {
+        if (!window?.electronAPI?.onCreateReportsByBatchProgress) return;
+
+        const unsubscribe = window.electronAPI.onCreateReportsByBatchProgress((progressData) => {
+            const { batchId, processId, current, total, percentage, message, status, currentRecordId } = progressData;
+            const id = batchId || processId;
+
+            if (id) {
+                setBatchProgress(prev => ({
+                    ...prev,
+                    [id]: {
+                        current: current || 0,
+                        total: total || 0,
+                        percentage: percentage || 0,
+                        message: message || "Processing...",
+                        status: status || "processing",
+                        currentRecordId: currentRecordId
+                    }
+                }));
+            }
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
+
+
+
+    // Update the ProgressBar component to handle batch-level progress
+    const BatchProgressBar = ({ current, total, percentage, message, status, currentRecordId }) => {
+        const getBarColor = () => {
+            if (status === "error") return "bg-rose-500";
+            if (status === "completed") return "bg-emerald-500";
+            if (status === "partial") return "bg-amber-500";
+            return "bg-blue-500";
+        };
+
+        const getTextColor = () => {
+            if (status === "error") return "text-rose-700";
+            if (status === "completed") return "text-emerald-700";
+            if (status === "partial") return "text-amber-700";
+            return "text-blue-700";
+        };
+
+        return (
+            <div className="w-full space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-medium">
+                    <div className="flex-1">
+                        <div className={getTextColor()}>{message || "Processing..."}</div>
+                        {currentRecordId && (
+                            <div className="text-slate-500 text-[9px] mt-0.5">
+                                Current: {currentRecordId.slice(0, 8)}...
+                            </div>
+                        )}
+                    </div>
+                    <div className="text-right">
+                        <div className={getTextColor()}>{Math.round(percentage)}%</div>
+                        <div className="text-slate-500 text-[9px]">
+                            {current}/{total}
+                        </div>
+                    </div>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                        className={`h-full transition-all duration-300 ${getBarColor()}`}
+                        style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     const { ramInfo } = useRam();
     const recommendedTabs = ramInfo?.recommendedTabs || 1;
     const isTaqeemLoggedIn = taqeemStatus?.state === "success";
 
+    const excelInputRef = useRef(null);
+
+    // Update handleExcelChange to use the ref
     const handleExcelChange = (e) => {
         const files = Array.from(e.target.files || []);
         setExcelFiles(files);
         resetMessages();
     };
 
+    // Update handlePdfChange to use the ref
     const handlePdfChange = (e) => {
         const files = Array.from(e.target.files || []);
         setPdfFiles(files);
@@ -677,6 +758,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
         setValidationMessage(null);
     };
 
+    // Update the resetAll function to clear file inputs
     const resetAll = () => {
         setExcelFiles([]);
         setPdfFiles([]);
@@ -688,8 +770,15 @@ const MultiExcelUpload = ({ onViewChange }) => {
         resetPendingSubmit();
         resetPendingBatch();
         resetReturnView();
-    };
 
+        // Clear file input values
+        if (excelInputRef.current) {
+            excelInputRef.current.value = "";
+        }
+        if (pdfInputRef.current) {
+            pdfInputRef.current.value = "";
+        }
+    };
     const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
     const isEditing = Boolean(editingReportId);
 
@@ -792,22 +881,21 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
             setCreatingReports(true);
 
+            // Initialize batch progress
+            setBatchProgress(prev => ({
+                ...prev,
+                [batchId]: {
+                    current: 0,
+                    total: insertedCount || 0,
+                    percentage: 0,
+                    message: "Initializing...",
+                    status: "processing"
+                }
+            }));
+
             try {
                 if (!batchId) {
                     setError("Missing batch id for report creation.");
-                    return;
-                }
-
-                const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
-                if (!ok) {
-                    setError("Taqeem login required. Finish login and choose a company to continue.");
-                    setPendingBatch({
-                        batchId,
-                        tabsNum: resolvedTabs,
-                        insertedCount,
-                        resumeOnLoad: true,
-                    });
-                    setReturnView("multi-excel-upload");
                     return;
                 }
 
@@ -826,9 +914,40 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     resolvedTabs
                 );
 
-                if (electronResult?.status === "SUCCESS") {
+                if (electronResult?.status === "SUCCESS" || electronResult?.status === "PARTIAL_SUCCESS") {
+                    const successCount = electronResult?.successCount || 0;
+                    const failureCount = electronResult?.failureCount || 0;
                     const countLabel = insertedCount ? `${insertedCount} report(s)` : "Reports";
-                    setSuccess(`${countLabel} created successfully with ${resolvedTabs} tab(s).`);
+
+                    if (electronResult?.status === "SUCCESS") {
+                        setSuccess(`${countLabel} created successfully with ${resolvedTabs} tab(s).`);
+                    } else {
+                        setSuccess(`Batch completed: ${successCount} succeeded, ${failureCount} failed with ${resolvedTabs} tab(s).`);
+                    }
+
+                    // Mark as completed
+                    setBatchProgress(prev => ({
+                        ...prev,
+                        [batchId]: {
+                            current: insertedCount || 0,
+                            total: insertedCount || 0,
+                            percentage: 100,
+                            message: electronResult?.status === "SUCCESS"
+                                ? "All reports completed"
+                                : `${successCount} succeeded, ${failureCount} failed`,
+                            status: electronResult?.status === "SUCCESS" ? "completed" : "partial"
+                        }
+                    }));
+
+                    // Clear progress after 5 seconds
+                    setTimeout(() => {
+                        setBatchProgress(prev => {
+                            const next = { ...prev };
+                            delete next[batchId];
+                            return next;
+                        });
+                    }, 5000);
+
                     resetPendingBatch();
                     resetReturnView();
                     await loadReports();
@@ -852,6 +971,19 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 throw new Error(errMsg);
             } catch (err) {
                 setError(err?.message || "Failed to create reports in Taqeem");
+
+                // Mark as error
+                setBatchProgress(prev => ({
+                    ...prev,
+                    [batchId]: {
+                        current: 0,
+                        total: insertedCount || 0,
+                        percentage: 0,
+                        message: err?.message || "Failed",
+                        status: "error"
+                    }
+                }));
+
                 resetPendingBatch();
                 resetReturnView();
             } finally {
@@ -1306,64 +1438,52 @@ const MultiExcelUpload = ({ onViewChange }) => {
     };
 
     const handleStoreOnly = async () => {
-        if (excelFiles.length === 0) {
-            setError("Please select at least one Excel file");
-            return;
-        }
-        if (wantsPdfUpload && pdfFiles.length === 0) {
-            setError("Please select at least one PDF file or disable PDF upload.");
-            return;
-        }
-        if (wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length)) {
-            setError("PDF filenames must match the Excel filenames.");
-            return;
-        }
+        const result = await executeWithAuth(
+            async (params) => {
+                const { token: authToken } = params;
 
-        try {
-            setSuccess(
-                wantsPdfUpload
-                    ? "Uploading files to server..."
-                    : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
-            );
+                setSuccess(
+                    wantsPdfUpload
+                        ? "Uploading files to server..."
+                        : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
+                );
 
-            // Perform upload
-            const data = await multiExcelUpload(
-                excelFiles,
-                wantsPdfUpload ? pdfFiles : []
-            );
+                const data = await multiExcelUpload(
+                    excelFiles,
+                    wantsPdfUpload ? pdfFiles : []
+                );
 
-            if (!data || data.status !== "success") {
-                throw new Error(data?.error || "Upload failed");
+                if (!data || data.status !== "success") {
+                    throw new Error(data?.error || "Upload failed");
+                }
+
+                // ... rest of the logic
+                await loadReports();
+                return { success: true, batchId: data.batchId, insertedCount: data.created || 0 };
+            },
+            { token },
+            {
+                requiredPoints: excelFiles.length || 0,
+                showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+                onViewChange,
+                onAuthSuccess: () => {
+                    console.log("[MultiExcelUpload] Authentication successful for store only")
+                },
+                onAuthFailure: (reason) => {
+                    console.warn("[MultiExcelUpload] Authentication failed for store only:", reason);
+                    if (reason === "LOGIN_REQUIRED") {
+                        setError("Please log in to continue.");
+                        return;
+                    }
+                    if (reason !== "INSUFFICIENT_POINTS" && reason !== "TAQEEM_AUTH_REQUIRED") {
+                        setError(reason?.message || "Authentication failed");
+                    }
+                }
             }
+        );
 
-            const batchIdFromApi = data.batchId;
-            const insertedCount = data.created || data.inserted || 0;
-
-            setBatchId(batchIdFromApi);
-            setUploadResult(data);
-
-            setSuccess(
-                `Files stored successfully. Batch ID: ${batchIdFromApi}. ` +
-                `Inserted ${insertedCount} report(s). You can submit them to Taqeem later.`
-            );
-
-            // Reload reports
-            await loadReports();
-
-            return {
-                success: true,
-                batchId: batchIdFromApi,
-                insertedCount
-            };
-
-        } catch (error) {
-            console.error("[MultiExcelUpload] Upload failed:", error);
-
-            const message =
-                error?.message?.replace(/^Error:\s*/, "") ||
-                "Something went wrong while uploading files.";
-
-            setError(message);
+        if (!result || !result?.success) {
+            return;
         }
     };
 
@@ -1788,36 +1908,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        if (action === "delete") {
-            const confirmed = window.confirm("Delete this report and its assets?");
-            if (!confirmed) return;
-
-            const result = await executeWithAuth(
-                async (params) => {
-                    const { token: authToken } = params;
-                    const result = await deleteMultiApproachReport(recordId);
-                    if (!result?.success) {
-                        throw new Error(result?.message || "Failed to delete report.");
-                    }
-                    setActionStatus({ type: "success", message: "Report deleted." });
-                    await loadReports();
-                    return { success: true };
-                },
-                { token, recordId },
-                {
-                    requiredPoints: 0,
-                    onViewChange,
-                    onAuthFailure: (reason) => {
-                        setActionStatus({
-                            type: "error",
-                            message: reason?.message || "Authentication failed for delete action"
-                        });
-                    }
-                }
-            );
-            return;
-        }
-
         if (action === "approve") {
             const result = await executeWithAuth(
                 async (params) => {
@@ -1950,36 +2040,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
             return;
         }
 
-        if (action === "delete") {
-            const confirmed = window.confirm("Delete this asset from the report?");
-            if (!confirmed) return;
-
-            const result = await executeWithAuth(
-                async (params) => {
-                    const { token: authToken } = params;
-                    const result = await deleteMultiApproachAsset(recordId, assetIndex);
-                    if (!result?.success) {
-                        throw new Error(result?.message || "Failed to delete asset.");
-                    }
-                    setActionStatus({ type: "success", message: "Asset deleted." });
-                    await loadReports();
-                    return { success: true };
-                },
-                { token, recordId, assetIndex },
-                {
-                    requiredPoints: 0,
-                    onViewChange,
-                    onAuthFailure: (reason) => {
-                        setActionStatus({
-                            type: "error",
-                            message: reason?.message || "Authentication failed for asset delete"
-                        });
-                    }
-                }
-            );
-            return;
-        }
-
         if (action === "retry") {
             setAssetActionBusy((prev) => ({
                 ...prev,
@@ -2035,34 +2095,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 return;
             }
 
-            if (action === "delete") {
-                const confirmed = window.confirm("Delete selected assets?");
-                if (!confirmed) return;
-
-                const result = await executeWithAuth(
-                    async (params) => {
-                        const { token: authToken } = params;
-                        const sorted = [...selectedAssets].sort((a, b) => b - a);
-                        for (const idx of sorted) {
-                            await deleteMultiApproachAsset(reportId, idx);
-                        }
-                        setActionStatus({ type: "success", message: "Selected assets deleted." });
-                        await loadReports();
-                        return { success: true };
-                    },
-                    { token, reportId, selectedAssets },
-                    {
-                        requiredPoints: 0,
-                        onViewChange,
-                        onAuthFailure: (reason) => {
-                            setActionStatus({
-                                type: "error",
-                                message: reason?.message || "Authentication failed for bulk delete"
-                            });
-                        }
-                    }
-                );
-            }
         } catch (err) {
             setActionStatus({
                 type: "error",
@@ -2129,7 +2161,14 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                         : "Choose Excel file"}
                                 </span>
                             </div>
-                            <input type="file" multiple accept=".xlsx,.xls" className="hidden" onChange={handleExcelChange} />
+                            <input
+                                type="file"
+                                multiple
+                                accept=".xlsx,.xls"
+                                className="hidden"
+                                onChange={handleExcelChange}
+                                ref={excelInputRef}
+                            />
                             <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
                         </label>
 
@@ -2187,11 +2226,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                         <button
                             type="button"
-                            onClick={() => {
-                                setExcelFiles([]);
-                                setPdfFiles([]);
-                                resetMessages();
-                            }}
+                            onClick={resetAll}
                             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                         >
                             <RefreshCw className="w-3.5 h-3.5" />
@@ -2726,6 +2761,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                         const reportIndex = ((currentPage - 1) * itemsPerPage) + idx + 1;
                                         const recordId = getReportRecordId(report);
                                         const statusKey = getReportStatus(report);
+                                        const reportBatchId = report.batch_id || report.batchId;
+                                        const batchProg = reportBatchId ? batchProgress[reportBatchId] : null;
                                         const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
                                         const isExpanded = recordId ? expandedReports.includes(recordId) : false;
                                         const reportBusy = recordId ? reportActionBusy[recordId] : null;
@@ -2800,7 +2837,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                 <option value="">Actions</option>
                                                                 <option value="submit-taqeem">Submit to Taqeem</option>
                                                                 <option value="retry">Retry submit</option>
-                                                                <option value="delete">Delete</option>
                                                                 <option value="edit">Edit</option>
                                                                 <option value="send-approver">Send to approver</option>
                                                                 <option value="approve">Approve</option>
@@ -2841,6 +2877,22 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                         />
                                                     </td>
                                                 </tr>
+                                                {batchProg && (
+                                                    <tr>
+                                                        <td colSpan={8} className="px-2 py-2 bg-blue-50/20">
+                                                            <div className="px-2">
+                                                                <BatchProgressBar
+                                                                    current={batchProg.current}
+                                                                    total={batchProg.total}
+                                                                    percentage={batchProg.percentage}
+                                                                    message={batchProg.message}
+                                                                    status={batchProg.status}
+                                                                    currentRecordId={batchProg.currentRecordId}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
                                                 {isExpanded && (
                                                     <tr>
                                                         <td colSpan={8} className="bg-blue-50/20 border-t border-blue-200">
@@ -2863,7 +2915,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
                                                                             >
                                                                                 <option value="">Asset actions</option>
-                                                                                <option value="delete">Delete</option>
                                                                                 <option value="retry">Retry submission</option>
                                                                             </select>
                                                                             <button
@@ -2986,8 +3037,6 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                                                                                         className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-medium text-slate-700 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer flex-1"
                                                                                                     >
                                                                                                         <option value="">Actions</option>
-                                                                                                        <option value="delete">Delete</option>
-                                                                                                        <option value="retry">Retry submission</option>
                                                                                                         <option value="edit">Edit</option>
                                                                                                     </select>
                                                                                                     <button
