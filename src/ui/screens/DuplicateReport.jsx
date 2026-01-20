@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
+import { useAuthAction } from "../hooks/useAuthAction";
+
 import {
   createDuplicateReport,
   fetchDuplicateReports,
@@ -366,7 +368,12 @@ const getAssetApproach = (asset) => {
 const DuplicateReport = ({ onViewChange }) => {
   const { user, token, isLoading } = useSession();
   const { ramInfo } = useRam();
-  const { taqeemStatus } = useNavStatus();
+  const { executeWithAuth, authLoading, authError } = useAuthAction();
+
+const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+
+
+
   const [formData, setFormData, resetFormData] = usePersistentState("duplicate:formData", buildDefaultFormData());
   const [errors, setErrors] = useState({});
   const [selectedReportActions, setSelectedReportActions] = useState({});
@@ -466,6 +473,25 @@ const DuplicateReport = ({ onViewChange }) => {
     []
   );
 
+  // const requiredFields = useMemo(
+  //   () => [
+  //     "title",
+  //     "purpose_id",
+  //     "value_premise_id",
+  //     "report_type",
+  //     "valued_at",
+  //     "submitted_at",
+  //     "inspection_date",
+  //     "value",
+  //     "client_name",
+  //     "telephone",
+  //     "email",
+  //   ],
+  //   []
+  // );
+
+
+
   const requiredFields = useMemo(
     () => [
       "title",
@@ -485,14 +511,60 @@ const DuplicateReport = ({ onViewChange }) => {
 
   const validate = () => {
     const newErrors = {};
+    
+    // Check required fields
     requiredFields.forEach((field) => {
       if (!formData[field]) {
-        newErrors[field] = "Required";
+        const fieldLabels = {
+          purpose_id: "Purpose of Valuation",
+          value_premise_id: "Value Attributes",
+          submitted_at: "Report Issuing Date",
+          valued_at: "Date of Valuation",
+          inspection_date: "Inspection Date",
+          value: "Final Value",
+          client_name: "Client Name",
+          telephone: "Client Telephone",
+          email: "Client Email",
+          title: "Report Title",
+          report_type: "Report Type"
+        };
+        newErrors[field] = `${fieldLabels[field] || field} is required`;
       }
     });
+
+    // Check if purpose_id is set to default "to set"
+    if (formData.purpose_id === "to set") {
+      newErrors.purpose_id = "Purpose of Valuation is required";
+    }
+
+    // Check if value_premise_id is set to default "to set"
+    if (formData.value_premise_id === "to set") {
+      newErrors.value_premise_id = "Value Attributes is required";
+    }
+
+    // Date validation: Date of Valuation must be on or before Report Issuing Date
+    if (formData.valued_at && formData.submitted_at) {
+      const valuedAtDate = new Date(formData.valued_at);
+      const submittedAtDate = new Date(formData.submitted_at);
+      
+      if (valuedAtDate > submittedAtDate) {
+        newErrors.valued_at = "Date of Valuation must be on or before Report Issuing Date";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+  // const validate = () => {
+  //   const newErrors = {};
+  //   requiredFields.forEach((field) => {
+  //     if (!formData[field]) {
+  //       newErrors[field] = "Required";
+  //     }
+  //   });
+  //   setErrors(newErrors);
+  //   return Object.keys(newErrors).length === 0;
+  // };
 
   const purgePersistedState = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -786,98 +858,212 @@ const DuplicateReport = ({ onViewChange }) => {
     [recommendedTabs]
   );
 
-  const submitToTaqeem = useCallback(
-    async (recordId, tabsNum, options = {}) => {
-      const { withLoading = true, resume = false } = options;
-      const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
+  // const submitToTaqeem = useCallback(
+  //   async (recordId, tabsNum, options = {}) => {
+  //     const { withLoading = true, resume = false } = options;
+  //     const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
 
-      if (withLoading) {
-        setSubmitting(true);
+  //     if (withLoading) {
+  //       setSubmitting(true);
+  //     }
+
+  //     try {
+  //       if (!recordId) {
+  //         setStatus({ type: "error", message: "Missing record id for submission." });
+  //         return;
+  //       }
+
+  //       const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
+  //       if (!ok) {
+  //         setStatus({
+  //           type: "info",
+  //           message: "Taqeem login required. Finish login and choose a company to continue.",
+  //         });
+  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+  //         setReturnView("duplicate-report");
+  //         return;
+  //       }
+
+  //       setStatus({
+  //         type: "info",
+  //         message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+  //       });
+
+  //       if (!window?.electronAPI?.duplicateReportNavigate) {
+  //         throw new Error("Desktop integration unavailable. Restart the app.");
+  //       }
+
+  //       const result = await window.electronAPI.duplicateReportNavigate(
+  //         recordId,
+  //         undefined,
+  //         resolvedTabs
+  //       );
+
+  //       if (result?.status === "SUCCESS") {
+  //         setStatus({
+  //           type: "success",
+  //           message: "Report submitted to Taqeem. Browser closed after completion.",
+  //         });
+  //         resetPendingSubmit();
+  //         resetReturnView();
+  //         return;
+  //       }
+
+  //       const errMsg =
+  //         result?.error ||
+  //         "Upload to Taqeem failed. Make sure you selected a company.";
+  //       if (/no company selected/i.test(errMsg)) {
+  //         setStatus({
+  //           type: "warning",
+  //           message: errMsg,
+  //         });
+  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+  //         setReturnView("duplicate-report");
+  //         onViewChange?.("get-companies");
+  //         return;
+  //       }
+
+  //       setStatus({ type: "error", message: errMsg });
+  //       resetPendingSubmit();
+  //       resetReturnView();
+  //     } catch (err) {
+  //       setStatus({
+  //         type: "error",
+  //         message: err?.message || "Failed to submit report to Taqeem.",
+  //       });
+  //       resetPendingSubmit();
+  //       resetReturnView();
+  //     } finally {
+  //       if (withLoading) {
+  //         setSubmitting(false);
+  //       }
+  //     }
+  //   },
+  //   [
+  //     isTaqeemLoggedIn,
+  //     onViewChange,
+  //     resetPendingSubmit,
+  //     resetReturnView,
+  //     resolveTabsForAssets,
+  //     setPendingSubmit,
+  //     setReturnView,
+  //     token,
+  //   ]
+  // );
+
+
+
+
+  const submitToTaqeem = useCallback(
+  async (recordId, tabsNum, options = {}) => {
+    const { withLoading = true, resume = false } = options;
+    const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
+
+    if (withLoading) setSubmitting(true);
+
+    try {
+      if (!recordId) {
+        setStatus({ type: "error", message: "Missing record id for submission." });
+        return;
       }
 
-      try {
-        if (!recordId) {
-          setStatus({ type: "error", message: "Missing record id for submission." });
-          return;
-        }
+      // useAuthAction will:
+      // - ensureTaqeemAuthorized(...) with login + setTaqeemStatus (fixes UI)
+      // - navigate to selectedCompany
+      // - handle LOGIN_REQUIRED / INSUFFICIENT_POINTS
+      const requiredPoints = 0; 
+      // If you want points tied to assets, use:
+      // const requiredPoints = excelValidation?.counts?.total || 1;
 
-        const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
-        if (!ok) {
+      const result = await executeWithAuth(
+        async () => {
           setStatus({
             type: "info",
-            message: "Taqeem login required. Finish login and choose a company to continue.",
+            message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
           });
-          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-          setReturnView("duplicate-report");
-          return;
-        }
 
+          if (!window?.electronAPI?.duplicateReportNavigate) {
+            throw new Error("Desktop integration unavailable. Restart the app.");
+          }
+
+          const res = await window.electronAPI.duplicateReportNavigate(
+            recordId,
+            undefined,
+            resolvedTabs
+          );
+
+          if (res?.status === "SUCCESS") return res;
+
+          const errMsg =
+            res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+
+          // keep your current behavior for company selection
+          if (/no company selected/i.test(errMsg)) {
+            setStatus({ type: "warning", message: errMsg });
+            setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+            setReturnView("duplicate-report");
+            onViewChange?.("get-companies");
+            return { status: "NO_COMPANY_SELECTED" };
+          }
+
+          throw new Error(errMsg);
+        },
+        {},
+        {
+          requiredPoints,
+          onViewChange,
+          onAuthFailure: (reason) => {
+            if (reason === "LOGIN_REQUIRED") {
+              setStatus({
+                type: "info",
+                message: "Taqeem login required. Finish login and choose a company to continue.",
+              });
+              setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+              setReturnView("duplicate-report");
+              return;
+            }
+            if (reason === "INSUFFICIENT_POINTS") {
+              setStatus({ type: "warning", message: "Insufficient points." });
+              return;
+            }
+            setStatus({ type: "error", message: String(reason?.message || reason) });
+          },
+        }
+      );
+
+      // If auth failed, executeWithAuth returns null
+      if (!result) return;
+
+      if (result?.status === "SUCCESS") {
         setStatus({
-          type: "info",
-          message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+          type: "success",
+          message: "Report submitted to Taqeem. Browser closed after completion.",
         });
-
-        if (!window?.electronAPI?.duplicateReportNavigate) {
-          throw new Error("Desktop integration unavailable. Restart the app.");
-        }
-
-        const result = await window.electronAPI.duplicateReportNavigate(
-          recordId,
-          undefined,
-          resolvedTabs
-        );
-
-        if (result?.status === "SUCCESS") {
-          setStatus({
-            type: "success",
-            message: "Report submitted to Taqeem. Browser closed after completion.",
-          });
-          resetPendingSubmit();
-          resetReturnView();
-          return;
-        }
-
-        const errMsg =
-          result?.error ||
-          "Upload to Taqeem failed. Make sure you selected a company.";
-        if (/no company selected/i.test(errMsg)) {
-          setStatus({
-            type: "warning",
-            message: errMsg,
-          });
-          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-          setReturnView("duplicate-report");
-          onViewChange?.("get-companies");
-          return;
-        }
-
-        setStatus({ type: "error", message: errMsg });
         resetPendingSubmit();
         resetReturnView();
-      } catch (err) {
-        setStatus({
-          type: "error",
-          message: err?.message || "Failed to submit report to Taqeem.",
-        });
-        resetPendingSubmit();
-        resetReturnView();
-      } finally {
-        if (withLoading) {
-          setSubmitting(false);
-        }
+        return;
       }
-    },
-    [
-      isTaqeemLoggedIn,
-      onViewChange,
-      resetPendingSubmit,
-      resetReturnView,
-      resolveTabsForAssets,
-      setPendingSubmit,
-      setReturnView,
-      token,
-    ]
-  );
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err?.message || "Failed to submit report to Taqeem.",
+      });
+      resetPendingSubmit();
+      resetReturnView();
+    } finally {
+      if (withLoading) setSubmitting(false);
+    }
+  },
+  [
+    executeWithAuth,
+    onViewChange,
+    resolveTabsForAssets,
+    resetPendingSubmit,
+    resetReturnView,
+    setPendingSubmit,
+    setReturnView,
+  ]
+);
 
   useEffect(() => {
     if (submitting) return;
@@ -1022,43 +1208,171 @@ const DuplicateReport = ({ onViewChange }) => {
     }
   };
 
+  // const handleStoreAndSubmitNow = async () => {
+  //   // Call the original create report function but keep modal open
+  //   const success = await handleCreateReport(false);
+
+  //   if (success) {
+  //     try {
+  //       // Get the latest reports to find the newly created one
+  //       const result = await fetchDuplicateReports();
+  //       const latestReports = normalizeReportsResponse(result);
+
+  //       if (latestReports.length > 0) {
+  //         // Get the most recent report (should be the one we just created)
+  //         const latestReport = latestReports[latestReports.length - 1];
+  //         const recordId = getReportRecordId(latestReport);
+
+  //         if (recordId) {
+  //           // Close the modal
+  //           setShowCreateModal(false);
+
+  //           // Submit to Taqeem
+  //           const assetCount = Array.isArray(latestReport.asset_data)
+  //             ? latestReport.asset_data.length
+  //             : 0;
+  //           const tabsForAssets = resolveTabsForAssets(assetCount);
+
+  //           await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+  //         }
+  //       }
+  //     } catch (err) {
+  //       setStatus({
+  //         type: "error",
+  //         message: "Report stored but failed to submit to Taqeem: " +
+  //           (err?.message || "Unknown error")
+  //       });
+  //     }
+  //   }
+  // };
+
+
   const handleStoreAndSubmitNow = async () => {
-    // Call the original create report function but keep modal open
-    const success = await handleCreateReport(false);
+  if (!validate()) {
+    setStatus({ type: "error", message: "Please fill required fields." });
+    return;
+  }
+  if (!excelFile) {
+    setStatus({ type: "error", message: "Excel file is required." });
+    return;
+  }
+  if (excelValidationLoading) {
+    setStatus({ type: "error", message: "Wait for Excel validation to finish." });
+    return;
+  }
+  if (excelValidation.issues.length) {
+    setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
+    return;
+  }
+  if (wantsPdfUpload && !pdfFile) {
+    setStatus({ type: "error", message: "PDF file is required when enabled." });
+    return;
+  }
 
-    if (success) {
-      try {
-        // Get the latest reports to find the newly created one
-        const result = await fetchDuplicateReports();
-        const latestReports = normalizeReportsResponse(result);
+  setSubmitting(true);
+  setStatus({ type: "info", message: "Preparing..." });
 
-        if (latestReports.length > 0) {
-          // Get the most recent report (should be the one we just created)
-          const latestReport = latestReports[latestReports.length - 1];
-          const recordId = getReportRecordId(latestReport);
+  try {
+    const requiredPoints = excelValidation?.counts?.total || 0;
 
-          if (recordId) {
-            // Close the modal
-            setShowCreateModal(false);
+    const result = await executeWithAuth(
+      async ({ token: authToken }) => {
+        // 1) STORE report (same as handleCreateReport but inside wrapper)
+        const payload = new FormData();
+        payload.append(
+          "formData",
+          JSON.stringify({
+            ...formData,
+            report_users: reportUsers || [],
+            valuers,
+          })
+        );
+        payload.append("excel", excelFile);
+        if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
 
-            // Submit to Taqeem
-            const assetCount = Array.isArray(latestReport.asset_data)
-              ? latestReport.asset_data.length
-              : 0;
-            const tabsForAssets = resolveTabsForAssets(assetCount);
-
-            await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
-          }
+        const createRes = await createDuplicateReport(payload);
+        if (!createRes?.success) {
+          throw new Error(createRes?.message || "Could not save report.");
         }
-      } catch (err) {
-        setStatus({
-          type: "error",
-          message: "Report stored but failed to submit to Taqeem: " +
-            (err?.message || "Unknown error")
-        });
+
+        // 2) RELOAD reports and pick the latest record id (your existing logic)
+        const fetched = await fetchDuplicateReports();
+        const latestReports = normalizeReportsResponse(fetched);
+        const latestReport = latestReports?.[latestReports.length - 1];
+        const recordId = getReportRecordId(latestReport);
+
+        if (!recordId) {
+          throw new Error("Report stored but could not find its record id.");
+        }
+
+        // 3) Ensure Taqeem authorized
+        const ok = await ensureTaqeemAuthorized(authToken, onViewChange, taqeemStatus?.state === "success");
+        if (!ok) {
+          // IMPORTANT: Let auth hook / your login flow handle the redirect
+          // (If your executeWithAuth already redirects on LOGIN_REQUIRED, you can throw a special error)
+          throw new Error("LOGIN_REQUIRED");
+        }
+
+        // 4) Submit via Electron
+        const assetCount = Array.isArray(latestReport?.asset_data) ? latestReport.asset_data.length : 0;
+        const tabsForAssets = resolveTabsForAssets(assetCount);
+
+        const submitRes = await window.electronAPI.duplicateReportNavigate(recordId, undefined, tabsForAssets);
+        if (submitRes?.status !== "SUCCESS") {
+          const msg = submitRes?.error || "Upload to Taqeem failed.";
+          if (/no company selected/i.test(msg)) {
+            // keep your existing behavior
+            setPendingSubmit({ recordId, tabsNum: tabsForAssets, resumeOnLoad: true });
+            setReturnView("duplicate-report");
+            onViewChange?.("get-companies");
+            throw new Error(msg);
+          }
+          throw new Error(msg);
+        }
+
+        return { success: true, recordId };
+      },
+      {},
+      {
+        requiredPoints,
+        onViewChange,
+        showInsufficientPointsModal: () => {
+          // you can implement similar modal logic if you have it here,
+          // or just show a status message
+          setStatus({ type: "warning", message: "Insufficient points." });
+        },
+        onAuthSuccess: () => {
+          // THIS IS WHERE YOU FIX THE UI TO STAY ON
+          setTaqeemStatus?.({ state: "success", message: "Authorized" });
+        },
+        onAuthFailure: (reason) => {
+          if (reason === "LOGIN_REQUIRED") {
+            setStatus({ type: "info", message: "Login required. Please login to continue." });
+          } else if (reason === "INSUFFICIENT_POINTS") {
+            setStatus({ type: "warning", message: "Insufficient points." });
+          } else {
+            setStatus({ type: "error", message: reason?.message || "Authentication failed." });
+          }
+        },
       }
+    );
+
+    if (result?.success) {
+      setStatus({ type: "success", message: "Stored + submitted successfully." });
+      await loadReports();
+      setShowCreateModal(false);
     }
-  };
+  } catch (err) {
+    if (String(err?.message || err) === "LOGIN_REQUIRED") {
+      // if your auth hook handles this, you may not need anything here
+      setStatus({ type: "info", message: "Please login to Taqeem to continue." });
+    } else {
+      setStatus({ type: "error", message: err?.message || "Failed." });
+    }
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleUpdateReport = async () => {
     if (!editingReportId) {
