@@ -57,7 +57,7 @@ async def switch_to_headless():
         )
         
         headless_browser = await uc.start(
-            headless=True,
+            headless=False,
             user_data_dir=profile_path,
             browser_args=[
                 f"--user-agent={user_agent}",

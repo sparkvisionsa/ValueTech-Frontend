@@ -866,99 +866,7 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     [recommendedTabs]
   );
 
-  // const submitToTaqeem = useCallback(
-  //   async (recordId, tabsNum, options = {}) => {
-  //     const { withLoading = true, resume = false } = options;
-  //     const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
-
-  //     if (withLoading) {
-  //       setSubmitting(true);
-  //     }
-
-  //     try {
-  //       if (!recordId) {
-  //         setStatus({ type: "error", message: "Missing record id for submission." });
-  //         return;
-  //       }
-
-  //       const ok = await ensureTaqeemAuthorized(token, onViewChange, isTaqeemLoggedIn);
-  //       if (!ok) {
-  //         setStatus({
-  //           type: "info",
-  //           message: "Taqeem login required. Finish login and choose a company to continue.",
-  //         });
-  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-  //         setReturnView("duplicate-report");
-  //         return;
-  //       }
-
-  //       setStatus({
-  //         type: "info",
-  //         message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
-  //       });
-
-  //       if (!window?.electronAPI?.duplicateReportNavigate) {
-  //         throw new Error("Desktop integration unavailable. Restart the app.");
-  //       }
-
-  //       const result = await window.electronAPI.duplicateReportNavigate(
-  //         recordId,
-  //         undefined,
-  //         resolvedTabs
-  //       );
-
-  //       if (result?.status === "SUCCESS") {
-  //         setStatus({
-  //           type: "success",
-  //           message: "Report submitted to Taqeem. Browser closed after completion.",
-  //         });
-  //         resetPendingSubmit();
-  //         resetReturnView();
-  //         return;
-  //       }
-
-  //       const errMsg =
-  //         result?.error ||
-  //         "Upload to Taqeem failed. Make sure you selected a company.";
-  //       if (/no company selected/i.test(errMsg)) {
-  //         setStatus({
-  //           type: "warning",
-  //           message: errMsg,
-  //         });
-  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-  //         setReturnView("duplicate-report");
-  //         onViewChange?.("get-companies");
-  //         return;
-  //       }
-
-  //       setStatus({ type: "error", message: errMsg });
-  //       resetPendingSubmit();
-  //       resetReturnView();
-  //     } catch (err) {
-  //       setStatus({
-  //         type: "error",
-  //         message: err?.message || "Failed to submit report to Taqeem.",
-  //       });
-  //       resetPendingSubmit();
-  //       resetReturnView();
-  //     } finally {
-  //       if (withLoading) {
-  //         setSubmitting(false);
-  //       }
-  //     }
-  //   },
-  //   [
-  //     isTaqeemLoggedIn,
-  //     onViewChange,
-  //     resetPendingSubmit,
-  //     resetReturnView,
-  //     resolveTabsForAssets,
-  //     setPendingSubmit,
-  //     setReturnView,
-  //     token,
-  //   ]
-  // );
-
+  
 
 
 
@@ -983,42 +891,50 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
         if (!ok) {
           setStatus({
             type: "info",
-            message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+            message: "Taqeem login required. Finish login and choose a company to continue.",
           });
-
-          if (!window?.electronAPI?.duplicateReportNavigate) {
-            throw new Error("Desktop integration unavailable. Restart the app.");
-          }
-
-          const res = await window.electronAPI.duplicateReportNavigate(
-            recordId,
-            undefined,
-            resolvedTabs
-          );
-
-          if (res?.status === "SUCCESS") {
-            setStatus({
-              type: "success",
-              message: "Report submitted to Taqeem. Browser closed after completion.",
-            });
-            resetPendingSubmit();
-            resetReturnView();
-            return;
-          }
-
-          const errMsg =
-            res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
-
-          if (/no company selected/i.test(errMsg)) {
-            setStatus({ type: "warning", message: errMsg });
-            setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-            setReturnView("duplicate-report");
-            onViewChange?.("get-companies");
-            return;
-          }
-
-          throw new Error(errMsg);
+          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+          setReturnView("duplicate-report");
+          return;
         }
+
+        setStatus({
+          type: "info",
+          message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+        });
+
+        if (!window?.electronAPI?.duplicateReportNavigate) {
+          throw new Error("Desktop integration unavailable. Restart the app.");
+        }
+
+        const res = await window.electronAPI.duplicateReportNavigate(
+          recordId,
+          undefined,
+          resolvedTabs
+        );
+
+        if (res?.status === "SUCCESS") {
+          setStatus({
+            type: "success",
+            message: "Report submitted to Taqeem. Browser closed after completion.",
+          });
+          resetPendingSubmit();
+          resetReturnView();
+          return;
+        }
+
+        const errMsg =
+          res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+
+        if (/no company selected/i.test(errMsg)) {
+          setStatus({ type: "warning", message: errMsg });
+          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+          setReturnView("duplicate-report");
+          onViewChange?.("get-companies");
+          return;
+        }
+
+        throw new Error(errMsg);
       } catch (err) {
         setStatus({
           type: "error",
@@ -1043,6 +959,8 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
       token,
     ]
   );
+
+
 
   useEffect(() => {
     if (submitting) return;

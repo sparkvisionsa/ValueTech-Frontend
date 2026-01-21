@@ -1000,157 +1000,7 @@ const runWithConcurrency = async (items, limit, worker) => {
 };
 
 
-
   // ✅ Replace your handleCheckReportInTaqeem with this version
-// const handleCheckReportInTaqeem = async () => {
-//   const ids = parseReportIds(reportId); // reportId is the input string: "1215 5888 6965"
-//   if (!ids.length) {
-//     setError("At least one Report ID is required");
-//     return;
-//   }
-
-//   setIsCheckingReport(true);
-//   setError("");
-//   setReportExists(null);
-//   setStatusChangeResult(null);
-//   setOperationResult(null);
-//   setReportSummaryRow([]); // Reset to array
-
-//   const concurrency = 3; // Adjust for multiple reports
-
-//   try {
-//     const results = await runWithConcurrency(ids, concurrency, async (id) => {
-//       try {
-//         const result = await window.electronAPI.validateReport(id, userId);
-//         console.log(`Full API response for ${id}:`, result);
-
-//         // Create table row
-//         const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-//         return {
-//           reportId: result?.reportId || id,
-//           totalAssets,
-//           reportStatus: result?.reportStatus ?? "Unknown",
-//           presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
-//           exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED"
-//         };
-//       } catch (err) {
-//         console.error(`Error checking report ${id}:`, err);
-//         return {
-//           reportId: id,
-//           totalAssets: 0,
-//           reportStatus: "Error",
-//           presentOrNot: "Error",
-//           exists: false
-//         };
-//       }
-//     });
-
-//     setReportSummaryRow(results);
-
-//     // Determine overall existence (optional)
-//     const allExist = results.every(r => r.exists);
-//     setReportExists(allExist);
-
-//     if (!allExist) {
-//       setError("Some reports do not exist or failed to check.");
-//     } else {
-//       setError("");
-//     }
-
-//     // Reset the text area after successful check
-//     setReportId("");
-
-//     await loadCheckedReports(1);
-//   } catch (err) {
-//     console.error("Error checking reports:", err);
-//     setReportExists(false);
-//     setError(err.message || "Error checking reports. Please try again.");
-//   } finally {
-//     setIsCheckingReport(false);
-//   }
-// };
-
-
-
-// const handleCheckReportInTaqeem = async () => {
-//   const ids = parseReportIds(reportId);
-//   if (!ids.length) {
-//     setError("At least one Report ID is required");
-//     return;
-//   }
-
-//   await executeWithAuth(
-//     async (params) => {
-//       const { reportIds } = params;
-
-//       setIsCheckingReport(true);
-//       setError("");
-//       setReportExists(null);
-//       setStatusChangeResult(null);
-//       setOperationResult(null);
-//       setReportSummaryRow([]);
-
-//       // Reset input immediately
-//       setReportId("");
-
-//       const concurrency = 3;
-
-//       const results = await runWithConcurrency(reportIds, concurrency, async (id) => {
-//         try {
-//           const result = await window.electronAPI.validateReport(id, userId);
-
-//           const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-//           return {
-//             reportId: result?.reportId || id,
-//             totalAssets,
-//             reportStatus: result?.reportStatus ?? "Unknown",
-//             presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
-//             exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED",
-//           };
-//         } catch (err) {
-//           return {
-//             reportId: id,
-//             totalAssets: 0,
-//             reportStatus: "Error",
-//             presentOrNot: "Error",
-//             exists: false,
-//           };
-//         }
-//       });
-
-//       setReportSummaryRow(results);
-
-//       const allExist = results.every((r) => r.exists);
-//       setReportExists(allExist);
-
-//       if (!allExist) setError("Some reports do not exist or failed to check.");
-
-//       await loadCheckedReports(1);
-
-//       return { success: true };
-//     },
-//     { token, reportIds: ids },
-//     {
-//       requiredPoints: ids.length, // ✅ cost per report check (change if you want)
-//       showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
-//       onAuthFailure: (reason) => {
-//         if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
-//           setError(reason?.message || "Authentication failed for Check Report");
-//         }
-//       },
-//     }
-//   ).catch((err) => {
-//     if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
-//       setError(err?.message || "Check Report failed");
-//     }
-//   }).finally(() => {
-//     setIsCheckingReport(false);
-//   });
-// };
-
-
 
 const handleCheckReportInTaqeem = async () => {
   const ids = parseReportIds(reportId);
@@ -1200,7 +1050,7 @@ const handleCheckReportInTaqeem = async () => {
             action: "check-report",
             userId,
             result: row.result,
-            reportStatus: row.reportStatus,
+            // reportStatus: row.reportStatus,
             totalAssets: row.totalAssets,
           });
 
@@ -1222,7 +1072,7 @@ const handleCheckReportInTaqeem = async () => {
             action: "check-report",
             userId,
             result: row.result,
-            reportStatus: row.reportStatus,
+            // reportStatus: row.reportStatus,
             totalAssets: row.totalAssets,
             error: String(err),
           });
@@ -1336,7 +1186,7 @@ const handleDeleteReport = async () => {
           action: "delete-report",
           userId,
           result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
-          reportStatus: res.reportStatus,
+        //   reportStatus: res.reportStatus,
           totalAssets: res.totalAssets || 0,
           error: res.error,
         });
@@ -1373,7 +1223,7 @@ const handleDeleteReport = async () => {
             action: "delete-report",
             userId,
             result: "Report - Deleted",
-            reportStatus: originalReportStatus,
+            // reportStatus: originalReportStatus,
             totalAssets,
           });
 
@@ -1422,191 +1272,6 @@ const handleDeleteReport = async () => {
 
 
 // ==========================================================================
-
-
-
-
-
-
-
-
-
-
-    // Handle delete only assets - batch
-    // const handleDeleteReportAssets = async () => {
-    //     const ids = parseReportIds(reportId);
-    //     if (!ids.length) {
-    //         setError("At least one Report ID is required");
-    //         return;
-    //     }
-
-    //     // Add rows immediately with report IDs
-    //     const initialRows = ids.map(id => ({
-    //         reportId: id,
-    //         reportStatus: "Validating...",
-    //         totalAssets: "Loading...",
-    //         result: "Validating..."
-    //     }));
-    //     setReportSummaryRow(prev => [...prev, ...initialRows]);
-
-    //     // Reset the text area
-    //     setReportId("");
-
-    //     const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-    //         try {
-    //             const result = await window.electronAPI.validateReport(id, userId);
-    //             const status = result?.status;
-    //             const reportStatus = result?.reportStatus;
-    //             const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-    //             let proceed = false;
-    //             let resultText = "";
-
-    //             if (status === "NOT_FOUND") {
-    //                 resultText = "Not Found";
-    //             } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
-    //                 proceed = true;
-    //                 resultText = "Validated";
-    //             } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
-    //                 resultText = "Report - Can't be Deleted";
-    //             } else {
-    //                 resultText = "Validated";
-    //             }
-
-    //             // Update the row
-    //             setReportSummaryRow(prev => prev.map(row => 
-    //                 row.reportId === id ? {
-    //                     reportId: id,
-    //                     reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-    //                     totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-    //                     result: resultText
-    //                 } : row
-    //             ));
-
-    //             return { id, proceed, result, reportStatus, totalAssets, resultText };
-    //         } catch (err) {
-    //             // Update row with error
-    //             setReportSummaryRow(prev => prev.map(row => 
-    //                 row.reportId === id ? {
-    //                     ...row,
-    //                     reportStatus: "Error",
-    //                     totalAssets: 0,
-    //                     result: "Error"
-    //                 } : row
-    //             ));
-    //             return { id, proceed: false, error: err?.message || String(err) };
-    //         }
-    //     });
-
-    //     const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
-    //     const validationById = validationResults.reduce((acc, res) => {
-    //         acc[res.id] = res;
-    //         return acc;
-    //     }, {});
-
-    //     // Store ALL validation results in REPORT_DELETIONS (both validated and cannot delete)
-    //     for (const res of validationResults) {
-    //         await window.electronAPI.storeReportDeletion({
-    //             reportId: res.id,
-    //             action: "delete-assets",
-    //             userId,
-    //             result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
-    //             reportStatus: res.reportStatus,
-    //             totalAssets: res.totalAssets || 0,
-    //             error: res.error
-    //         });
-    //     }
-
-    //     if (!idsToDelete.length) {
-    //         return;
-    //     }
-
-    //     setDeleteAssetsRequested(true);
-    //     setStatusChangeResult(null);
-    //     setDeleteAssetsStatus('running');
-    //     setOperationResult(null);
-    //     setDeleteAssetsProgressById({});
-    //     setRowActionById(prev => {
-    //         const next = { ...prev };
-    //         ids.forEach(id => { delete next[id]; });
-    //         idsToDelete.forEach(id => { next[id] = "delete-assets"; });
-    //         return next;
-    //     });
-
-    //     const maxRounds = 10;
-    //     const concurrency = Math.min(5, idsToDelete.length);
-    //     try {
-    //         const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
-    //             try {
-    //                 const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
-
-    //                 const validation = validationById[id];
-    //                 const totalAssets = validation?.totalAssets || 0;
-    //                 const originalReportStatus = validation?.reportStatus || "Unknown";
-
-    //                 // Update row with success - keep original reportStatus
-    //                 setReportSummaryRow(prev => prev.map(row => 
-    //                     row.reportId === id ? {
-    //                         ...row,
-    //                         result: "Asset - Deleted"
-    //                     } : row
-    //                 ));
-
-    //                 // Store in REPORT_DELETIONS
-    //                 await window.electronAPI.storeReportDeletion({
-    //                     reportId: id,
-    //                     action: "delete-assets",
-    //                     userId,
-    //                     result: "Asset - Deleted",
-    //                     reportStatus: originalReportStatus,
-    //                     totalAssets: totalAssets
-    //                 });
-
-    //                 return { id, ok: true, result: res };
-    //             } catch (err) {
-    //                 // Update row with failure
-    //                 setReportSummaryRow(prev => prev.map(row => 
-    //                     row.reportId === id ? {
-    //                         ...row,
-    //                         result: "Delete Failed"
-    //                     } : row
-    //                 ));
-
-    //                 // Store failure in REPORT_DELETIONS
-    //                 await window.electronAPI.storeReportDeletion({
-    //                     reportId: id,
-    //                     action: "delete-assets",
-    //                     userId,
-    //                     result: "Delete Failed",
-    //                     error: String(err)
-    //                 });
-
-    //                 return { id, ok: false, error: String(err) };
-    //             }
-    //         });
-
-    //         const failed = results.filter(r => !r?.ok).length;
-
-    //         setStatusChangeResult({
-    //             total: idsToDelete.length,
-    //             success: idsToDelete.length - failed,
-    //             failed,
-    //             results
-    //         });
-
-    //         setDeleteAssetsStatus(failed ? "partial" : "success");
-    //     } catch (err) {
-    //         console.error("Error initiating report assets deletion:", err);
-    //         setDeleteAssetsStatus('stopped');
-    //     } finally {
-    //         setRowActionById(prev => {
-    //             const next = { ...prev };
-    //             idsToDelete.forEach(id => { delete next[id]; });
-    //             return next;
-    //         });
-    //     }
-    // };
-
 
 
     const handleDeleteReportAssets = async () => {
@@ -1689,7 +1354,7 @@ if (status === "NOT_FOUND") {
           action: "delete-assets",
           userId,
           result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
-          reportStatus: res.reportStatus,
+        //   reportStatus: res.reportStatus,
           totalAssets: res.totalAssets || 0,
           error: res.error,
         });
@@ -1961,127 +1626,6 @@ if (status === "NOT_FOUND") {
             });
         }
     };
-
-    // Handle changing report status - fire and forget
-    // const handleChangeReportStatus = async () => {
-    //     const ids = parseReportIds(reportId);
-    //     if (!ids.length) {
-    //         setError("At least one Report ID is required");
-    //         return;
-    //     }
-
-    //     // Add rows immediately with report IDs
-    //     const initialRows = ids.map(id => ({
-    //         reportId: id,
-    //         reportStatus: "Validating...",
-    //         totalAssets: "Loading...",
-    //         result: "Validating..."
-    //     }));
-    //     setReportSummaryRow(prev => [...prev, ...initialRows]);
-
-    //     // Reset the text area
-    //     setReportId("");
-
-    //     const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-    //         try {
-    //             const result = await window.electronAPI.validateReport(id, userId);
-    //             const status = result?.status;
-    //             const reportStatus = result?.reportStatus;
-    //             const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-    //             let resultText = "";
-
-    //             if (status === "NOT_FOUND") {
-    //                 resultText = "Not Found";
-    //             } else {
-    //                 resultText = "Validated";
-    //             }
-
-    //             // Update the row
-    //             setReportSummaryRow(prev => prev.map(row => 
-    //                 row.reportId === id ? {
-    //                     reportId: id,
-    //                     reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-    //                     totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-    //                     result: resultText
-    //                 } : row
-    //             ));
-
-    //             return { id, result, reportStatus, totalAssets, resultText };
-    //         } catch (err) {
-    //             // Update row with error
-    //             setReportSummaryRow(prev => prev.map(row => 
-    //                 row.reportId === id ? {
-    //                     ...row,
-    //                     reportStatus: "Error",
-    //                     totalAssets: 0,
-    //                     result: "Error"
-    //                 } : row
-    //             ));
-    //             return { id, error: err?.message || String(err) };
-    //         }
-    //     });
-
-    //     // Process status change for all valid reports
-    //     for (const res of validationResults) {
-    //         if (res.result && res.result.status !== "NOT_FOUND") {
-    //             try {
-    //                 await window.electronAPI.handleCancelledReport(res.id);
-                    
-    //                 // Update row with success
-    //                 setReportSummaryRow(prev => prev.map(row => 
-    //                     row.reportId === res.id ? {
-    //                         ...row,
-    //                         result: "Status Changed"
-    //                     } : row
-    //                 ));
-
-    //                 // Store in REPORT_DELETIONS
-    //                 await window.electronAPI.storeReportDeletion({
-    //                     reportId: res.id,
-    //                     action: "change-status",
-    //                     userId,
-    //                     result: "Status Changed",
-    //                     reportStatus: res.reportStatus,
-    //                     totalAssets: res.totalAssets || 0
-    //                 });
-    //             } catch (err) {
-    //                 // Update row with failure
-    //                 setReportSummaryRow(prev => prev.map(row => 
-    //                     row.reportId === res.id ? {
-    //                         ...row,
-    //                         result: "Change Failed"
-    //                     } : row
-    //                 ));
-
-    //                 // Store failure in REPORT_DELETIONS
-    //                 await window.electronAPI.storeReportDeletion({
-    //                     reportId: res.id,
-    //                     action: "change-status",
-    //                     userId,
-    //                     result: "Change Failed",
-    //                     error: String(err)
-    //                 });
-    //             }
-    //         } else {
-    //             // Store not found in REPORT_DELETIONS
-    //             await window.electronAPI.storeReportDeletion({
-    //                 reportId: res.id,
-    //                 action: "change-status",
-    //                 userId,
-    //                 result: res.resultText || "Not Found",
-    //                 reportStatus: res.reportStatus,
-    //                 totalAssets: res.totalAssets || 0,
-    //                 error: res.error
-    //             });
-    //         }
-    //     }
-
-    //     setStatusChangeResult({
-    //         status: 'COMPLETED',
-    //         message: 'Status change process completed'
-    //     });
-    // };
 
 
     const handleChangeReportStatus = async () => {
@@ -2957,32 +2501,6 @@ if (status === "NOT_FOUND") {
                                 </div>
                             )}
 
-                            {/* Warning Box */}
-                            {!deleteRequested && !deleteAssetsRequested && !deleteReportStatus && !deleteAssetsStatus && (
-                                <div className="bg-yellow-50 hidden border border-yellow-200 rounded-lg p-4">
-                                    {/* <div className="flex items-center gap-3">
-                                        <FileText className="w-5 h-5 text-yellow-500" />
-                                        <div>
-                                            <p className="font-medium text-yellow-800">Warning: Irreversible Action</p>
-                                            
-                                        </div>
-                                    </div> */}
-                                </div>
-                            )}
-
-                            {/* Action Buttons - Only show if no operation is running */}
-                            {!deleteReportStatus && !deleteAssetsStatus && (
-                                <div className=" hidden flex-col sm:flex-row gap-3 pt-4">
-                                    {/* <button
-                                        onClick={handleDeleteReportAssets}
-                                        className="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
-                                    >
-                                        <Package className="w-4 h-4" />
-                                        Delete Only Assets
-                                    </button> */}
-                                    
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
