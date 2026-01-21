@@ -876,6 +876,53 @@ const { executeWithAuth } = useAuthAction(); // ✅
 
 
 
+// const validateReportForDelete = async (id) => {
+//   try {
+//     let alreadyDeleted = false;
+
+//     if (userId) {
+//       const deletedRes = await window.electronAPI.getReportDeletions(userId, null, 1, 1, id);
+//       alreadyDeleted =
+//         deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0;
+
+//       // ✅ IMPORTANT: do NOT block deletion when alreadyDeleted
+//       if (alreadyDeleted) {
+//         return {
+//           id,
+//           proceed: true,              // ✅ allow deleteReport to run
+//           alreadyDeleted: true,
+//           result: { status: "ALREADY_DELETED_LOCAL" } // optional placeholder
+//         };
+//       }
+//     }
+
+//     const result = await window.electronAPI.validateReport(id, userId);
+//     const status = result?.status;
+
+//     if (status === "NOT_FOUND") {
+//       // You can decide: still proceed or not.
+//       // If you want deleteReport to attempt anyway, set proceed:true.
+//       return { id, proceed: true, error: "Report not found", result };
+//     }
+
+//     if (status === "SUCCESS" || status === "MACROS_EXIST" || result?.hasMacros) {
+//       return { id, proceed: true, result };
+//     }
+
+//     return { id, proceed: true, error: result?.error || "Validation failed", result }; // still proceed if you insist
+//   } catch (err) {
+//     // If you want "always run deleteReport", even on errors:
+//     return { id, proceed: true, error: err?.message || String(err) };
+//   }
+// };
+
+
+
+const isDraftStatus = (s) => {
+  const v = (s || "").toString().trim().toLowerCase();
+  return v === "draft" || v === "مسودة";
+};
+
 const validateReportForDelete = async (id) => {
   try {
     let alreadyDeleted = false;
@@ -885,34 +932,40 @@ const validateReportForDelete = async (id) => {
       alreadyDeleted =
         deletedRes?.status === "SUCCESS" && (deletedRes.items || []).length > 0;
 
-      // ✅ IMPORTANT: do NOT block deletion when alreadyDeleted
+      // allow re-run delete if already deleted locally
       if (alreadyDeleted) {
         return {
           id,
-          proceed: true,              // ✅ allow deleteReport to run
+          proceed: true,
           alreadyDeleted: true,
-          result: { status: "ALREADY_DELETED_LOCAL" } // optional placeholder
+          result: { status: "ALREADY_DELETED_LOCAL" }
         };
       }
     }
 
     const result = await window.electronAPI.validateReport(id, userId);
+
     const status = result?.status;
+    const reportStatus = result?.reportStatus;
 
     if (status === "NOT_FOUND") {
-      // You can decide: still proceed or not.
-      // If you want deleteReport to attempt anyway, set proceed:true.
-      return { id, proceed: true, error: "Report not found", result };
+      return { id, proceed: false, error: "Not Found", result };
     }
 
-    if (status === "SUCCESS" || status === "MACROS_EXIST" || result?.hasMacros) {
-      return { id, proceed: true, result };
+    // ✅ block delete if not draft
+    if (!isDraftStatus(reportStatus)) {
+      return {
+        id,
+        proceed: false,
+        error: "Report - Can't be Deleted",
+        result
+      };
     }
 
-    return { id, proceed: true, error: result?.error || "Validation failed", result }; // still proceed if you insist
+    // if draft -> allow delete
+    return { id, proceed: true, result };
   } catch (err) {
-    // If you want "always run deleteReport", even on errors:
-    return { id, proceed: true, error: err?.message || String(err) };
+    return { id, proceed: false, error: err?.message || String(err) };
   }
 };
 
@@ -1020,6 +1073,85 @@ const runWithConcurrency = async (items, limit, worker) => {
 
 
 
+// const handleCheckReportInTaqeem = async () => {
+//   const ids = parseReportIds(reportId);
+//   if (!ids.length) {
+//     setError("At least one Report ID is required");
+//     return;
+//   }
+
+//   await executeWithAuth(
+//     async (params) => {
+//       const { reportIds } = params;
+
+//       setIsCheckingReport(true);
+//       setError("");
+//       setReportExists(null);
+//       setStatusChangeResult(null);
+//       setOperationResult(null);
+//       setReportSummaryRow([]);
+
+//       // Reset input immediately
+//       setReportId("");
+
+//       const concurrency = 3;
+
+//       const results = await runWithConcurrency(reportIds, concurrency, async (id) => {
+//         try {
+//           const result = await window.electronAPI.validateReport(id, userId);
+
+//           const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+//           return {
+//             reportId: result?.reportId || id,
+//             totalAssets,
+//             reportStatus: result?.reportStatus ?? "Unknown",
+//             presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
+//             exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED",
+//           };
+//         } catch (err) {
+//           return {
+//             reportId: id,
+//             totalAssets: 0,
+//             reportStatus: "Error",
+//             presentOrNot: "Error",
+//             exists: false,
+//           };
+//         }
+//       });
+
+//       setReportSummaryRow(results);
+
+//       const allExist = results.every((r) => r.exists);
+//       setReportExists(allExist);
+
+//       if (!allExist) setError("Some reports do not exist or failed to check.");
+
+//       await loadCheckedReports(1);
+
+//       return { success: true };
+//     },
+//     { token, reportIds: ids },
+//     {
+//       requiredPoints: ids.length, // ✅ cost per report check (change if you want)
+//       showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+//       onAuthFailure: (reason) => {
+//         if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+//           setError(reason?.message || "Authentication failed for Check Report");
+//         }
+//       },
+//     }
+//   ).catch((err) => {
+//     if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+//       setError(err?.message || "Check Report failed");
+//     }
+//   }).finally(() => {
+//     setIsCheckingReport(false);
+//   });
+// };
+
+
+
 const handleCheckReportInTaqeem = async () => {
   const ids = parseReportIds(reportId);
   if (!ids.length) {
@@ -1049,21 +1181,53 @@ const handleCheckReportInTaqeem = async () => {
 
           const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-          return {
+          const exists = result?.status !== "NOT_FOUND" && result?.status !== "FAILED";
+          const reportStatus = result?.reportStatus ?? "Unknown";
+
+          const row = {
             reportId: result?.reportId || id,
             totalAssets,
-            reportStatus: result?.reportStatus ?? "Unknown",
+            reportStatus,
             presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
-            exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED",
+            exists,
+            // ✅ THIS fixes "-" in UI
+            result: result?.status === "NOT_FOUND" ? "Not Found" : "Checked",
           };
+
+          // ✅ Store in DB so it persists
+          await window.electronAPI.storeReportDeletion({
+            reportId: row.reportId,
+            action: "check-report",
+            userId,
+            result: row.result,
+            reportStatus: row.reportStatus,
+            totalAssets: row.totalAssets,
+          });
+
+          return row;
         } catch (err) {
-          return {
+          const row = {
             reportId: id,
             totalAssets: 0,
             reportStatus: "Error",
             presentOrNot: "Error",
             exists: false,
+            // ✅ show something meaningful instead of "-"
+            result: "Check Failed",
           };
+
+          // ✅ Store failure in DB too
+          await window.electronAPI.storeReportDeletion({
+            reportId: row.reportId,
+            action: "check-report",
+            userId,
+            result: row.result,
+            reportStatus: row.reportStatus,
+            totalAssets: row.totalAssets,
+            error: String(err),
+          });
+
+          return row;
         }
       });
 
@@ -1074,13 +1238,14 @@ const handleCheckReportInTaqeem = async () => {
 
       if (!allExist) setError("Some reports do not exist or failed to check.");
 
+      // refresh table backed by DB
       await loadCheckedReports(1);
 
       return { success: true };
     },
     { token, reportIds: ids },
     {
-      requiredPoints: ids.length, // ✅ cost per report check (change if you want)
+      requiredPoints: ids.length,
       showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
       onAuthFailure: (reason) => {
         if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
@@ -1088,14 +1253,21 @@ const handleCheckReportInTaqeem = async () => {
         }
       },
     }
-  ).catch((err) => {
-    if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
-      setError(err?.message || "Check Report failed");
-    }
-  }).finally(() => {
-    setIsCheckingReport(false);
-  });
+  )
+    .catch((err) => {
+      if (
+        !err?.message?.includes("INSUFFICIENT_POINTS") &&
+        !err?.message?.includes("LOGIN_REQUIRED")
+      ) {
+        setError(err?.message || "Check Report failed");
+      }
+    })
+    .finally(() => {
+      setIsCheckingReport(false);
+    });
 };
+
+
 
 // ==========================================================================
 
@@ -1465,19 +1637,24 @@ const handleDeleteReport = async () => {
           const reportStatus = result?.reportStatus;
           const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-          let proceed =true;
-          let resultText = "";
+          let proceed = false;   // ✅ default should be false
+let resultText = "";
 
-          if (status === "NOT_FOUND") {
-            resultText = "Not Found";
-          } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
-            proceed = true;
-            resultText = "Validated";
-          } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
-            resultText = "Report - Can't be Deleted";
-          } else {
-            resultText = "Validated";
-          }
+const isDraft =
+  (reportStatus || "").toString().trim().toLowerCase() === "draft" ||
+  (reportStatus || "").toString().trim() === "مسودة";
+
+if (status === "NOT_FOUND") {
+  resultText = "Not Found";
+  proceed = false; // ✅ block
+} else if (status === "SUCCESS" && isDraft) {
+  resultText = "Validated";
+  proceed = true; // ✅ allow
+} else {
+  resultText = "Asset - Can't be Deleted";
+  proceed = false; // ✅ block
+}
+
 
           setReportSummaryRow((prev) =>
             prev.map((row) =>
