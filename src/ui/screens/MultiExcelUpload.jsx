@@ -378,8 +378,10 @@ const validateReportInfoAndMarket = (reportRow = {}, marketRows = []) => {
 
     const valuedAtRaw = pickFieldValue(reportRow, ["valued_at", "date of valuation", "valuation date"]);
     const submittedAtRaw = pickFieldValue(reportRow, ["submitted_at", "report issuing date", "report date", "report issuing"]);
+    const inspectionDateRaw = pickFieldValue(reportRow, ["inspection_date", "inspection date", "inspectiondate"]);
     const valuedAt = parseExcelDateValue(valuedAtRaw);
     const submittedAt = parseExcelDateValue(submittedAtRaw);
+    const inspectionDate = parseExcelDateValue(inspectionDateRaw);
 
     if (!hasValue(purpose)) addIssue("Purpose of Valuation", "Report Info", "Field Purpose of Valuation is required");
     if (!hasValue(valueAttributes)) addIssue("Value Attributes", "Report Info", "Field Value Attributes is required");
@@ -404,8 +406,27 @@ const validateReportInfoAndMarket = (reportRow = {}, marketRows = []) => {
         addIssue("Client Email", "Report Info", "Client email field must contain a valid email address");
     }
 
-    if (!valuedAt) addIssue("Date of Valuation", "Report Info", "Field Date of Valuation is required");
-    if (!submittedAt) addIssue("Report Issuing Date", "Report Info", "Field Report Issuing Date is required");
+    // Date validation with future date checks
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of day for fair comparison
+
+    if (!valuedAt) {
+        addIssue("Date of Valuation", "Report Info", "Field Date of Valuation is required");
+    } else if (valuedAt > today) {
+        addIssue("Date of Valuation", "Report Info", "Date of Valuation cannot be in the future");
+    }
+
+    if (!submittedAt) {
+        addIssue("Report Issuing Date", "Report Info", "Field Report Issuing Date is required");
+    } else if (submittedAt > today) {
+        addIssue("Report Issuing Date", "Report Info", "Report Issuing Date cannot be in the future");
+    }
+
+    // Inspection date validation - only check if it's not in the future
+    if (inspectionDate && inspectionDate > today) {
+        addIssue("Inspection Date", "Report Info", "Inspection Date cannot be in the future");
+    }
+
     if (valuedAt && submittedAt && valuedAt > submittedAt) {
         addIssue("Date of Valuation", "Report Info", "Date of Valuation must be on or before Report Issuing Date");
     }
@@ -433,6 +454,7 @@ const validateReportInfoAndMarket = (reportRow = {}, marketRows = []) => {
         email,
         valuedAt,
         submittedAt,
+        inspectionDate,
     };
 
     return { issues, snapshot };
@@ -452,21 +474,55 @@ const getReportTotalValue = (reportRow = {}) => {
     return Number.isNaN(num) ? null : num;
 };
 
-const validateAssetUsageId = (sheetName, rows = []) => {
+const validateAssetUsageId = (sheetName, rows) => {
     const issues = [];
-    const addIssue = (field, location, message) => issues.push({ field, location, message });
 
     rows.forEach((row, idx) => {
         const assetName = row.asset_name || row.assetName || "";
-        if (!hasValue(assetName)) return;
-        const assetUsageId = pickFieldValue(row, ["asset_usage_id", "asset usage id", "asset usage"]);
-        if (!hasValue(assetUsageId)) {
-            addIssue("asset_usage_id", `${sheetName} row ${idx + 2}`, `Missing asset_usage_id for asset "${assetName}"`);
+        if (!hasValue(assetName)) return; // ignore empty rows
+
+        const rawValue =
+            row.asset_usage_id ??
+            row.assetUsageId ??
+            row["asset usage id"];
+
+        const location = `${sheetName} row ${idx + 2}`;
+
+        // Missing
+        if (!hasValue(rawValue)) {
+            issues.push({
+                field: "asset_usage_id",
+                location,
+                message: `Missing asset_usage_id for asset "${assetName}".`,
+            });
+            return;
+        }
+
+        const num = Number(rawValue);
+
+        // Not a number
+        if (Number.isNaN(num)) {
+            issues.push({
+                field: "asset_usage_id",
+                location,
+                message: `asset_usage_id "${rawValue}" is not a valid number for asset "${assetName}".`,
+            });
+            return;
+        }
+
+        // Out of range
+        if (num < 38 || num > 56) {
+            issues.push({
+                field: "asset_usage_id",
+                location,
+                message: `asset_usage_id ${num} is outside the allowed range (38–56) for asset "${assetName}".`,
+            });
         }
     });
 
     return issues;
 };
+
 
 const validateCostSheetIntegers = (rows = []) => {
     const issues = [];
@@ -1271,12 +1327,13 @@ const MultiExcelUpload = ({ onViewChange }) => {
                 issues.push(...validateAssetUsageId("cost", costRows));
                 issues.push(...validateCostSheetIntegers(costRows));
 
-                const marketAssetCount = marketRows.filter((r) =>
-                    hasValue(r.asset_name || r.assetName)
-                ).length;
-                const costAssetCount = costRows.filter((r) =>
-                    hasValue(r.asset_name || r.assetName)
-                ).length;
+
+                const hasAnyValue = (obj) =>
+                    Object.values(obj).some(v => hasValue(v));
+
+                const marketAssetCount = marketRows.filter(hasAnyValue).length;
+                const costAssetCount = costRows.filter(hasAnyValue).length;
+                console.log("marketAssetCount", marketAssetCount, "costAssetCount", costAssetCount);
                 if (marketAssetCount === 0 && costAssetCount === 0) {
                     addIssue(
                         "Assets",
@@ -1360,9 +1417,17 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         : `All Excel files look valid. PDFs will use ${DUMMY_PDF_NAME}. You can Upload & Send To Taqeem.`,
                 });
             } else {
+                console.log("Validation failed", results);
+
+                const firstIssueMessage =
+                    results
+                        .flatMap(r => r.issues || [])
+                        .find(issue => issue?.message)?.message
+                    || "Validation failed due to an unknown error.";
+
                 setValidationMessage({
                     type: "error",
-                    text: "Validation found issues. Fix them to enable Upload & Send To Taqeem.",
+                    text: firstIssueMessage,
                 });
             }
         } catch (err) {
@@ -1679,17 +1744,62 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
     const validateReport = () => {
         const newErrors = {};
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         requiredFields.forEach((field) => {
             if (!formData[field]) {
                 newErrors[field] = "Required";
             }
         });
+
         if (!formData.value && !formData.final_value) {
             newErrors.final_value = "Required";
         }
+
         if (formData.email && !isValidEmail(formData.email)) {
             newErrors.email = "Invalid email";
         }
+
+        // Validate valued_at date
+        if (formData.valued_at) {
+            const valuedAtDate = new Date(formData.valued_at);
+            valuedAtDate.setHours(0, 0, 0, 0);
+            if (valuedAtDate > today) {
+                newErrors.valued_at = "Cannot be in future";
+            }
+        }
+
+        // Validate submitted_at date
+        if (formData.submitted_at) {
+            const submittedAtDate = new Date(formData.submitted_at);
+            submittedAtDate.setHours(0, 0, 0, 0);
+            if (submittedAtDate > today) {
+                newErrors.submitted_at = "Cannot be in future";
+            }
+        }
+
+        // Validate inspection_date
+        if (formData.inspection_date) {
+            const inspectionDate = new Date(formData.inspection_date);
+            inspectionDate.setHours(0, 0, 0, 0);
+            if (inspectionDate > today) {
+                newErrors.inspection_date = "Cannot be in future";
+            }
+        }
+
+        // Validate valued_at is on or before submitted_at
+        if (formData.valued_at && formData.submitted_at && !newErrors.valued_at && !newErrors.submitted_at) {
+            const valuedAtDate = new Date(formData.valued_at);
+            const submittedAtDate = new Date(formData.submitted_at);
+            valuedAtDate.setHours(0, 0, 0, 0);
+            submittedAtDate.setHours(0, 0, 0, 0);
+
+            if (valuedAtDate > submittedAtDate) {
+                newErrors.valued_at = "Must be on or before submission date";
+            }
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
