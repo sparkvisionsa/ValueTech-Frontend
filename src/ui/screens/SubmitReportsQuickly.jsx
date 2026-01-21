@@ -24,6 +24,7 @@ import {
     Info,
     Download,
     FileIcon,
+    X,
 } from "lucide-react";
 import {
     submitReportsQuicklyUpload,
@@ -105,6 +106,111 @@ const hasValue = (val) =>
     val !== null &&
     (typeof val === "number" || String(val).toString().trim() !== "");
 
+const isStrictInteger = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "number") {
+        return Number.isInteger(value);
+    }
+    const trimmed = String(value).trim();
+    if (!trimmed) return false;
+    if (/[.,]/.test(trimmed)) return false;
+    return /^\d+$/.test(trimmed);
+};
+
+const parseExcelDateValue = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+
+    if (typeof value === "number") {
+        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+        const msPerDay = 24 * 60 * 60 * 1000;
+        return new Date(excelEpoch.getTime() + value * msPerDay);
+    }
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+
+        if (/^\d+$/.test(trimmed)) {
+            const serial = parseInt(trimmed, 10);
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const msPerDay = 24 * 60 * 60 * 1000;
+            return new Date(excelEpoch.getTime() + serial * msPerDay);
+        }
+
+        const normalized = trimmed.replace(/[.]/g, "/");
+        const parts = normalized.split(/[\/\-]/).map((p) => p.trim());
+        if (parts.length === 3) {
+            const [a, b, c] = parts;
+            if (a.length === 4) {
+                const year = parseInt(a, 10);
+                const month = parseInt(b, 10);
+                const day = parseInt(c, 10);
+                if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+                    return new Date(year, month - 1, day);
+                }
+            } else {
+                const day = parseInt(a, 10);
+                const month = parseInt(b, 10);
+                const year = parseInt(c, 10);
+                if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+                    return new Date(year, month - 1, day);
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+const VALID_ASSET_USAGE_IDS = new Set([
+    38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
+]);
+
+const OPTIONAL_COLUMN_KEYS = new Set(["id"]);
+const REQUIRED_COLUMN_RANGE = { start: 2, end: 7 };
+const REQUIRED_COLUMN_FALLBACKS = {
+    asset_name: 2,
+    asset_usage_id: 3,
+    final_value: 4,
+    inspection_date: 5,
+    region: 6,
+    city: 7
+};
+
+const REQUIRED_ASSET_FIELDS = [
+    {
+        key: "asset_name",
+        label: "asset_name",
+        candidates: ["asset_name", "asset name", "assetname", "asset_name\n", "Asset Name"]
+    },
+    {
+        key: "asset_usage_id",
+        label: "asset_usage_id",
+        candidates: ["asset_usage_id", "asset usage id", "asset usage", "asset_usage_id\n", "Asset Usage ID"]
+    },
+    {
+        key: "final_value",
+        label: "final_value",
+        candidates: ["final_value", "final value", "value", "Final Value", "Value", "final_value\n"]
+    },
+    {
+        key: "inspection_date",
+        label: "inspection_date",
+        candidates: ["inspection_date", "inspection date", "inspectiondate", "inspection_date\n", "Inspection Date"]
+    },
+    {
+        key: "region",
+        label: "region",
+        candidates: ["region", "region name", "Region"]
+    },
+    {
+        key: "city",
+        label: "city",
+        candidates: ["city", "City"]
+    }
+];
+
 const pickFieldValue = (row, candidates = []) => {
     if (!row) return undefined;
     const normalizedMap = Object.keys(row).reduce((acc, key) => {
@@ -158,6 +264,123 @@ const worksheetToObjects = (worksheet) => {
     return rows;
 };
 
+const validateRequiredAssetFields = (sheetName, rows = []) => {
+    const issues = [];
+    const addIssue = (field, location, message) => issues.push({ field, location, message });
+    const requiredKeySet = new Set(
+        REQUIRED_ASSET_FIELDS.flatMap((field) => field.candidates.map((name) => normalizeKey(name)))
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const getAllowedKeys = (rowKeys) =>
+        rowKeys.slice(Math.max(REQUIRED_COLUMN_RANGE.start - 1, 0), REQUIRED_COLUMN_RANGE.end);
+
+    const pickFieldValueWithinKeys = (row, candidates, allowedKeysSet) => {
+        if (!row) return undefined;
+        const normalizedMap = Object.keys(row).reduce((acc, key) => {
+            const normalized = normalizeKey(key);
+            if (allowedKeysSet.has(normalized)) {
+                acc[normalized] = key;
+            }
+            return acc;
+        }, {});
+
+        for (const candidate of candidates) {
+            const matchKey = normalizedMap[normalizeKey(candidate)];
+            if (matchKey !== undefined) {
+                return row[matchKey];
+            }
+        }
+        return undefined;
+    };
+
+    rows.forEach((row, idx) => {
+        if (!row) return;
+        const hasAnyValue = Object.values(row).some((value) => hasValue(value));
+        if (!hasAnyValue) return;
+
+        const location = `${sheetName} row ${idx + 2}`;
+        const rowKeys = Object.keys(row);
+        const allowedKeys = getAllowedKeys(rowKeys);
+        const allowedKeySet = new Set(allowedKeys.map((key) => normalizeKey(key)));
+
+        allowedKeys.forEach((key) => {
+            const normalizedKey = normalizeKey(key);
+            if (OPTIONAL_COLUMN_KEYS.has(normalizedKey)) {
+                return;
+            }
+            if (requiredKeySet.has(normalizedKey)) {
+                return;
+            }
+            if (!hasValue(row[key])) {
+                addIssue(key, location, `Missing value for column "${key}".`);
+            }
+        });
+
+        const assetName = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[0].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.asset_name - 1]];
+        if (!hasValue(assetName)) {
+            addIssue("asset_name", location, "Missing asset_name.");
+        }
+
+        const assetUsageRaw = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[1].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.asset_usage_id - 1]];
+        if (!hasValue(assetUsageRaw)) {
+            addIssue("asset_usage_id", location, "Missing asset_usage_id.");
+        } else {
+            const usageId = Number(assetUsageRaw);
+            if (!VALID_ASSET_USAGE_IDS.has(usageId)) {
+                addIssue(
+                    "asset_usage_id",
+                    location,
+                    `asset_usage_id must be one of: ${Array.from(VALID_ASSET_USAGE_IDS).join(", ")}`
+                );
+            }
+        }
+
+        const finalValue = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[2].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.final_value - 1]];
+        if (!hasValue(finalValue)) {
+            addIssue("final_value", location, "Missing final_value.");
+        } else {
+            if (!isStrictInteger(finalValue)) {
+                addIssue("final_value", location, "final_value must be a whole number (no decimals).");
+            } else if (Number(finalValue) <= 0) {
+                addIssue("final_value", location, "final_value must be greater than 0.");
+            }
+        }
+
+        const inspectionRaw = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[3].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.inspection_date - 1]];
+        if (!hasValue(inspectionRaw)) {
+            addIssue("inspection_date", location, "Missing inspection_date.");
+        } else {
+            const inspectionDate = parseExcelDateValue(inspectionRaw);
+            if (!inspectionDate || Number.isNaN(inspectionDate.getTime())) {
+                addIssue("inspection_date", location, "inspection_date is not a valid date.");
+            } else if (inspectionDate > today) {
+                addIssue("inspection_date", location, "inspection_date cannot be in the future.");
+            }
+        }
+
+        const region = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[4].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.region - 1]];
+        if (!hasValue(region)) {
+            addIssue("region", location, "Missing region.");
+        }
+
+        const city = pickFieldValueWithinKeys(row, REQUIRED_ASSET_FIELDS[5].candidates, allowedKeySet)
+            ?? row[rowKeys[REQUIRED_COLUMN_FALLBACKS.city - 1]];
+        if (!hasValue(city)) {
+            addIssue("city", location, "Missing city.");
+        }
+    });
+
+    return issues;
+};
+
 const validateAssetUsageId = (sheetName, rows = []) => {
     const issues = [];
     const addIssue = (field, location, message) => issues.push({ field, location, message });
@@ -170,8 +393,12 @@ const validateAssetUsageId = (sheetName, rows = []) => {
             addIssue("asset_usage_id", `${sheetName} row ${idx + 2}`, `Missing asset_usage_id for asset "${assetName}"`);
         } else {
             const num = Number(assetUsageId);
-            if (isNaN(num) || num <= 0) {
-                addIssue("asset_usage_id", `${sheetName} row ${idx + 2}`, `Invalid asset_usage_id "${assetUsageId}" for asset "${assetName}"`);
+            if (!VALID_ASSET_USAGE_IDS.has(num)) {
+                addIssue(
+                    "asset_usage_id",
+                    `${sheetName} row ${idx + 2}`,
+                    `asset_usage_id must be one of: ${Array.from(VALID_ASSET_USAGE_IDS).join(", ")} for asset "${assetName}"`
+                );
             }
         }
     });
@@ -192,19 +419,14 @@ const validateCostSheetIntegers = (rows = []) => {
             return;
         }
 
+        if (!isStrictInteger(rawFinal)) {
+            addIssue("final_value", `cost row ${idx + 2}`, `final_value must be a whole number (no decimals) for asset "${assetName}"`);
+            return;
+        }
+
         const num = Number(rawFinal);
-        if (Number.isNaN(num)) {
-            addIssue("final_value", `cost row ${idx + 2}`, `Invalid final_value "${rawFinal}" for asset "${assetName}"`);
-            return;
-        }
-
-        if (!Number.isInteger(num)) {
-            addIssue("final_value", `cost row ${idx + 2}`, `final_value must be an integer for asset "${assetName}"`);
-            return;
-        }
-
         if (num <= 0) {
-            addIssue("final_value", `cost row ${idx + 2}`, `final_value must be positive for asset "${assetName}"`);
+            addIssue("final_value", `cost row ${idx + 2}`, `final_value must be greater than 0 for asset "${assetName}"`);
         }
     });
 
@@ -224,14 +446,14 @@ const validateMarketSheet = (rows = []) => {
             return;
         }
 
-        const num = Number(rawFinal);
-        if (Number.isNaN(num)) {
-            addIssue("final_value", `market row ${idx + 2}`, `Invalid final_value "${rawFinal}" for asset "${assetName}"`);
+        if (!isStrictInteger(rawFinal)) {
+            addIssue("final_value", `market row ${idx + 2}`, `final_value must be a whole number (no decimals) for asset "${assetName}"`);
             return;
         }
 
+        const num = Number(rawFinal);
         if (num <= 0) {
-            addIssue("final_value", `market row ${idx + 2}`, `final_value must be positive for asset "${assetName}"`);
+            addIssue("final_value", `market row ${idx + 2}`, `final_value must be greater than 0 for asset "${assetName}"`);
         }
     });
 
@@ -284,7 +506,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const [validationItems, setValidationItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState(null);
     const [validationTableTab, setValidationTableTab] = useState("assets");
-    const [isValidationTableCollapsed, setIsValidationTableCollapsed] = useState(false);
+    const [showValidationModal, setShowValidationModal] = useState(false);
     const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
     const [reports, setReports, resetReports] = usePersistentState("submitReportsQuickly:reports", [], { storage: "session" });
     const [reportsLoading, setReportsLoading] = useState(false);
@@ -498,6 +720,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
     const resetValidation = () => {
         setValidationItems([]);
         setValidationMessage(null);
+        setShowValidationModal(false);
     };
 
     const loadReports = useCallback(async () => {
@@ -759,6 +982,36 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         return { unmatchedPdfs, excelsMissingPdf, pdfMap };
     }, [excelFiles, pdfFiles, wantsPdfUpload]);
 
+    const validationIssueRows = useMemo(
+        () =>
+            validationItems.flatMap((item) =>
+                (item.issues || []).map((issue) => ({
+                    ...issue,
+                    fileName: item.fileName
+                }))
+            ),
+        [validationItems]
+    );
+    const reportInfoIssues = useMemo(
+        () =>
+            validationIssueRows.filter((issue) =>
+                String(issue.location || "").toLowerCase().includes("report info")
+            ),
+        [validationIssueRows]
+    );
+    const assetIssues = useMemo(
+        () =>
+            validationIssueRows.filter(
+                (issue) => !String(issue.location || "").toLowerCase().includes("report info")
+            ),
+        [validationIssueRows]
+    );
+    const pdfIssueCount = wantsPdfUpload
+        ? pdfMatchInfo.excelsMissingPdf.length + pdfMatchInfo.unmatchedPdfs.length
+        : 0;
+    const totalValidationIssues = validationIssueRows.length + pdfIssueCount;
+    const hasValidationIssues = totalValidationIssues > 0;
+
     const runValidation = async (excelList, pdfMap) => {
         if (!excelList.length) {
             resetValidation();
@@ -810,14 +1063,14 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
                 // Validate market sheet
                 if (marketSheet) {
+                    issues.push(...validateRequiredAssetFields("market", marketRows));
                     issues.push(...validateMarketSheet(marketRows));
-                    issues.push(...validateAssetUsageId("market", marketRows));
                 }
 
                 // Validate cost sheet
                 if (costSheet) {
+                    issues.push(...validateRequiredAssetFields("cost", costRows));
                     issues.push(...validateCostSheetIntegers(costRows));
-                    issues.push(...validateAssetUsageId("cost", costRows));
                 }
 
                 const marketAssetCount = marketRows.filter((r) =>
@@ -950,12 +1203,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                     text: "Validation found issues. Fix them to enable Upload & Create Reports.",
                 });
             }
+            setValidationTableTab("assets");
+            setShowValidationModal(true);
         } catch (err) {
             console.error("Validation failed", err);
             setValidationMessage({
                 type: "error",
                 text: err?.message || "Failed to validate Excel files.",
             });
+            setShowValidationModal(true);
         } finally {
             setValidating(false);
         }
@@ -1402,6 +1658,18 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         setReportActionBusy((prev) => ({ ...prev, [recordId]: true }));
 
         try {
+            if (window?.electronAPI?.checkStatus) {
+                const browserStatus = await window.electronAPI.checkStatus();
+                if (browserStatus?.browserOpen && browserStatus?.status === "SUCCESS") {
+                    setTaqeemStatus?.("success", "Taqeem login: On");
+                } else {
+                    setTaqeemStatus?.("info", "Taqeem login: Off");
+                    setSuccess("Taqeem login is off. Complete login in the opened browser window to continue.");
+                }
+            }
+
+            await ensureCompanySelected();
+
             if (!window?.electronAPI?.deleteReport) {
                 throw new Error("Desktop integration unavailable. Restart the app.");
             }
@@ -2062,55 +2330,29 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 <p className="text-xs font-semibold">Validation Console</p>
                                 <p className="text-[10px] text-blue-100">Review and validate your Excel files before upload</p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => runValidation(excelFiles, pdfMatchInfo.pdfMap)}
-                                disabled={validating || !excelFiles.length}
-                                className="inline-flex items-center gap-1.5 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {validating ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                )}
-                                {validating ? "Validating..." : "Re-validate"}
-                            </button>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium">
-                            <div className="inline-flex rounded-md bg-white/15 p-0.5 gap-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setValidationTableTab("report-info")}
-                                    className={`px-3 py-1 rounded-md transition-all ${validationTableTab === "report-info"
-                                        ? "bg-white text-blue-900 shadow-sm"
-                                        : "text-blue-100 hover:text-white hover:bg-white/10"
-                                        }`}
+                                    onClick={() => runValidation(excelFiles, pdfMatchInfo.pdfMap)}
+                                    disabled={validating || !excelFiles.length}
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
-                                    Report Info
+                                    {validating ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="w-3.5 h-3.5" />
+                                    )}
+                                    {validating ? "Validating..." : "Re-validate"}
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setValidationTableTab("assets")}
-                                    className={`px-3 py-1 rounded-md transition-all ${validationTableTab === "assets"
-                                        ? "bg-white text-blue-900 shadow-sm"
-                                        : "text-blue-100 hover:text-white hover:bg-white/10"
-                                        }`}
+                                    onClick={() => setShowValidationModal(true)}
+                                    disabled={!validationItems.length && !validationMessage}
+                                    className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
-                                    Assets & PDFs
+                                    View validation
                                 </button>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsValidationTableCollapsed((prev) => !prev)}
-                                className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/15 px-2.5 py-1 text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
-                            >
-                                {isValidationTableCollapsed ? (
-                                    <ChevronDown className="w-3.5 h-3.5" />
-                                ) : (
-                                    <ChevronUp className="w-3.5 h-3.5" />
-                                )}
-                                {isValidationTableCollapsed ? "Show" : "Hide"}
-                            </button>
                         </div>
                     </div>
                     <div className="p-2 space-y-2">
@@ -2133,239 +2375,33 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 <div className="text-xs font-medium">{validationMessage.text}</div>
                             </div>
                         )}
-
-                        {validationTableTab === "report-info" ? (
-                            validationItems.length ? (
-                                <div className="space-y-2">
-                                    {validationItems.map((item) => {
-                                        const fields = [
-                                            { label: "Title", value: item.snapshot?.title },
-                                            { label: "Client Name", value: item.snapshot?.client_name },
-                                            { label: "Purpose ID", value: item.snapshot?.purpose_id },
-                                            { label: "Value Premise ID", value: item.snapshot?.value_premise_id },
-                                            { label: "Report Type", value: item.snapshot?.report_type },
-                                            { label: "Telephone", value: item.snapshot?.telephone },
-                                            { label: "Email", value: item.snapshot?.email },
-                                            { label: "Number of Macros", value: item.snapshot?.number_of_macros },
-                                            { label: "Final Value", value: item.snapshot?.final_value },
-                                            { label: "Value", value: item.snapshot?.value },
-                                            { label: "Valued At", value: item.snapshot?.valued_at },
-                                            { label: "Submitted At", value: item.snapshot?.submitted_at },
-                                        ];
-                                        return (
-                                            <div key={item.fileName} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-                                                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                                    <div className="text-xs font-semibold text-slate-800">{item.fileName}</div>
-                                                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-300">
-                                                        Auto-generated
-                                                    </span>
-                                                </div>
-                                                {isValidationTableCollapsed ? (
-                                                    <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1">
-                                                        <ChevronDown className="w-3.5 h-3.5" />
-                                                        Table hidden.
-                                                    </div>
-                                                ) : (
-                                                    <div className="overflow-x-auto max-h-[200px] overflow-y-auto mt-2">
-                                                        <table className="min-w-full text-xs border-collapse">
-                                                            <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                                                                <tr>
-                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider rounded-tl-md">Field</th>
-                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Value</th>
-                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Status</th>
-                                                                    <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider rounded-tr-md">Notes</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {fields.map((field) => {
-                                                                    const hasFieldValue = hasValue(field.value);
-                                                                    const statusLabel = hasFieldValue ? "OK" : "N/A";
-                                                                    const statusTone = hasFieldValue
-                                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                                                        : "bg-slate-50 text-slate-700 border-slate-300";
-                                                                    const notesText = hasFieldValue ? "Auto-generated from Excel" : "Will be set automatically";
-
-                                                                    // Format the display value
-                                                                    let displayValue = field.value;
-                                                                    if (hasFieldValue) {
-                                                                        if (field.label === "Final Value" || field.label === "Value") {
-                                                                            // Format numbers with commas
-                                                                            displayValue = typeof field.value === 'number'
-                                                                                ? field.value.toLocaleString()
-                                                                                : Number(field.value || 0).toLocaleString();
-                                                                        } else if (field.label === "Valued At" || field.label === "Submitted At") {
-                                                                            // Format dates (already in yyyy-mm-dd format, but ensure it displays nicely)
-                                                                            displayValue = field.value;
-                                                                        }
-                                                                    }
-
-                                                                    return (
-                                                                        <tr key={field.label} className="border-b border-slate-200 hover:bg-slate-50/50">
-                                                                            <td className="px-2 py-1.5 bg-white font-semibold text-slate-800">
-                                                                                {field.label}
-                                                                            </td>
-                                                                            <td className="px-2 py-1.5 bg-white text-slate-700">
-                                                                                {hasFieldValue ? displayValue : "N/A"}
-                                                                            </td>
-                                                                            <td className="px-2 py-1.5 bg-white">
-                                                                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone}`}>
-                                                                                    {statusLabel}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td className="px-2 py-1.5 bg-white text-slate-600 text-[10px]">
-                                                                                {notesText}
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="p-3 border border-dashed border-slate-300 rounded-lg bg-slate-50 text-xs text-slate-600 flex items-center justify-center font-medium">
-                                    Validation results will appear here after reading the Excel.
-                                </div>
-                            )
+                        {validationItems.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                    Files: {validationItems.length}
+                                </span>
+                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${hasValidationIssues
+                                    ? "border-rose-200 bg-rose-50 text-rose-700"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    }`}>
+                                    Issues: {totalValidationIssues}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowValidationModal(true)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                                >
+                                    View validation details
+                                </button>
+                            </div>
                         ) : (
-                            <div className="space-y-2">
-                                {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
-                                    <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                                        <div className="font-semibold mb-1">File matching issues</div>
-                                        <div className="mt-1 space-y-1">
-                                            {pdfMatchInfo.excelsMissingPdf.length > 0 && (
-                                                <div className="font-medium">
-                                                    Excel files missing PDF: {pdfMatchInfo.excelsMissingPdf.join(", ")}
-                                                </div>
-                                            )}
-                                            {pdfMatchInfo.unmatchedPdfs.length > 0 && (
-                                                <div className="font-medium">
-                                                    Unmatched PDFs: {pdfMatchInfo.unmatchedPdfs.join(", ")}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                {validationItems.length ? (
-                                    <div className="space-y-2">
-                                        <div className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-                                            <div className="text-xs font-semibold text-slate-800 mb-2">Assets &amp; PDF summary</div>
-                                            {isValidationTableCollapsed ? (
-                                                <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                    <ChevronDown className="w-3.5 h-3.5" />
-                                                    Table hidden.
-                                                </div>
-                                            ) : (
-                                                <div className="overflow-x-auto max-h-[180px] overflow-y-auto">
-                                                    <table className="min-w-full text-xs text-slate-700">
-                                                        <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0">
-                                                            <tr>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">PDF</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Market</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Cost</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Market total</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Cost total</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Assets total</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Issues</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {validationItems.map((item) => {
-                                                                const assetIssues = item.issues || [];
-                                                                return (
-                                                                    <tr key={`summary-${item.fileName}`} className="border-b border-slate-200 hover:bg-slate-50/50">
-                                                                        <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
-                                                                        <td className="px-2 py-1.5">
-                                                                            {item.pdfMatched ? (
-                                                                                <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Matched</span>
-                                                                            ) : (
-                                                                                <span className="inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Missing</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{item.counts?.marketAssets ?? "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{item.counts?.costAssets ?? "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{item.totals?.marketTotal ?? "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{item.totals?.costTotal ?? "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{item.totals?.assetsTotalValue ?? "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700 font-medium">{assetIssues.length}</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {!isValidationTableCollapsed && (
-                                            <div className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-                                                <div className="text-xs font-semibold text-slate-800 mb-2">Issues</div>
-                                                <div className="overflow-x-auto max-h-[180px] overflow-y-auto">
-                                                    <table className="min-w-full text-xs text-slate-700">
-                                                        <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0">
-                                                            <tr>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Field</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Location</th>
-                                                                <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider">Details</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {validationItems.flatMap((item) => {
-                                                                const assetIssues = item.issues || [];
-                                                                if (!assetIssues.length) {
-                                                                    return [
-                                                                        <tr key={`issue-none-${item.fileName}`} className="border-b border-slate-200">
-                                                                            <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
-                                                                            <td className="px-2 py-1.5 text-slate-600" colSpan={3}>
-                                                                                No issues
-                                                                            </td>
-                                                                        </tr>,
-                                                                    ];
-                                                                }
-                                                                return assetIssues.map((issue, idx) => (
-                                                                    <tr key={`issue-${item.fileName}-${idx}`} className="border-b border-slate-200 hover:bg-slate-50/50">
-                                                                        <td className="px-2 py-1.5 text-slate-800 font-medium">{item.fileName}</td>
-                                                                        <td className="px-2 py-1.5 font-semibold text-slate-800">{issue.field}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{issue.location || "-"}</td>
-                                                                        <td className="px-2 py-1.5 text-slate-700">{issue.message}</td>
-                                                                    </tr>
-                                                                ));
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 border border-dashed border-slate-300 rounded-lg bg-slate-50 text-xs text-slate-600 flex items-center justify-center font-medium">
-                                        Validation results will appear here after reading the Excel.
-                                    </div>
-                                )}
+                            <div className="p-3 border border-dashed border-slate-300 rounded-lg bg-slate-50 text-xs text-slate-600 flex items-center justify-center font-medium">
+                                Validation results will appear here after reading the Excel.
                             </div>
                         )}
                     </div>
                 </div>
             </div>
-
-
-
-            {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
-                <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                    <div className="font-semibold mb-1">File matching issues</div>
-                    {pdfMatchInfo.excelsMissingPdf.length > 0 && (
-                        <div>Excel files missing PDF: {pdfMatchInfo.excelsMissingPdf.join(", ")}</div>
-                    )}
-                    {pdfMatchInfo.unmatchedPdfs.length > 0 && (
-                        <div>Unmatched PDFs: {pdfMatchInfo.unmatchedPdfs.join(", ")}</div>
-                    )}
-                </div>
-            )}
 
             <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3 mb-3">
                 <div className="flex items-center justify-between mb-2">
@@ -2373,14 +2409,25 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 </div>
                 <div className="space-y-">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <select
+                            value={bulkAction}
+                            onChange={(e) => setBulkAction(e.target.value)}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                        >
+                            <option value="">Bulk Actions</option>
+                            <option value="upload-submit">Upload & Submit to Taqeem</option>
+                            <option value="delete">Delete</option>
+                            <option value="retry-submit">Retry Submit</option>
+                            <option value="send-approver">Send to Approver</option>
+                            <option value="approve">Approve</option>
+                        </select>
                         <button
                             type="button"
-                            onClick={() => loadReports()}
-                            disabled={reportsLoading}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            onClick={handleBulkAction}
+                            disabled={!bulkAction || selectedReportIds.length === 0}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold"
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
-                            {reportsLoading ? 'Refreshing...' : 'Refresh'}
+                            Go
                         </button>
 
                         <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
@@ -2402,7 +2449,6 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             </select>
                         </label>
 
-                        {/* Search input */}
                         <div className="relative">
                             <input
                                 type="text"
@@ -2449,6 +2495,15 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 <option value="100">100</option>
                             </select>
                         </label>
+                        <button
+                            type="button"
+                            onClick={() => loadReports()}
+                            disabled={reportsLoading}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
+                            {reportsLoading ? 'Refreshing...' : 'Refresh'}
+                        </button>
 
                         <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
                             Page:
@@ -2468,28 +2523,6 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             <span className="text-xs text-slate-600">of {totalPages}</span>
                         </label>
 
-                        <div className="flex items-center gap-2 ml-auto">
-                            <select
-                                value={bulkAction}
-                                onChange={(e) => setBulkAction(e.target.value)}
-                                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
-                            >
-                                <option value="">Bulk Actions</option>
-                                <option value="upload-submit">Upload & Submit to Taqeem</option>
-                                <option value="delete">Delete</option>
-                                <option value="retry-submit">Retry Submit</option>
-                                <option value="send-approver">Send to Approver</option>
-                                <option value="approve">Approve</option>
-                            </select>
-                            <button
-                                type="button"
-                                onClick={handleBulkAction}
-                                disabled={!bulkAction || selectedReportIds.length === 0}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold"
-                            >
-                                Go
-                            </button>
-                        </div>
                         {filteredReports.length > 0 && (
                             <div className="flex items-center gap-2 ml-auto">
                                 <span className="text-xs text-slate-600 font-medium">
@@ -3007,6 +3040,229 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 >
                                     {submitting ? "Updating..." : "Update"}
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showValidationModal && (
+                <div
+                    className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto px-4 py-6"
+                    onClick={() => setShowValidationModal(false)}
+                >
+                    <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" />
+                    <div
+                        className="relative w-full max-w-5xl max-h-[70vh]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="pointer-events-none absolute -top-12 right-6 h-28 w-28 rounded-full bg-cyan-400/30 blur-3xl" />
+                        <div className="pointer-events-none absolute -bottom-10 left-4 h-32 w-32 rounded-full bg-blue-500/20 blur-3xl" />
+                        <div className="relative rounded-[32px] bg-gradient-to-br from-cyan-200/70 via-white to-blue-200/70 p-[1px] shadow-[0_40px_120px_rgba(15,23,42,0.35)]">
+                            <div className="relative flex max-h-[70vh] flex-col overflow-hidden rounded-[32px] bg-white/95 backdrop-blur-xl">
+                                <div className="relative sticky top-0 z-10 overflow-hidden bg-gradient-to-r from-slate-950 via-blue-900 to-slate-900 px-5 py-4 text-white">
+                                <div className="pointer-events-none absolute -right-10 top-0 h-20 w-20 rounded-full bg-cyan-400/25 blur-2xl" />
+                                <div className="pointer-events-none absolute left-6 top-6 h-16 w-16 rounded-full bg-indigo-500/20 blur-2xl" />
+                                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 border border-white/15 shadow-[0_10px_24px_rgba(2,6,23,0.4)]">
+                                            <FileSpreadsheet className="h-4 w-4 text-cyan-200" />
+                                        </span>
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-white/90 min-w-0">
+                                            <span className="uppercase tracking-[0.3em] text-cyan-200 text-[9px]">Excel Validation</span>
+                                            <span className="h-1 w-1 rounded-full bg-white/40" />
+                                            <span className="text-white">Validation Results</span>
+                                            <span className="h-1 w-1 rounded-full bg-white/30" />
+                                            <span className="text-blue-100 font-normal truncate">
+                                                Review issues before uploading to ensure smooth submission.
+                                            </span>
+                                        </div>
+                                        <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white">
+                                            Files: {validationItems.length}
+                                        </span>
+                                        <span
+                                            className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                                                hasValidationIssues
+                                                    ? "border-rose-300/40 bg-rose-500/20 text-rose-100"
+                                                    : "border-emerald-300/40 bg-emerald-500/20 text-emerald-100"
+                                            }`}
+                                        >
+                                            Issues: {totalValidationIssues}
+                                        </span>
+                                        {wantsPdfUpload && (
+                                            <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-semibold text-white">
+                                                PDFs: {pdfMatchInfo.unmatchedPdfs.length + pdfMatchInfo.excelsMissingPdf.length}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowValidationModal(false)}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-[10px] font-semibold text-white hover:bg-white/20 whitespace-nowrap"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+
+                                <div className="relative flex-1 overflow-y-auto px-5 py-4">
+                                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_55%),radial-gradient(circle_at_bottom,rgba(14,165,233,0.08),transparent_50%)]" />
+                                    <div className="relative z-10 space-y-4">
+                                    {!validationItems.length && !validationMessage && (
+                                        <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600">
+                                            Upload Excel files to generate validation results.
+                                        </div>
+                                    )}
+
+                                    {!hasValidationIssues && validationItems.length > 0 && (
+                                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-4 text-emerald-700 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
+                                        <div className="flex items-center gap-3">
+                                            <CheckCircle2 className="w-6 h-6" />
+                                            <div>
+                                                <div className="text-sm font-semibold">No issues detected</div>
+                                                <p className="text-xs text-emerald-700/90">
+                                                        Your Excel files look clean. You can proceed with uploading and submission.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {hasValidationIssues && (
+                                        <div className="space-y-4">
+                                            <div className="rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-rose-700 shadow-[0_10px_30px_rgba(248,113,113,0.12)]">
+                                            <div className="text-sm font-semibold">Action required</div>
+                                            <p className="text-xs text-rose-700/90">
+                                                Fix the items below and re-validate before uploading. Ensure required fields
+                                                are filled, inspection dates are valid, and asset usage IDs match the allowed list.
+                                            </p>
+                                        </div>
+
+                                            <div className="inline-flex rounded-full bg-slate-100/80 p-1 text-xs font-semibold text-slate-600 shadow-sm">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setValidationTableTab("report-info")}
+                                                    className={`px-4 py-1.5 rounded-full transition ${
+                                                        validationTableTab === "report-info"
+                                                            ? "bg-white text-slate-900 shadow-sm"
+                                                            : "text-slate-500 hover:text-slate-700"
+                                                    }`}
+                                                >
+                                                    Report Info
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setValidationTableTab("assets")}
+                                                    className={`px-4 py-1.5 rounded-full transition ${
+                                                        validationTableTab === "assets"
+                                                            ? "bg-white text-slate-900 shadow-sm"
+                                                            : "text-slate-500 hover:text-slate-700"
+                                                    }`}
+                                                >
+                                                    Assets & PDFs
+                                                </button>
+                                            </div>
+
+                                            {validationTableTab === "report-info" ? (
+                                                reportInfoIssues.length > 0 ? (
+                                                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                                        <div className="max-h-[260px] overflow-y-auto">
+                                                            <table className="min-w-full text-xs text-slate-700">
+                                                                <thead className="bg-slate-900 text-slate-100 sticky top-0">
+                                                                    <tr>
+                                                                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
+                                                                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Field</th>
+                                                                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Location</th>
+                                                                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Details</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {reportInfoIssues.map((issue, idx) => (
+                                                                        <tr key={`report-info-${idx}`} className="border-b border-slate-200">
+                                                                            <td className="px-3 py-2 font-medium text-slate-800">{issue.fileName}</td>
+                                                                            <td className="px-3 py-2 font-semibold text-slate-800">{issue.field}</td>
+                                                                            <td className="px-3 py-2 text-slate-600">{issue.location || "-"}</td>
+                                                                            <td className="px-3 py-2 text-slate-700">{issue.message}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+                                                        No report info issues detected.
+                                                    </div>
+                                                )
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {wantsPdfUpload && (pdfMatchInfo.excelsMissingPdf.length || pdfMatchInfo.unmatchedPdfs.length) && (
+                                                        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-amber-700 text-xs">
+                                                            <div className="font-semibold">PDF matching issues</div>
+                                                            <div className="mt-1 space-y-1">
+                                                                {pdfMatchInfo.excelsMissingPdf.length > 0 && (
+                                                                    <div>
+                                                                        Excel files missing PDF: {pdfMatchInfo.excelsMissingPdf.join(", ")}
+                                                                    </div>
+                                                                )}
+                                                                {pdfMatchInfo.unmatchedPdfs.length > 0 && (
+                                                                    <div>
+                                                                        Unmatched PDFs: {pdfMatchInfo.unmatchedPdfs.join(", ")}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {assetIssues.length > 0 ? (
+                                                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                                            <div className="max-h-[260px] overflow-y-auto">
+                                                                <table className="min-w-full text-xs text-slate-700">
+                                                                    <thead className="bg-slate-900 text-slate-100 sticky top-0">
+                                                                        <tr>
+                                                                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Excel</th>
+                                                                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Field</th>
+                                                                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Location</th>
+                                                                            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider">Details</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {assetIssues.map((issue, idx) => (
+                                                                            <tr key={`asset-issue-${idx}`} className="border-b border-slate-200">
+                                                                                <td className="px-3 py-2 font-medium text-slate-800">{issue.fileName}</td>
+                                                                                <td className="px-3 py-2 font-semibold text-slate-800">{issue.field}</td>
+                                                                                <td className="px-3 py-2 text-slate-600">{issue.location || "-"}</td>
+                                                                                <td className="px-3 py-2 text-slate-700">{issue.message}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+                                                            No asset issues detected.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                </div>
+                                <div className="flex items-center justify-between border-t border-slate-200 bg-white/90 px-5 py-3 text-[10px] text-slate-500">
+                                    <span>Close this panel after reviewing the issues.</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowValidationModal(false)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                        Close
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

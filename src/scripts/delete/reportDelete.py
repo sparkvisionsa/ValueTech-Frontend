@@ -3,7 +3,8 @@ from datetime import datetime
 from pathlib import Path
 
 from scripts.core.utils import log
-from scripts.core.browser import new_tab, new_window  # reliable new-tab open in nodriver
+from scripts.core import browser as browser_ctx
+from scripts.core.browser import get_browser, spawn_new_browser, new_tab
 from scripts.core.company_context import build_report_url, require_selected_company
 from scripts.submission.validateReport import (
     extract_report_info_from_html,
@@ -1088,12 +1089,54 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10, user_id: str 
         current_round = 0
 
         report_url = build_report_url(report_id)
-        page = await new_window(report_url)
 
+        async def open_visible_window(url):
+            base_browser = None
+            try:
+                base_browser = await get_browser()
+            except Exception:
+                base_browser = None
+
+            if base_browser:
+                try:
+                    visible_browser = await spawn_new_browser(base_browser, headless=False)
+                except Exception as e:
+                    return {"status": "FAILED", "error": str(e)}
+
+                try:
+                    await base_browser.stop()
+                except Exception:
+                    pass
+
+                browser_ctx.browser = visible_browser
+                try:
+                    return await visible_browser.get(url, new_window=True)
+                except Exception as e:
+                    return {"status": "FAILED", "error": str(e)}
+
+            try:
+                visible_browser = await get_browser(force_new=True, headless_override=False)
+                return await visible_browser.get(url, new_window=True)
+            except Exception as e:
+                return {"status": "FAILED", "error": str(e)}
+
+        page = await open_visible_window(report_url)
+        if not page or isinstance(page, dict):
+            error_msg = page.get("error") if isinstance(page, dict) else "Failed to open report window."
+            log(f"Report {report_id}: could not open report window ({error_msg})", "ERR")
+            clear_process(process_id)
+            return {
+                "status": "FAILED",
+                "error": error_msg or "Failed to open report window.",
+                "reportId": report_id
+            }
 
         import nodriver as uc
 
         def install_auto_accept_dialogs(page):
+            if not hasattr(page, "add_handler"):
+                log(f"Report {report_id}: dialog handler not available on page", "WARN")
+                return
             async def _handler(ev):
                 if ev.__class__.__name__ == "JavascriptDialogOpening":
                     msg = getattr(ev, "message", "")
@@ -1102,13 +1145,24 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10, user_id: str 
             page.add_handler(uc.cdp.page, _handler)
         install_auto_accept_dialogs(page)
 
-        html = await wait_for_report_info_html(page, timeout_seconds=10)
+        log(f"Report {report_id}: waiting for report page (login if prompted)...", "INFO")
+        html = await wait_for_report_info_html(page, timeout_seconds=180)
         extracted = extract_report_info_from_html(html)
         report_status = extracted.get("reportStatus")
-        if not report_status or (
-            report_status.strip() != DRAFT_STATUS_AR
-            and report_status.strip().lower() != DRAFT_STATUS_EN
-        ):
+        if not report_status:
+            log(
+                f"Report {report_id}: report page not ready. Login to Taqeem in the opened window.",
+                "WARN"
+            )
+            await page.close()
+            clear_process(process_id)
+            return {
+                "status": "FAILED",
+                "message": "Report page not loaded. Please login to Taqeem and try again.",
+                "reportId": report_id
+            }
+
+        if report_status.strip() != DRAFT_STATUS_AR and report_status.strip().lower() != DRAFT_STATUS_EN:
             log(
                 f"Report {report_id}: status is not draft ({report_status}). Stopping.",
                 "WARN"
@@ -1378,7 +1432,7 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10, user_id: str 
         
     except Exception as e:
         log(f"Report {report_id}: Exception in delete_report_flow: {e}", "ERR")
-        if page:
+        if page and not isinstance(page, dict) and hasattr(page, "close"):
             await page.close()
         clear_process(process_id)
         return {
