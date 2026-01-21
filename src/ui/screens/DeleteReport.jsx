@@ -14,12 +14,18 @@ import {
     RefreshCw
 } from "lucide-react";
 import { useSession } from "../context/SessionContext";
+import { useAuthAction } from "../hooks/useAuthAction"; // ✅ add
+
 
 const DeleteReport = () => {
     // Report ID state
     const [reportId, setReportId] = useState("");
+    const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false);
 
-    const { user } = useSession();
+const { executeWithAuth } = useAuthAction(); // ✅
+
+
+   const { user, token } = useSession();   // ✅ you need token
     const userId = useMemo(
         () => user?._id || user?.id || user?.userId || user?.user?._id || null,
         [user]
@@ -943,82 +949,157 @@ const runWithConcurrency = async (items, limit, worker) => {
 
 
   // ✅ Replace your handleCheckReportInTaqeem with this version
+// const handleCheckReportInTaqeem = async () => {
+//   const ids = parseReportIds(reportId); // reportId is the input string: "1215 5888 6965"
+//   if (!ids.length) {
+//     setError("At least one Report ID is required");
+//     return;
+//   }
+
+//   setIsCheckingReport(true);
+//   setError("");
+//   setReportExists(null);
+//   setStatusChangeResult(null);
+//   setOperationResult(null);
+//   setReportSummaryRow([]); // Reset to array
+
+//   const concurrency = 3; // Adjust for multiple reports
+
+//   try {
+//     const results = await runWithConcurrency(ids, concurrency, async (id) => {
+//       try {
+//         const result = await window.electronAPI.validateReport(id, userId);
+//         console.log(`Full API response for ${id}:`, result);
+
+//         // Create table row
+//         const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+//         return {
+//           reportId: result?.reportId || id,
+//           totalAssets,
+//           reportStatus: result?.reportStatus ?? "Unknown",
+//           presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
+//           exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED"
+//         };
+//       } catch (err) {
+//         console.error(`Error checking report ${id}:`, err);
+//         return {
+//           reportId: id,
+//           totalAssets: 0,
+//           reportStatus: "Error",
+//           presentOrNot: "Error",
+//           exists: false
+//         };
+//       }
+//     });
+
+//     setReportSummaryRow(results);
+
+//     // Determine overall existence (optional)
+//     const allExist = results.every(r => r.exists);
+//     setReportExists(allExist);
+
+//     if (!allExist) {
+//       setError("Some reports do not exist or failed to check.");
+//     } else {
+//       setError("");
+//     }
+
+//     // Reset the text area after successful check
+//     setReportId("");
+
+//     await loadCheckedReports(1);
+//   } catch (err) {
+//     console.error("Error checking reports:", err);
+//     setReportExists(false);
+//     setError(err.message || "Error checking reports. Please try again.");
+//   } finally {
+//     setIsCheckingReport(false);
+//   }
+// };
+
+
+
 const handleCheckReportInTaqeem = async () => {
-  const ids = parseReportIds(reportId); // reportId is the input string: "1215 5888 6965"
+  const ids = parseReportIds(reportId);
   if (!ids.length) {
     setError("At least one Report ID is required");
     return;
   }
 
-  setIsCheckingReport(true);
-  setError("");
-  setReportExists(null);
-  setStatusChangeResult(null);
-  setOperationResult(null);
-  setReportSummaryRow([]); // Reset to array
+  await executeWithAuth(
+    async (params) => {
+      const { reportIds } = params;
 
-  const concurrency = 3; // Adjust for multiple reports
-
-  try {
-    const results = await runWithConcurrency(ids, concurrency, async (id) => {
-      try {
-        const result = await window.electronAPI.validateReport(id, userId);
-        console.log(`Full API response for ${id}:`, result);
-
-        // Create table row
-        const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-        return {
-          reportId: result?.reportId || id,
-          totalAssets,
-          reportStatus: result?.reportStatus ?? "Unknown",
-          presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
-          exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED"
-        };
-      } catch (err) {
-        console.error(`Error checking report ${id}:`, err);
-        return {
-          reportId: id,
-          totalAssets: 0,
-          reportStatus: "Error",
-          presentOrNot: "Error",
-          exists: false
-        };
-      }
-    });
-
-    setReportSummaryRow(results);
-
-    // Determine overall existence (optional)
-    const allExist = results.every(r => r.exists);
-    setReportExists(allExist);
-
-    if (!allExist) {
-      setError("Some reports do not exist or failed to check.");
-    } else {
+      setIsCheckingReport(true);
       setError("");
+      setReportExists(null);
+      setStatusChangeResult(null);
+      setOperationResult(null);
+      setReportSummaryRow([]);
+
+      // Reset input immediately
+      setReportId("");
+
+      const concurrency = 3;
+
+      const results = await runWithConcurrency(reportIds, concurrency, async (id) => {
+        try {
+          const result = await window.electronAPI.validateReport(id, userId);
+
+          const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+          return {
+            reportId: result?.reportId || id,
+            totalAssets,
+            reportStatus: result?.reportStatus ?? "Unknown",
+            presentOrNot: totalAssets > 0 ? "Present" : "Not Present",
+            exists: result?.status !== "NOT_FOUND" && result?.status !== "FAILED",
+          };
+        } catch (err) {
+          return {
+            reportId: id,
+            totalAssets: 0,
+            reportStatus: "Error",
+            presentOrNot: "Error",
+            exists: false,
+          };
+        }
+      });
+
+      setReportSummaryRow(results);
+
+      const allExist = results.every((r) => r.exists);
+      setReportExists(allExist);
+
+      if (!allExist) setError("Some reports do not exist or failed to check.");
+
+      await loadCheckedReports(1);
+
+      return { success: true };
+    },
+    { token, reportIds: ids },
+    {
+      requiredPoints: ids.length, // ✅ cost per report check (change if you want)
+      showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+      onAuthFailure: (reason) => {
+        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+          setError(reason?.message || "Authentication failed for Check Report");
+        }
+      },
     }
-
-    // Reset the text area after successful check
-    setReportId("");
-
-    await loadCheckedReports(1);
-  } catch (err) {
-    console.error("Error checking reports:", err);
-    setReportExists(false);
-    setError(err.message || "Error checking reports. Please try again.");
-  } finally {
+  ).catch((err) => {
+    if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+      setError(err?.message || "Check Report failed");
+    }
+  }).finally(() => {
     setIsCheckingReport(false);
-  }
+  });
 };
+
 // ==========================================================================
 
 // Delete report Function With Batch Ids
-
-
-
-
-
 const handleDeleteReport = async () => {
   const ids = parseReportIds(reportId);
   if (!ids.length) {
@@ -1026,206 +1107,147 @@ const handleDeleteReport = async () => {
     return;
   }
 
-  // Add rows immediately with report IDs
-  const initialRows = ids.map(id => ({
-    reportId: id,
-    reportStatus: "Validating...",
-    totalAssets: "Loading...",
-    result: "Validating..."
-  }));
-  setReportSummaryRow(prev => [...prev, ...initialRows]);
+  await executeWithAuth(
+    async (params) => {
+      const { reportIds } = params;
 
-  // Reset the text area
-  setReportId("");
-
-  // ✅ Use the same validateReportForDelete function
-  const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-    const validation = await validateReportForDelete(id);
-    
-    // Update the row with validation result
-    const result = validation.result;
-    const status = result?.status;
-    const reportStatus = result?.reportStatus;
-    const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
-
-    let resultText = "";
-    if (validation.alreadyDeleted) {
-       resultText = "Already Deleted (will re-run delete)";
-    } else if (status === "NOT_FOUND") {
-      resultText = "Not Found";
-    } else if (validation.proceed) {
-      resultText = "Validated";
-    } else {
-      resultText = validation.error || "Cannot Delete";
-    }
-
-    setReportSummaryRow(prev => prev.map(row => 
-      row.reportId === id ? {
+      // Add rows immediately
+      const initialRows = reportIds.map((id) => ({
         reportId: id,
-        reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-        totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-        result: resultText
-      } : row
-    ));
-
-    return {
-      id,
-      proceed: validation.proceed,
-      result,
-      reportStatus,
-      totalAssets,
-      resultText,
-      error: validation.error
-    };
-  });
-
-  const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
-  const validationById = validationResults.reduce((acc, res) => {
-    acc[res.id] = res;
-    return acc;
-  }, {});
-
-  // Store ALL validation results in REPORT_DELETIONS
-  for (const res of validationResults) {
-    await window.electronAPI.storeReportDeletion({
-      reportId: res.id,
-      action: "delete-report",
-      userId,
-      result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
-      reportStatus: res.reportStatus,
-      totalAssets: res.totalAssets || 0,
-      error: res.error
-    });
-  }
-
-  if (!idsToDelete.length) {
-    // Clear states
-    setRowActionById(prev => {
-      const next = { ...prev };
-      ids.forEach(id => { delete next[id]; });
-      return next;
-    });
-    setError("No reports are eligible for deletion");
-    return;
-  }
-
-
-  setDeleteRequested(true);
-  setStatusChangeResult(null);
-  setDeleteReportStatus("running");
-  setOperationResult(null);
-  setDeleteReportProgress(null);
-  setDeleteReportProgressById({});
-
-  const maxRounds = 10;
-  const concurrency = 10;
-
-  setOperationResult({
-    mode: "batch",
-    items: Object.fromEntries(idsToDelete.map(id => [id, { status: "queued" }]))
-  });
-
-  setRowActionById(prev => {
-    const next = { ...prev };
-    ids.forEach(id => { delete next[id]; });
-    idsToDelete.forEach(id => { next[id] = "delete-report"; });
-    return next;
-  });
-
-  try {
-    const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
-      setOperationResult(prev => ({
-        ...prev,
-        items: { ...prev.items, [id]: { status: "running" } }
+        reportStatus: "Validating...",
+        totalAssets: "Loading...",
+        result: "Validating...",
       }));
+      setReportSummaryRow((prev) => [...prev, ...initialRows]);
 
-      try {
-        const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
-        setOperationResult(prev => ({
-          ...prev,
-          items: { ...prev.items, [id]: { status: "success", result: res } }
-        }));
+      // Reset input
+      setReportId("");
 
-        const validation = validationById[id];
-        const totalAssets = validation?.totalAssets || 0;
-        const originalReportStatus = validation?.reportStatus || "Unknown";
+      // ✅ validate first
+      const validationResults = await runWithConcurrency(reportIds, 3, async (id) => {
+        const validation = await validateReportForDelete(id);
 
-        // Update row with success - keep original reportStatus
-        setReportSummaryRow(prev => prev.map(row => 
-          row.reportId === id ? {
-            ...row,
-            result: "Report - Deleted"
-          } : row
-        ));
+        const result = validation.result;
+        const status = result?.status;
+        const reportStatus = result?.reportStatus;
+        const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-        // Store in REPORT_DELETIONS
+        let resultText = "";
+        if (validation.alreadyDeleted) resultText = "Already Deleted (will re-run delete)";
+        else if (status === "NOT_FOUND") resultText = "Not Found";
+        else if (validation.proceed) resultText = "Validated";
+        else resultText = validation.error || "Cannot Delete";
+
+        setReportSummaryRow((prev) =>
+          prev.map((row) =>
+            row.reportId === id
+              ? {
+                  reportId: id,
+                  reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+                  totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+                  result: resultText,
+                }
+              : row
+          )
+        );
+
+        return { id, proceed: validation.proceed, result, reportStatus, totalAssets, resultText, error: validation.error };
+      });
+
+      const idsToDelete = validationResults.filter((r) => r?.proceed).map((r) => r.id);
+      const validationById = validationResults.reduce((acc, r) => ((acc[r.id] = r), acc), {});
+
+      // store validation results
+      for (const res of validationResults) {
         await window.electronAPI.storeReportDeletion({
-          reportId: id,
+          reportId: res.id,
           action: "delete-report",
           userId,
-          result: "Report - Deleted",
-          reportStatus: originalReportStatus,
-          totalAssets: totalAssets
+          result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
+          reportStatus: res.reportStatus,
+          totalAssets: res.totalAssets || 0,
+          error: res.error,
         });
-
-        return { id, ok: true, result: res };
-      } catch (err) {
-        setOperationResult(prev => ({
-          ...prev,
-          items: { ...prev.items, [id]: { status: "failed", error: String(err) } }
-        }));
-
-        // Update row with failure
-        setReportSummaryRow(prev => prev.map(row => 
-          row.reportId === id ? {
-            ...row,
-            result: "Delete Failed"
-          } : row
-        ));
-
-        // Store failure in REPORT_DELETIONS
-        await window.electronAPI.storeReportDeletion({
-          reportId: id,
-          action: "delete-report",
-          userId,
-          result: "Delete Failed",
-          error: String(err)
-        });
-
-        return { id, ok: false, error: String(err) };
       }
-    });
 
-    const failed = results.filter(r => !r?.ok).length;
+      if (!idsToDelete.length) {
+        setError("No reports are eligible for deletion");
+        return { success: false };
+      }
 
-    setStatusChangeResult({
-      total: idsToDelete.length,
-      success: idsToDelete.length - failed,
-      failed,
-      results
-    });
+      // execute deletes
+      setDeleteRequested(true);
+      setDeleteReportStatus("running");
+      setDeleteReportProgress(null);
+      setDeleteReportProgressById({});
 
-    setDeleteReportStatus(failed ? "partial" : "success");
-    setDeleteReportProgress(null);
-    setDeleteReportProgressById({});
-    setRowActionById(prev => {
-      const next = { ...prev };
-      idsToDelete.forEach(id => { delete next[id]; });
-      return next;
-    });
-    setReportId("");
-  } catch (err) {
-    console.error("Error initiating batch deletion:", err);
+      const maxRounds = 10;
+      const concurrency = 10;
+
+      const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
+        try {
+          const res = await window.electronAPI.deleteReport(id, maxRounds, userId);
+
+          const validation = validationById[id];
+          const totalAssets = validation?.totalAssets || 0;
+          const originalReportStatus = validation?.reportStatus || "Unknown";
+
+          setReportSummaryRow((prev) =>
+            prev.map((row) => (row.reportId === id ? { ...row, result: "Report - Deleted" } : row))
+          );
+
+          await window.electronAPI.storeReportDeletion({
+            reportId: id,
+            action: "delete-report",
+            userId,
+            result: "Report - Deleted",
+            reportStatus: originalReportStatus,
+            totalAssets,
+          });
+
+          return { id, ok: true, result: res };
+        } catch (err) {
+          setReportSummaryRow((prev) =>
+            prev.map((row) => (row.reportId === id ? { ...row, result: "Delete Failed" } : row))
+          );
+
+          await window.electronAPI.storeReportDeletion({
+            reportId: id,
+            action: "delete-report",
+            userId,
+            result: "Delete Failed",
+            error: String(err),
+          });
+
+          return { id, ok: false, error: String(err) };
+        }
+      });
+
+      const failed = results.filter((r) => !r?.ok).length;
+      setDeleteReportStatus(failed ? "partial" : "success");
+
+      await loadCheckedReports(1);
+
+      return { success: true, results };
+    },
+    { token, reportIds: ids },
+    {
+      requiredPoints: ids.length, // ✅ cost per report deletion (edit as you want)
+      showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+      onAuthFailure: (reason) => {
+        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+          setError(reason?.message || "Authentication failed for Delete Report");
+        }
+      },
+    }
+  ).catch((err) => {
+    if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+      setError(err?.message || "Delete Report failed");
+    }
     setDeleteReportStatus("stopped");
-    setDeleteReportProgress(null);
-    setDeleteReportProgressById({});
-    setRowActionById(prev => {
-      const next = { ...prev };
-      idsToDelete.forEach(id => { delete next[id]; });
-      return next;
-    });
-  }
+  });
 };
+
 
 // ==========================================================================
 
@@ -1239,179 +1261,335 @@ const handleDeleteReport = async () => {
 
 
     // Handle delete only assets - batch
+    // const handleDeleteReportAssets = async () => {
+    //     const ids = parseReportIds(reportId);
+    //     if (!ids.length) {
+    //         setError("At least one Report ID is required");
+    //         return;
+    //     }
+
+    //     // Add rows immediately with report IDs
+    //     const initialRows = ids.map(id => ({
+    //         reportId: id,
+    //         reportStatus: "Validating...",
+    //         totalAssets: "Loading...",
+    //         result: "Validating..."
+    //     }));
+    //     setReportSummaryRow(prev => [...prev, ...initialRows]);
+
+    //     // Reset the text area
+    //     setReportId("");
+
+    //     const validationResults = await runWithConcurrency(ids, 3, async (id) => {
+    //         try {
+    //             const result = await window.electronAPI.validateReport(id, userId);
+    //             const status = result?.status;
+    //             const reportStatus = result?.reportStatus;
+    //             const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+    //             let proceed = false;
+    //             let resultText = "";
+
+    //             if (status === "NOT_FOUND") {
+    //                 resultText = "Not Found";
+    //             } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
+    //                 proceed = true;
+    //                 resultText = "Validated";
+    //             } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
+    //                 resultText = "Report - Can't be Deleted";
+    //             } else {
+    //                 resultText = "Validated";
+    //             }
+
+    //             // Update the row
+    //             setReportSummaryRow(prev => prev.map(row => 
+    //                 row.reportId === id ? {
+    //                     reportId: id,
+    //                     reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+    //                     totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+    //                     result: resultText
+    //                 } : row
+    //             ));
+
+    //             return { id, proceed, result, reportStatus, totalAssets, resultText };
+    //         } catch (err) {
+    //             // Update row with error
+    //             setReportSummaryRow(prev => prev.map(row => 
+    //                 row.reportId === id ? {
+    //                     ...row,
+    //                     reportStatus: "Error",
+    //                     totalAssets: 0,
+    //                     result: "Error"
+    //                 } : row
+    //             ));
+    //             return { id, proceed: false, error: err?.message || String(err) };
+    //         }
+    //     });
+
+    //     const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
+    //     const validationById = validationResults.reduce((acc, res) => {
+    //         acc[res.id] = res;
+    //         return acc;
+    //     }, {});
+
+    //     // Store ALL validation results in REPORT_DELETIONS (both validated and cannot delete)
+    //     for (const res of validationResults) {
+    //         await window.electronAPI.storeReportDeletion({
+    //             reportId: res.id,
+    //             action: "delete-assets",
+    //             userId,
+    //             result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
+    //             reportStatus: res.reportStatus,
+    //             totalAssets: res.totalAssets || 0,
+    //             error: res.error
+    //         });
+    //     }
+
+    //     if (!idsToDelete.length) {
+    //         return;
+    //     }
+
+    //     setDeleteAssetsRequested(true);
+    //     setStatusChangeResult(null);
+    //     setDeleteAssetsStatus('running');
+    //     setOperationResult(null);
+    //     setDeleteAssetsProgressById({});
+    //     setRowActionById(prev => {
+    //         const next = { ...prev };
+    //         ids.forEach(id => { delete next[id]; });
+    //         idsToDelete.forEach(id => { next[id] = "delete-assets"; });
+    //         return next;
+    //     });
+
+    //     const maxRounds = 10;
+    //     const concurrency = Math.min(5, idsToDelete.length);
+    //     try {
+    //         const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
+    //             try {
+    //                 const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
+
+    //                 const validation = validationById[id];
+    //                 const totalAssets = validation?.totalAssets || 0;
+    //                 const originalReportStatus = validation?.reportStatus || "Unknown";
+
+    //                 // Update row with success - keep original reportStatus
+    //                 setReportSummaryRow(prev => prev.map(row => 
+    //                     row.reportId === id ? {
+    //                         ...row,
+    //                         result: "Asset - Deleted"
+    //                     } : row
+    //                 ));
+
+    //                 // Store in REPORT_DELETIONS
+    //                 await window.electronAPI.storeReportDeletion({
+    //                     reportId: id,
+    //                     action: "delete-assets",
+    //                     userId,
+    //                     result: "Asset - Deleted",
+    //                     reportStatus: originalReportStatus,
+    //                     totalAssets: totalAssets
+    //                 });
+
+    //                 return { id, ok: true, result: res };
+    //             } catch (err) {
+    //                 // Update row with failure
+    //                 setReportSummaryRow(prev => prev.map(row => 
+    //                     row.reportId === id ? {
+    //                         ...row,
+    //                         result: "Delete Failed"
+    //                     } : row
+    //                 ));
+
+    //                 // Store failure in REPORT_DELETIONS
+    //                 await window.electronAPI.storeReportDeletion({
+    //                     reportId: id,
+    //                     action: "delete-assets",
+    //                     userId,
+    //                     result: "Delete Failed",
+    //                     error: String(err)
+    //                 });
+
+    //                 return { id, ok: false, error: String(err) };
+    //             }
+    //         });
+
+    //         const failed = results.filter(r => !r?.ok).length;
+
+    //         setStatusChangeResult({
+    //             total: idsToDelete.length,
+    //             success: idsToDelete.length - failed,
+    //             failed,
+    //             results
+    //         });
+
+    //         setDeleteAssetsStatus(failed ? "partial" : "success");
+    //     } catch (err) {
+    //         console.error("Error initiating report assets deletion:", err);
+    //         setDeleteAssetsStatus('stopped');
+    //     } finally {
+    //         setRowActionById(prev => {
+    //             const next = { ...prev };
+    //             idsToDelete.forEach(id => { delete next[id]; });
+    //             return next;
+    //         });
+    //     }
+    // };
+
+
+
     const handleDeleteReportAssets = async () => {
-        const ids = parseReportIds(reportId);
-        if (!ids.length) {
-            setError("At least one Report ID is required");
-            return;
-        }
+  const ids = parseReportIds(reportId);
+  if (!ids.length) {
+    setError("At least one Report ID is required");
+    return;
+  }
 
-        // Add rows immediately with report IDs
-        const initialRows = ids.map(id => ({
-            reportId: id,
-            reportStatus: "Validating...",
-            totalAssets: "Loading...",
-            result: "Validating..."
-        }));
-        setReportSummaryRow(prev => [...prev, ...initialRows]);
+  await executeWithAuth(
+    async (params) => {
+      const { reportIds } = params;
 
-        // Reset the text area
-        setReportId("");
+      const initialRows = reportIds.map((id) => ({
+        reportId: id,
+        reportStatus: "Validating...",
+        totalAssets: "Loading...",
+        result: "Validating...",
+      }));
+      setReportSummaryRow((prev) => [...prev, ...initialRows]);
 
-        const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-            try {
-                const result = await window.electronAPI.validateReport(id, userId);
-                const status = result?.status;
-                const reportStatus = result?.reportStatus;
-                const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+      setReportId("");
 
-                let proceed = false;
-                let resultText = "";
-
-                if (status === "NOT_FOUND") {
-                    resultText = "Not Found";
-                } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
-                    proceed = true;
-                    resultText = "Validated";
-                } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
-                    resultText = "Report - Can't be Deleted";
-                } else {
-                    resultText = "Validated";
-                }
-
-                // Update the row
-                setReportSummaryRow(prev => prev.map(row => 
-                    row.reportId === id ? {
-                        reportId: id,
-                        reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-                        totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-                        result: resultText
-                    } : row
-                ));
-
-                return { id, proceed, result, reportStatus, totalAssets, resultText };
-            } catch (err) {
-                // Update row with error
-                setReportSummaryRow(prev => prev.map(row => 
-                    row.reportId === id ? {
-                        ...row,
-                        reportStatus: "Error",
-                        totalAssets: 0,
-                        result: "Error"
-                    } : row
-                ));
-                return { id, proceed: false, error: err?.message || String(err) };
-            }
-        });
-
-        const idsToDelete = validationResults.filter(r => r?.proceed).map(r => r.id);
-        const validationById = validationResults.reduce((acc, res) => {
-            acc[res.id] = res;
-            return acc;
-        }, {});
-
-        // Store ALL validation results in REPORT_DELETIONS (both validated and cannot delete)
-        for (const res of validationResults) {
-            await window.electronAPI.storeReportDeletion({
-                reportId: res.id,
-                action: "delete-assets",
-                userId,
-                result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
-                reportStatus: res.reportStatus,
-                totalAssets: res.totalAssets || 0,
-                error: res.error
-            });
-        }
-
-        if (!idsToDelete.length) {
-            return;
-        }
-
-        setDeleteAssetsRequested(true);
-        setStatusChangeResult(null);
-        setDeleteAssetsStatus('running');
-        setOperationResult(null);
-        setDeleteAssetsProgressById({});
-        setRowActionById(prev => {
-            const next = { ...prev };
-            ids.forEach(id => { delete next[id]; });
-            idsToDelete.forEach(id => { next[id] = "delete-assets"; });
-            return next;
-        });
-
-        const maxRounds = 10;
-        const concurrency = Math.min(5, idsToDelete.length);
+      const validationResults = await runWithConcurrency(reportIds, 3, async (id) => {
         try {
-            const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
-                try {
-                    const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
+          const result = await window.electronAPI.validateReport(id, userId);
+          const status = result?.status;
+          const reportStatus = result?.reportStatus;
+          const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-                    const validation = validationById[id];
-                    const totalAssets = validation?.totalAssets || 0;
-                    const originalReportStatus = validation?.reportStatus || "Unknown";
+          let proceed =true;
+          let resultText = "";
 
-                    // Update row with success - keep original reportStatus
-                    setReportSummaryRow(prev => prev.map(row => 
-                        row.reportId === id ? {
-                            ...row,
-                            result: "Asset - Deleted"
-                        } : row
-                    ));
+          if (status === "NOT_FOUND") {
+            resultText = "Not Found";
+          } else if (status === "SUCCESS" && (reportStatus === "draft" || reportStatus === "مسودة")) {
+            proceed = true;
+            resultText = "Validated";
+          } else if (reportStatus !== "draft" && reportStatus !== "مسودة") {
+            resultText = "Report - Can't be Deleted";
+          } else {
+            resultText = "Validated";
+          }
 
-                    // Store in REPORT_DELETIONS
-                    await window.electronAPI.storeReportDeletion({
-                        reportId: id,
-                        action: "delete-assets",
-                        userId,
-                        result: "Asset - Deleted",
-                        reportStatus: originalReportStatus,
-                        totalAssets: totalAssets
-                    });
+          setReportSummaryRow((prev) =>
+            prev.map((row) =>
+              row.reportId === id
+                ? {
+                    reportId: id,
+                    reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+                    totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+                    result: resultText,
+                  }
+                : row
+            )
+          );
 
-                    return { id, ok: true, result: res };
-                } catch (err) {
-                    // Update row with failure
-                    setReportSummaryRow(prev => prev.map(row => 
-                        row.reportId === id ? {
-                            ...row,
-                            result: "Delete Failed"
-                        } : row
-                    ));
-
-                    // Store failure in REPORT_DELETIONS
-                    await window.electronAPI.storeReportDeletion({
-                        reportId: id,
-                        action: "delete-assets",
-                        userId,
-                        result: "Delete Failed",
-                        error: String(err)
-                    });
-
-                    return { id, ok: false, error: String(err) };
-                }
-            });
-
-            const failed = results.filter(r => !r?.ok).length;
-
-            setStatusChangeResult({
-                total: idsToDelete.length,
-                success: idsToDelete.length - failed,
-                failed,
-                results
-            });
-
-            setDeleteAssetsStatus(failed ? "partial" : "success");
+          return { id, proceed, reportStatus, totalAssets, resultText };
         } catch (err) {
-            console.error("Error initiating report assets deletion:", err);
-            setDeleteAssetsStatus('stopped');
-        } finally {
-            setRowActionById(prev => {
-                const next = { ...prev };
-                idsToDelete.forEach(id => { delete next[id]; });
-                return next;
-            });
+          setReportSummaryRow((prev) =>
+            prev.map((row) =>
+              row.reportId === id ? { ...row, reportStatus: "Error", totalAssets: 0, result: "Error" } : row
+            )
+          );
+          return { id, proceed: false, error: String(err) };
         }
-    };
+      });
+
+      const idsToDelete = validationResults.filter((r) => r?.proceed).map((r) => r.id);
+      const validationById = validationResults.reduce((acc, r) => ((acc[r.id] = r), acc), {});
+
+      for (const res of validationResults) {
+        await window.electronAPI.storeReportDeletion({
+          reportId: res.id,
+          action: "delete-assets",
+          userId,
+          result: res.resultText || (res.proceed ? "Validated" : "Cannot Delete"),
+          reportStatus: res.reportStatus,
+          totalAssets: res.totalAssets || 0,
+          error: res.error,
+        });
+      }
+
+      if (!idsToDelete.length) return { success: false };
+
+      setDeleteAssetsRequested(true);
+      setDeleteAssetsStatus("running");
+
+      const maxRounds = 10;
+      const concurrency = Math.min(5, idsToDelete.length);
+
+      const results = await runWithConcurrency(idsToDelete, concurrency, async (id) => {
+        try {
+          const res = await window.electronAPI.deleteIncompleteAssets(id, maxRounds, userId);
+
+          const validation = validationById[id];
+          const totalAssets = validation?.totalAssets || 0;
+          const originalReportStatus = validation?.reportStatus || "Unknown";
+
+          setReportSummaryRow((prev) =>
+            prev.map((row) => (row.reportId === id ? { ...row, result: "Asset - Deleted" } : row))
+          );
+
+          await window.electronAPI.storeReportDeletion({
+            reportId: id,
+            action: "delete-assets",
+            userId,
+            result: "Asset - Deleted",
+            reportStatus: originalReportStatus,
+            totalAssets,
+          });
+
+          return { id, ok: true, result: res };
+        } catch (err) {
+          setReportSummaryRow((prev) =>
+            prev.map((row) => (row.reportId === id ? { ...row, result: "Delete Failed" } : row))
+          );
+
+          await window.electronAPI.storeReportDeletion({
+            reportId: id,
+            action: "delete-assets",
+            userId,
+            result: "Delete Failed",
+            error: String(err),
+          });
+
+          return { id, ok: false, error: String(err) };
+        }
+      });
+
+      const failed = results.filter((r) => !r?.ok).length;
+      setDeleteAssetsStatus(failed ? "partial" : "success");
+
+      await loadCheckedReports(1);
+
+      return { success: true, results };
+    },
+    { token, reportIds: ids },
+    {
+      requiredPoints: ids.length, // ✅ cost per report assets deletion (edit as you want)
+      showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+      onAuthFailure: (reason) => {
+        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+          setError(reason?.message || "Authentication failed for Delete Assets");
+        }
+      },
+    }
+  ).catch((err) => {
+    if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+      setError(err?.message || "Delete Assets failed");
+    }
+    setDeleteAssetsStatus("stopped");
+  });
+};
+
 
     // Handle pause delete report - CHECK API RESPONSE
     const handlePauseDeleteReport = async () => {
@@ -1608,125 +1786,244 @@ const handleDeleteReport = async () => {
     };
 
     // Handle changing report status - fire and forget
-    const handleChangeReportStatus = async () => {
-        const ids = parseReportIds(reportId);
-        if (!ids.length) {
-            setError("At least one Report ID is required");
-            return;
-        }
+    // const handleChangeReportStatus = async () => {
+    //     const ids = parseReportIds(reportId);
+    //     if (!ids.length) {
+    //         setError("At least one Report ID is required");
+    //         return;
+    //     }
 
-        // Add rows immediately with report IDs
-        const initialRows = ids.map(id => ({
-            reportId: id,
-            reportStatus: "Validating...",
-            totalAssets: "Loading...",
-            result: "Validating..."
-        }));
-        setReportSummaryRow(prev => [...prev, ...initialRows]);
+    //     // Add rows immediately with report IDs
+    //     const initialRows = ids.map(id => ({
+    //         reportId: id,
+    //         reportStatus: "Validating...",
+    //         totalAssets: "Loading...",
+    //         result: "Validating..."
+    //     }));
+    //     setReportSummaryRow(prev => [...prev, ...initialRows]);
 
-        // Reset the text area
-        setReportId("");
+    //     // Reset the text area
+    //     setReportId("");
 
-        const validationResults = await runWithConcurrency(ids, 3, async (id) => {
-            try {
-                const result = await window.electronAPI.validateReport(id, userId);
-                const status = result?.status;
-                const reportStatus = result?.reportStatus;
-                const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+    //     const validationResults = await runWithConcurrency(ids, 3, async (id) => {
+    //         try {
+    //             const result = await window.electronAPI.validateReport(id, userId);
+    //             const status = result?.status;
+    //             const reportStatus = result?.reportStatus;
+    //             const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
 
-                let resultText = "";
+    //             let resultText = "";
 
-                if (status === "NOT_FOUND") {
-                    resultText = "Not Found";
-                } else {
-                    resultText = "Validated";
-                }
+    //             if (status === "NOT_FOUND") {
+    //                 resultText = "Not Found";
+    //             } else {
+    //                 resultText = "Validated";
+    //             }
 
-                // Update the row
-                setReportSummaryRow(prev => prev.map(row => 
-                    row.reportId === id ? {
-                        reportId: id,
-                        reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
-                        totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
-                        result: resultText
-                    } : row
-                ));
+    //             // Update the row
+    //             setReportSummaryRow(prev => prev.map(row => 
+    //                 row.reportId === id ? {
+    //                     reportId: id,
+    //                     reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+    //                     totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+    //                     result: resultText
+    //                 } : row
+    //             ));
 
-                return { id, result, reportStatus, totalAssets, resultText };
-            } catch (err) {
-                // Update row with error
-                setReportSummaryRow(prev => prev.map(row => 
-                    row.reportId === id ? {
-                        ...row,
-                        reportStatus: "Error",
-                        totalAssets: 0,
-                        result: "Error"
-                    } : row
-                ));
-                return { id, error: err?.message || String(err) };
-            }
-        });
+    //             return { id, result, reportStatus, totalAssets, resultText };
+    //         } catch (err) {
+    //             // Update row with error
+    //             setReportSummaryRow(prev => prev.map(row => 
+    //                 row.reportId === id ? {
+    //                     ...row,
+    //                     reportStatus: "Error",
+    //                     totalAssets: 0,
+    //                     result: "Error"
+    //                 } : row
+    //             ));
+    //             return { id, error: err?.message || String(err) };
+    //         }
+    //     });
 
-        // Process status change for all valid reports
-        for (const res of validationResults) {
-            if (res.result && res.result.status !== "NOT_FOUND") {
-                try {
-                    await window.electronAPI.handleCancelledReport(res.id);
+    //     // Process status change for all valid reports
+    //     for (const res of validationResults) {
+    //         if (res.result && res.result.status !== "NOT_FOUND") {
+    //             try {
+    //                 await window.electronAPI.handleCancelledReport(res.id);
                     
-                    // Update row with success
-                    setReportSummaryRow(prev => prev.map(row => 
-                        row.reportId === res.id ? {
-                            ...row,
-                            result: "Status Changed"
-                        } : row
-                    ));
+    //                 // Update row with success
+    //                 setReportSummaryRow(prev => prev.map(row => 
+    //                     row.reportId === res.id ? {
+    //                         ...row,
+    //                         result: "Status Changed"
+    //                     } : row
+    //                 ));
 
-                    // Store in REPORT_DELETIONS
-                    await window.electronAPI.storeReportDeletion({
-                        reportId: res.id,
-                        action: "change-status",
-                        userId,
-                        result: "Status Changed",
-                        reportStatus: res.reportStatus,
-                        totalAssets: res.totalAssets || 0
-                    });
-                } catch (err) {
-                    // Update row with failure
-                    setReportSummaryRow(prev => prev.map(row => 
-                        row.reportId === res.id ? {
-                            ...row,
-                            result: "Change Failed"
-                        } : row
-                    ));
+    //                 // Store in REPORT_DELETIONS
+    //                 await window.electronAPI.storeReportDeletion({
+    //                     reportId: res.id,
+    //                     action: "change-status",
+    //                     userId,
+    //                     result: "Status Changed",
+    //                     reportStatus: res.reportStatus,
+    //                     totalAssets: res.totalAssets || 0
+    //                 });
+    //             } catch (err) {
+    //                 // Update row with failure
+    //                 setReportSummaryRow(prev => prev.map(row => 
+    //                     row.reportId === res.id ? {
+    //                         ...row,
+    //                         result: "Change Failed"
+    //                     } : row
+    //                 ));
 
-                    // Store failure in REPORT_DELETIONS
-                    await window.electronAPI.storeReportDeletion({
-                        reportId: res.id,
-                        action: "change-status",
-                        userId,
-                        result: "Change Failed",
-                        error: String(err)
-                    });
-                }
-            } else {
-                // Store not found in REPORT_DELETIONS
-                await window.electronAPI.storeReportDeletion({
-                    reportId: res.id,
-                    action: "change-status",
-                    userId,
-                    result: res.resultText || "Not Found",
-                    reportStatus: res.reportStatus,
-                    totalAssets: res.totalAssets || 0,
-                    error: res.error
-                });
-            }
+    //                 // Store failure in REPORT_DELETIONS
+    //                 await window.electronAPI.storeReportDeletion({
+    //                     reportId: res.id,
+    //                     action: "change-status",
+    //                     userId,
+    //                     result: "Change Failed",
+    //                     error: String(err)
+    //                 });
+    //             }
+    //         } else {
+    //             // Store not found in REPORT_DELETIONS
+    //             await window.electronAPI.storeReportDeletion({
+    //                 reportId: res.id,
+    //                 action: "change-status",
+    //                 userId,
+    //                 result: res.resultText || "Not Found",
+    //                 reportStatus: res.reportStatus,
+    //                 totalAssets: res.totalAssets || 0,
+    //                 error: res.error
+    //             });
+    //         }
+    //     }
+
+    //     setStatusChangeResult({
+    //         status: 'COMPLETED',
+    //         message: 'Status change process completed'
+    //     });
+    // };
+
+
+    const handleChangeReportStatus = async () => {
+  const ids = parseReportIds(reportId);
+  if (!ids.length) {
+    setError("At least one Report ID is required");
+    return;
+  }
+
+  await executeWithAuth(
+    async (params) => {
+      const { reportIds } = params;
+
+      const initialRows = reportIds.map((id) => ({
+        reportId: id,
+        reportStatus: "Validating...",
+        totalAssets: "Loading...",
+        result: "Validating...",
+      }));
+      setReportSummaryRow((prev) => [...prev, ...initialRows]);
+      setReportId("");
+
+      const validationResults = await runWithConcurrency(reportIds, 3, async (id) => {
+        try {
+          const result = await window.electronAPI.validateReport(id, userId);
+          const status = result?.status;
+          const reportStatus = result?.reportStatus;
+          const totalAssets = Number(result?.assetsExact ?? result?.microsCount ?? 0) || 0;
+
+          const resultText = status === "NOT_FOUND" ? "Not Found" : "Validated";
+
+          setReportSummaryRow((prev) =>
+            prev.map((row) =>
+              row.reportId === id
+                ? {
+                    reportId: id,
+                    reportStatus: status === "NOT_FOUND" ? "Not Found" : (reportStatus || "Unknown"),
+                    totalAssets: status === "NOT_FOUND" ? 0 : totalAssets,
+                    result: resultText,
+                  }
+                : row
+            )
+          );
+
+          return { id, result, reportStatus, totalAssets, resultText };
+        } catch (err) {
+          setReportSummaryRow((prev) =>
+            prev.map((row) =>
+              row.reportId === id ? { ...row, reportStatus: "Error", totalAssets: 0, result: "Error" } : row
+            )
+          );
+          return { id, error: String(err) };
         }
+      });
 
-        setStatusChangeResult({
-            status: 'COMPLETED',
-            message: 'Status change process completed'
-        });
-    };
+      for (const res of validationResults) {
+        if (res.result && res.result.status !== "NOT_FOUND") {
+          try {
+            await window.electronAPI.handleCancelledReport(res.id);
+
+            setReportSummaryRow((prev) =>
+              prev.map((row) => (row.reportId === res.id ? { ...row, result: "Status Changed" } : row))
+            );
+
+            await window.electronAPI.storeReportDeletion({
+              reportId: res.id,
+              action: "change-status",
+              userId,
+              result: "Status Changed",
+              reportStatus: res.reportStatus,
+              totalAssets: res.totalAssets || 0,
+            });
+          } catch (err) {
+            setReportSummaryRow((prev) =>
+              prev.map((row) => (row.reportId === res.id ? { ...row, result: "Change Failed" } : row))
+            );
+
+            await window.electronAPI.storeReportDeletion({
+              reportId: res.id,
+              action: "change-status",
+              userId,
+              result: "Change Failed",
+              error: String(err),
+            });
+          }
+        } else {
+          await window.electronAPI.storeReportDeletion({
+            reportId: res.id,
+            action: "change-status",
+            userId,
+            result: res.resultText || "Not Found",
+            reportStatus: res.reportStatus,
+            totalAssets: res.totalAssets || 0,
+            error: res.error,
+          });
+        }
+      }
+
+      setStatusChangeResult({ status: "COMPLETED", message: "Status change process completed" });
+      await loadCheckedReports(1);
+
+      return { success: true };
+    },
+    { token, reportIds: ids },
+    {
+      requiredPoints: ids.length, // ✅ cost per status-change
+      showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
+      onAuthFailure: (reason) => {
+        if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
+          setError(reason?.message || "Authentication failed for Change Status");
+        }
+      },
+    }
+  ).catch((err) => {
+    if (!err?.message?.includes("INSUFFICIENT_POINTS") && !err?.message?.includes("LOGIN_REQUIRED")) {
+      setError(err?.message || "Change Status failed");
+    }
+  });
+};
 
     // Get status color
     const getStatusColor = (status) => {
@@ -2116,88 +2413,7 @@ const handleDeleteReport = async () => {
         </div>
       )}
     </div>
-    {/* <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
-      <select
-        value={filterMode}
-        onChange={(e) => setFilterMode(e.target.value)}
-        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
-      >
-        <option value="all">All</option>
-        <option value="checked">Checked</option>
-        <option value="deleted-report">Deleted Report</option>
-        <option value="deleted-asset">Deleted Asset</option>
-      </select>
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        placeholder="Search report ID"
-        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white w-48"
-      />
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={handleCheckSelectedReports}
-          disabled={selectedReports.size === 0}
-          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
-        >
-          <Search className="w-3 h-3" />
-          Check Selected
-        </button>
-        <button
-          onClick={handleDeleteSelectedReports}
-          disabled={selectedReports.size === 0 || deleteReportStatus === 'running'}
-          className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
-        >
-          <Trash2 className="w-3 h-3" />
-          Delete Selected Reports
-        </button>
-
-         <button
-                                            onClick={handleCheckSelected}
-                                            disabled={selectedReports.size === 0}
-                                            className="px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
-                                        >
-                                            <Search className="w-3 h-3" />
-                                            Check
-                                        </button>
-        <button
-          onClick={handleDeleteSelectedAssets}
-          disabled={selectedReports.size === 0 || deleteAssetsStatus === 'running'}
-          className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
-        >
-          <Package className="w-3 h-3" />
-          Delete Selected Assets
-        </button>
-
-
-
-          
-                                        <button
-                                            onClick={handleResumeSelected}
-                                            disabled={selectedReports.size === 0}
-                                            className="px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
-                                        >
-                                            <Play className="w-3 h-3" />
-                                            Resume
-                                        </button>
-                                        <button
-                                            onClick={handlePauseSelected}
-                                            disabled={selectedReports.size === 0}
-                                            className="px-4 py-3 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
-                                        >
-                                            <PauseCircle className="w-3 h-3" />
-                                            Pause
-                                        </button>
-                                        <button
-                                            onClick={handleStopSelected}
-                                            disabled={selectedReports.size === 0}
-                                            className="px-4 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg font-normal flex items-center justify-center gap-2 transition-colors w-full sm:w-auto"
-                                        >
-                                            <StopCircle className="w-3 h-3" />
-                                            Stop
-                                        </button>
-      </div>
-    </div> */}
+    
 
 
     <div className="bg-white px-4 py-3 border-b flex flex-wrap items-center gap-3">
@@ -2512,21 +2728,7 @@ const handleDeleteReport = async () => {
 
                             {/* Status Change Section - ALWAYS VISIBLE */}
                             <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                                {/* <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                    <PlayCircle className="w-5 h-5 text-blue-500" />
-                                    Change Report Status
-                                </h3>
-                                <p className="text-sm text-gray-600 mb-3">
-                                    Change the report status before deletion if needed.
-                                </p> */}
-
-                                {/* <button
-                                    onClick={handleChangeReportStatus}
-                                    className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors"
-                                >
-                                    <PlayCircle className="w-4 h-4" />
-                                    Change Report Status
-                                </button> */}
+                            
 
                                 {/* Status Change Result */}
                                 {renderStatusChangeResult()}
@@ -2613,16 +2815,3 @@ const handleDeleteReport = async () => {
 };
 
 export default DeleteReport;
-
-
-
-
-
-
-
-
-
-
-
-
-
