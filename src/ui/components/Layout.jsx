@@ -17,6 +17,7 @@ import {
     Trash2,
     UploadCloud
 } from 'lucide-react';
+import { getHealth } from '../../api/health';
 import buildVersion from '../../../build-version.json';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
@@ -202,6 +203,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const [downtimeParts, setDowntimeParts] = useState(null);
     const [hideUpdateNotice, setHideUpdateNotice] = useState(false);
     const [forceCompanyModal, setForceCompanyModal] = useState(false);
+    const [backendVersion, setBackendVersion] = useState(null);
     const [companyModalSelection, setCompanyModalSelection] = useState(selectedCompany?.url || '');
     const [companyModalBusy, setCompanyModalBusy] = useState(false);
     const uploadViewsRequiringCompany = useMemo(
@@ -256,6 +258,23 @@ const Layout = ({ children, currentView, onViewChange }) => {
             stopPolling();
         };
     }, [startPolling, stopPolling, isRamAvailable]);
+
+    useEffect(() => {
+        const fetchBackendVersion = async () => {
+            try {
+                const healthData = await getHealth();
+                console.log("healthData", healthData);
+                if (healthData && healthData.data.version) {
+                    setBackendVersion(healthData.data.version);
+                }
+            } catch (error) {
+                console.error('Failed to fetch backend version:', error);
+                setBackendVersion(null);
+            }
+        };
+
+        fetchBackendVersion();
+    }, []); // Empty dependency array to run only once on mount
 
     useEffect(() => {
         if (!systemState || (!systemState.downtimeDays && !systemState.expectedReturn && !systemState.downtimeHours)) {
@@ -800,13 +819,19 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end">
                                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full
-                                                border border-slate-600/40 bg-slate-900/50
-                                                text-[10px] font-semibold text-slate-200
-                                                shadow-[0_6px_14px_rgba(2,6,23,0.35)]">
-                                    <span className="text-slate-400">Build</span>
+                        border border-slate-600/40 bg-slate-900/50
+                        text-[10px] font-semibold text-slate-200
+                        shadow-[0_6px_14px_rgba(2,6,23,0.35)]">
+                                    <span className="text-slate-400">F:</span>
                                     <span className="text-cyan-300">{buildNumber}</span>
+                                    {backendVersion && (
+                                        <>
+                                            <span className="text-slate-400 mx-0.5">|</span>
+                                            <span className="text-slate-400">B:</span>
+                                            <span className="text-emerald-300">{backendVersion}</span>
+                                        </>
+                                    )}
                                 </div>
-
                                 <LanguageToggle />
                                 <NotificationBell onViewChange={onViewChange} mode="unread" />
                                 <NotificationBell onViewChange={onViewChange} mode="all" />
