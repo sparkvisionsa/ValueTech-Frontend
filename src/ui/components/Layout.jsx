@@ -822,12 +822,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         border border-slate-600/40 bg-slate-900/50
                         text-[10px] font-semibold text-slate-200
                         shadow-[0_6px_14px_rgba(2,6,23,0.35)]">
-                                    <span className="text-slate-400">F:</span>
+                                    <span className="text-slate-400">Frontend version:</span>
                                     <span className="text-cyan-300">{buildNumber}</span>
                                     {backendVersion && (
                                         <>
                                             <span className="text-slate-400 mx-0.5">|</span>
-                                            <span className="text-slate-400">B:</span>
+                                            <span className="text-slate-400">Backend version:</span>
                                             <span className="text-emerald-300">{backendVersion}</span>
                                         </>
                                     )}
