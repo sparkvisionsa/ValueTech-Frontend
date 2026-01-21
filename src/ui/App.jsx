@@ -46,11 +46,20 @@ import { NotificationProvider } from './context/NotificationContext';
 import { AUTH_EXPIRED_EVENT, installAuthExpiryInterceptor } from './utils/authInterceptor';
 
 
+const DEFAULT_VIEW = 'apps';
+
 const AppContent = () => {
-    const [currentView, setCurrentView] = useState('apps');
+    const [currentView, setCurrentView] = useState(DEFAULT_VIEW);
     const [pendingProtectedView, setPendingProtectedView] = useState(null);
     const { isAuthenticated, isGuest, logout } = useSession();
     const { syncNavForView, setActiveTab, selectedCompany, resetAll, resetNavigation } = useValueNav();
+
+    useEffect(() => {
+        setActiveTab(null);
+        resetNavigation();
+        setCurrentView(DEFAULT_VIEW);
+        setPendingProtectedView(null);
+    }, [resetNavigation, setActiveTab]);
 
     const handleViewChange = (nextView) => {
         const protectedViews = ['get-companies'];

@@ -39,12 +39,26 @@ const DUMMY_PDF_NAME = "dummy_placeholder.pdf";
 
 const getReportRecordId = (report) => report?._id || report?.id || report?.recordId || "";
 
+const isAssetComplete = (asset) => {
+    const value = asset?.submitState ?? asset?.submit_state;
+    return value === 1 || value === "1" || value === true;
+};
+
 const getReportStatus = (report) => {
-    if (report?.checked) return "approved";
+    const assetList = Array.isArray(report?.asset_data) ? report.asset_data : [];
+    const hasAssets = assetList.length > 0;
+    const anyIncomplete = hasAssets ? assetList.some((asset) => !isAssetComplete(asset)) : false;
+    const allComplete = hasAssets ? assetList.every((asset) => isAssetComplete(asset)) : false;
+    const rawStatus = (report?.report_status || "").toString().toLowerCase();
+
+    if (anyIncomplete) return "incomplete";
+    if (report?.checked || rawStatus === "approved") return "approved";
+    if (rawStatus === "sent") return "sent";
+    if (allComplete) return "complete";
     if (report?.endSubmitTime) return "complete";
-    if (report?.report_status === "sent") return "sent";
+    if (rawStatus) return rawStatus;
     if (report?.report_id) return "incomplete";
-    return report?.report_status || "new";
+    return "new";
 };
 
 const reportStatusLabels = {
@@ -2737,7 +2751,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                                         </tr>
                                                                                     ) : (
                                                                                         assetList.map((asset, assetIdx) => {
-                                                                                            const assetStatus = asset.submitState === 1 ? "complete" : "incomplete";
+                                                                                            const assetStatus = isAssetComplete(asset) ? "complete" : "incomplete";
                                                                                             const statusLabel = assetStatus === "complete" ? "Complete" : "Incomplete";
                                                                                             const statusClass = assetStatus === "complete"
                                                                                                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
