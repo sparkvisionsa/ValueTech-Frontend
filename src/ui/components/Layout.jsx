@@ -17,6 +17,7 @@ import {
     Trash2,
     UploadCloud
 } from 'lucide-react';
+import buildVersion from '../../../build-version.json';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
 import { useNavStatus } from '../context/NavStatusContext';
@@ -60,7 +61,7 @@ const heroThemes = {
         blob: 'bg-rose-200/60',
         text: 'text-rose-700'
     },
-     myReports: {
+    myReports: {
         surface: 'from-white via-rose-50 to-orange-50',
         accent: 'from-rose-500 to-orange-500',
         border: 'border-rose-200/70',
@@ -356,6 +357,8 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const shouldShowUpdateNotice = isAuthenticated && !isAdmin && latestUpdate && userUpdateState?.status !== 'applied' && !hideUpdateNotice;
 
     const taqeemLoggedIn = taqeemStatus?.state === 'success';
+    const buildNumber = useMemo(() => buildVersion.build, []);
+
 
     const handleCompanyChange = async (value) => {
         if (!value) {
@@ -666,7 +669,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     <div className="pointer-events-none absolute -top-20 right-8 h-40 w-40 rounded-full bg-gradient-to-br from-emerald-300/30 to-teal-300/20 blur-3xl animate-pulse" />
                     <div className="pointer-events-none absolute -bottom-16 left-6 h-36 w-36 rounded-full bg-gradient-to-br from-blue-300/25 to-cyan-300/15 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
                     <div className="pointer-events-none absolute top-1/2 right-1/4 h-24 w-24 rounded-full bg-gradient-to-br from-purple-200/20 to-pink-200/15 blur-2xl" />
-                    
+
                     <div className="relative flex flex-col gap-1">
                         {/* First Row: Breadcrumb Path */}
                         <div className="flex flex-wrap items-center gap-0.5 px-0">
@@ -677,11 +680,10 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                         <React.Fragment key={item.key + idx}>
                                             <button
                                                 onClick={() => handleBreadcrumbClick(item)}
-                                                className={`inline-flex items-center px-0.5 py-0 font-medium transition-colors ${
-                                                    isLast
-                                                        ? 'text-slate-900'
-                                                        : 'text-slate-500 hover:text-slate-900'
-                                                }`}
+                                                className={`inline-flex items-center px-0.5 py-0 font-medium transition-colors ${isLast
+                                                    ? 'text-slate-900'
+                                                    : 'text-slate-500 hover:text-slate-900'
+                                                    }`}
                                             >
                                                 {item.label}
                                             </button>
@@ -693,7 +695,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                 })}
                             </div>
                         </div>
-                        
+
                         {/* Second Row: Tabs - Reduced Size */}
                         {showHeaderTabs && (
                             <div className="flex flex-wrap items-center gap-1">
@@ -707,13 +709,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                             onClick={() => !isBlocked && onViewChange(tab.id)}
                                             disabled={isBlocked}
                                             title={isBlocked && reason ? reason : undefined}
-                                            className={`relative inline-flex items-center justify-center rounded-lg border-2 px-2 py-1 text-[11px] font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95 ${
-                                                isBlocked
-                                                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
-                                                    : isActive
-                                                        ? 'border-emerald-500 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-[0_4px_12px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_16px_rgba(16,185,129,0.4)] hover:from-emerald-600 hover:via-teal-600 hover:to-emerald-700'
-                                                        : 'border-slate-300 bg-white text-slate-700 shadow-sm hover:border-emerald-400 hover:bg-gradient-to-r hover:from-emerald-50 hover:via-teal-50 hover:to-emerald-50 hover:text-emerald-700 hover:shadow-md'
-                                            }`}
+                                            className={`relative inline-flex items-center justify-center rounded-lg border-2 px-2 py-1 text-[11px] font-semibold transition-all duration-200 transform hover:scale-105 active:scale-95 ${isBlocked
+                                                ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                                                : isActive
+                                                    ? 'border-emerald-500 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-[0_4px_12px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_16px_rgba(16,185,129,0.4)] hover:from-emerald-600 hover:via-teal-600 hover:to-emerald-700'
+                                                    : 'border-slate-300 bg-white text-slate-700 shadow-sm hover:border-emerald-400 hover:bg-gradient-to-r hover:from-emerald-50 hover:via-teal-50 hover:to-emerald-50 hover:text-emerald-700 hover:shadow-md'
+                                                }`}
                                         >
                                             {isActive && (
                                                 <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-yellow-400 border-2 border-white shadow-md animate-pulse" />
@@ -768,11 +769,10 @@ const Layout = ({ children, currentView, onViewChange }) => {
                             type="button"
                             onClick={handleCompanyModalSubmit}
                             disabled={!companyModalSelection || companyModalBusy}
-                            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${
-                                companyModalSelection && !companyModalBusy
-                                    ? 'bg-emerald-600 hover:bg-emerald-700'
-                                    : 'bg-slate-400 cursor-not-allowed'
-                            }`}
+                            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${companyModalSelection && !companyModalBusy
+                                ? 'bg-emerald-600 hover:bg-emerald-700'
+                                : 'bg-slate-400 cursor-not-allowed'
+                                }`}
                         >
                             {companyModalBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                             {companyModalBusy ? 'Applying...' : 'Select company & continue'}
@@ -798,11 +798,19 @@ const Layout = ({ children, currentView, onViewChange }) => {
                                     {headerTitle}
                                 </h1>
                             </div>
-                        <div className="flex items-center gap-2 flex-wrap justify-end">
-                            <LanguageToggle />
-                            <NotificationBell onViewChange={onViewChange} mode="unread" />
-                            <NotificationBell onViewChange={onViewChange} mode="all" />
-                            {userBadge}
+                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full
+                                                border border-slate-600/40 bg-slate-900/50
+                                                text-[10px] font-semibold text-slate-200
+                                                shadow-[0_6px_14px_rgba(2,6,23,0.35)]">
+                                    <span className="text-slate-400">Build</span>
+                                    <span className="text-cyan-300">{buildNumber}</span>
+                                </div>
+
+                                <LanguageToggle />
+                                <NotificationBell onViewChange={onViewChange} mode="unread" />
+                                <NotificationBell onViewChange={onViewChange} mode="all" />
+                                {userBadge}
                                 {statusBanner}
                                 <button
                                     type="button"
@@ -822,22 +830,20 @@ const Layout = ({ children, currentView, onViewChange }) => {
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <div
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${
-                                    taqeemLoggedIn
-                                        ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100'
-                                        : 'border-rose-400/40 bg-rose-500/20 text-rose-100'
-                                }`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${taqeemLoggedIn
+                                    ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-100'
+                                    : 'border-rose-400/40 bg-rose-500/20 text-rose-100'
+                                    }`}
                             >
                                 <span>Taqeem login:</span>
                                 <span className="uppercase">{taqeemLoggedIn ? 'On' : 'Off'}</span>
                             </div>
 
                             <div
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${
-                                    selectedCompany
-                                        ? 'border-emerald-400/80 bg-emerald-500/15 text-emerald-100'
-                                        : 'border-rose-400/60 bg-rose-500/15 text-rose-100'
-                                }`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-semibold shadow-[0_6px_14px_rgba(2,6,23,0.35)] ${selectedCompany
+                                    ? 'border-emerald-400/80 bg-emerald-500/15 text-emerald-100'
+                                    : 'border-rose-400/60 bg-rose-500/15 text-rose-100'
+                                    }`}
                             >
                                 <span className="font-semibold">Company:</span>
                                 <select
