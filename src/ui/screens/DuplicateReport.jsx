@@ -367,6 +367,18 @@ const getAssetApproach = (asset) => {
 };
 
 const DuplicateReport = ({ onViewChange }) => {
+
+  const [pagination, setPagination] = useState({
+  page: 1,
+  limit: 10,
+  total: 0,
+  pages: 1,
+});
+
+const [pageSize, setPageSize] = useState(10);
+const [currentPage, setCurrentPage] = useState(1);
+
+
   const { user, token, isLoading, isGuest } = useSession();
   const { systemState } = useSystemControl();
   const { ramInfo } = useRam();
@@ -672,21 +684,42 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   }, []);
 
   const loadReports = useCallback(async () => {
-    try {
-      setReportsLoading(true);
-      setReportsError(null);
-      const result = await fetchDuplicateReports();
-      setReports(normalizeReportsResponse(result));
-    } catch (err) {
-      setReportsError(
-        err?.response?.data?.message ||
+  try {
+    setReportsLoading(true);
+    setReportsError(null);
+
+const result = await fetchDuplicateReports({
+  page: currentPage,
+  limit: pageSize,
+  status: reportSelectFilter,
+});
+
+const rows = normalizeReportsResponse(result);
+setReports(rows);
+
+const p = result?.pagination || {};
+
+setPagination({
+  total: p.total ?? rows.length,
+  page: p.page ?? currentPage,
+  limit: p.limit ?? pageSize,
+  pages: p.totalPages ?? 1,      // ✅ map backend totalPages -> frontend pages
+  hasPrev: p.hasPrev ?? false,
+  hasNext: p.hasNext ?? false,
+});
+
+
+    console.log("📤 Fetched Duplicate Reports:", result);
+  } catch (err) {
+    setReportsError(
+      err?.response?.data?.message ||
         err?.message ||
         "Failed to load duplicate reports."
-      );
-    } finally {
-      setReportsLoading(false);
-    }
-  }, [normalizeReportsResponse]);
+    );
+  } finally {
+    setReportsLoading(false);
+  }
+}, [currentPage, pageSize, reportSelectFilter, normalizeReportsResponse]);
 
   useEffect(() => {
     loadReports();
@@ -695,8 +728,20 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   useEffect(() => {
     if (!isLoading && !user) {
       clearSavedState({ purgeStorage: true, closeModal: true, clearTableState: true });
+       setReports([]); 
+        setReportsError(null);
+    setReportsLoading(false);
+
+    // optional: also clear selections
+    setSelectedReportIds([]);
+    setSelectedAssetsByReport({});
     }
   }, [clearSavedState, isLoading, user]);
+
+ useEffect(() => {
+  setCurrentPage(1);
+
+}, [reportSelectFilter]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -1314,12 +1359,10 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     }
   };
 
-  const orderedReports = useMemo(() => {
-    return [...reports].sort(
-      (a, b) => getReportSortTimestamp(a) - getReportSortTimestamp(b)
-    );
-  }, [reports]);
-
+ const orderedReports = useMemo(() => {
+  return [...reports].sort((a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a));
+}, [reports]);
+ 
   const reportIndexMap = useMemo(() => {
     const map = new Map();
     orderedReports.forEach((report, idx) => {
@@ -1331,21 +1374,31 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     return map;
   }, [orderedReports, getReportRecordId]);
 
-  const visibleReports = useMemo(() => {
-    if (reportSelectFilter === "all") return orderedReports;
-    return orderedReports.filter(
-      (report) => getReportStatus(report) === reportSelectFilter
-    );
-  }, [orderedReports, reportSelectFilter]);
+  // const visibleReports = useMemo(() => {
+  //   if (reportSelectFilter === "all") return orderedReports;
+  //   return orderedReports.filter(
+  //     (report) => getReportStatus(report) === reportSelectFilter
+  //   );
+  // }, [orderedReports, reportSelectFilter]);
+
+
+const totalReports = pagination?.total || 0;
+const totalPages = pagination?.pages || 1;
+const safeCurrentPage = pagination?.page || currentPage;
+
+
+const pageFrom = totalReports === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
+
 
   useEffect(() => {
     if (reportSelectFilter === "all") {
       setSelectedReportIds([]);
       return;
     }
-    const ids = visibleReports.map(getReportRecordId).filter(Boolean);
+    const ids = orderedReports.map(getReportRecordId).filter(Boolean);
     setSelectedReportIds(ids);
-  }, [getReportRecordId, reportSelectFilter, visibleReports]);
+  }, [getReportRecordId, reportSelectFilter, orderedReports]);
 
   const toggleReportExpansion = (reportId) => {
     setExpandedReports((prev) =>
@@ -1926,7 +1979,9 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
       <Section title="Reports">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="text-[11px] text-blue-900/70">
-            Total reports: {reports.length}
+            Total reports: {pagination?.total ?? reports.length}
+
+
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold text-blue-900/60">
@@ -1965,13 +2020,68 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
           </div>
         )}
 
-        {!reportsLoading && reports.length > 0 && !visibleReports.length && (
+        {!reportsLoading && reports.length > 0 && !orderedReports.length && (
           <div className="text-[10px] text-blue-900/60">
             No reports match the selected status.
           </div>
         )}
 
-        {visibleReports.length > 0 && (
+
+
+{orderedReports.length > 0 && (
+  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 rounded-lg border border-blue-900/10 bg-blue-50/40 px-2.5 py-2">
+    <div className="text-[10px] text-blue-900/70">
+      Showing <span className="font-semibold">{pageFrom}</span>–
+      <span className="font-semibold">{pageTo}</span> of{" "}
+      <span className="font-semibold">{totalReports}</span>
+    </div>
+
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] font-semibold text-blue-900/60">
+          Rows
+        </span>
+        <select
+          value={pageSize}
+         onChange={(e) => {
+  setPageSize(Number(e.target.value));
+  setCurrentPage(1);
+          }}
+          className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900"
+        >
+          {[5, 10, 20, 50, 100].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+
+   <button
+  type="button"
+  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+  disabled={safeCurrentPage <= 1}
+>
+  Prev
+</button>
+
+      <div className="text-[10px] font-semibold text-blue-900/70">
+  Page {safeCurrentPage} / {totalPages}
+</div>
+<button
+  type="button"
+  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+  disabled={safeCurrentPage >= totalPages}
+>
+  Next
+</button>
+    </div>
+  </div>
+)}
+
+        
+
+        {orderedReports.length > 0 && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-[10px] text-slate-700">
               <thead className="bg-blue-900/10 text-blue-900">
@@ -1987,10 +2097,12 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
                 </tr>
               </thead>
               <tbody>
-                {visibleReports.map((report, idx) => {
+               {orderedReports.map((report, idx) => {
+
+
                   const recordId = getReportRecordId(report);
                   const reportIndex =
-                    (recordId && reportIndexMap.get(recordId)) || idx + 1;
+                  (recordId && reportIndexMap.get(recordId)) || idx + 1;
                   const statusKey = getReportStatus(report);
                   const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
                   const isExpanded = recordId ? expandedReports.includes(recordId) : false;

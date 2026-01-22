@@ -172,10 +172,13 @@ const createDuplicateReport = async (payload) => {
     return response.data;
 }
 
-const fetchDuplicateReports = async () => {
-    const response = await httpClient.get("/duplicate-report");
-    return response.data;
+const fetchDuplicateReports = async ({ page = 1, limit = 10, status = "all" } = {}) => {
+  const response = await httpClient.get("/duplicate-report", {
+    params: { page, limit, status },
+  });
+  return response.data;
 };
+
 
 const updateDuplicateReport = async (reportId, payload) => {
     const response = await httpClient.patch(`/duplicate-report/${reportId}`, payload);
