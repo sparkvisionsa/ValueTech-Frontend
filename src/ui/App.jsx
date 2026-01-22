@@ -51,7 +51,7 @@ const DEFAULT_VIEW = 'apps';
 const AppContent = () => {
     const [currentView, setCurrentView] = useState(DEFAULT_VIEW);
     const [pendingProtectedView, setPendingProtectedView] = useState(null);
-    const { isAuthenticated, isGuest, logout } = useSession();
+    const { isAuthenticated, logout } = useSession();
     const { syncNavForView, setActiveTab, selectedCompany, resetAll, resetNavigation } = useValueNav();
 
     useEffect(() => {
@@ -116,14 +116,11 @@ const AppContent = () => {
         const cleanupInterceptor = installAuthExpiryInterceptor();
         const handleAuthExpired = () => {
             if (!isAuthenticated) return;
-            const allowGuestSession = isGuest;
             logout();
             resetAll();
             setActiveTab(null);
             setPendingProtectedView(null);
-            if (!allowGuestSession) {
-                setCurrentView('login');
-            }
+            setCurrentView(DEFAULT_VIEW);
         };
         window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
         return () => {
@@ -132,7 +129,7 @@ const AppContent = () => {
                 cleanupInterceptor();
             }
         };
-    }, [isAuthenticated, isGuest, logout, resetAll, setActiveTab]);
+    }, [isAuthenticated, logout, resetAll, setActiveTab]);
 
     const renderCurrentView = () => {
         switch (currentView) {
