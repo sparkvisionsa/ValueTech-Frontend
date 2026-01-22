@@ -91,7 +91,7 @@ const UploadAssets = ({ onViewChange }) => {
     };
 
     const { executeWithAuth } = useAuthAction();
-    let { token, login } = useSession();
+    const { token, login } = useSession();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
 
 
@@ -437,6 +437,38 @@ const UploadAssets = ({ onViewChange }) => {
     };
 
 
+    const ensureGuestSession = async () => {
+        if (token) return token;
+        if (!window?.electronAPI?.apiRequest) {
+            throw new Error("Desktop integration unavailable. Restart the app.");
+        }
+
+        const tokenObj = await window.electronAPI.getToken?.();
+        const bearer = tokenObj?.refreshToken || tokenObj?.token;
+        const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
+
+        const result = await window.electronAPI.apiRequest("POST", "/api/users/guest", {}, headers);
+        if (!result?.token || !result?.userId) {
+            throw new Error(result?.message || result?.error || "Failed to create guest session.");
+        }
+
+        if (result?.refreshToken && window.electronAPI?.setRefreshToken) {
+            try {
+                await window.electronAPI.setRefreshToken(result.refreshToken, {
+                    name: 'refreshToken',
+                    maxAgeDays: 7,
+                    sameSite: 'lax'
+                });
+            } catch (err) {
+                console.warn("Failed to set refresh token for guest session:", err);
+            }
+        }
+
+        const guestUser = { _id: result.userId, id: result.userId, guest: true };
+        login(guestUser, result.token);
+        return result.token;
+    };
+
     const handleStoreAndSubmitLater = async () => {
         // Validation
         if (!reportId.trim()) {
@@ -460,14 +492,9 @@ const UploadAssets = ({ onViewChange }) => {
         setUploadLoading(true);
 
         try {
-            // Check if user is logged in
-            if (!token) {
-                setError("You must be logged in to store reports");
-                setUploadLoading(false);
-                return;
-            }
+            const activeToken = await ensureGuestSession();
 
-            console.log("[UploadAssets] Storing report for later submission with token:", !!token);
+            console.log("[UploadAssets] Storing report for later submission with token:", !!activeToken);
 
             // Upload report to backend (without automation)
             const uploadResult = await window.electronAPI.apiRequest(
@@ -481,10 +508,11 @@ const UploadAssets = ({ onViewChange }) => {
                         city: city || undefined,
                         inspectionDate: inspectionDate || undefined,
                         ownerName: ownerName || undefined
-                    }
+                    },
+                    storeOnly: true
                 },
                 {
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${activeToken}`
                 }
             );
 

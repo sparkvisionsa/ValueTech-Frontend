@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import { useSystemControl } from '../context/SystemControlContext';
-import { AlertTriangle, Download, RefreshCcw, Send, ShieldCheck, Bell, Settings } from 'lucide-react';
+import { AlertTriangle, Download, Send, ShieldCheck, Bell, Settings } from 'lucide-react';
 
 const typeLabels = {
     feature: 'Feature Addition',
@@ -57,8 +57,10 @@ const SystemUpdates = () => {
     const [listLoading, setListLoading] = useState(false);
     const [guestAccess, setGuestAccess] = useState({ enabled: true, limit: 1 });
     const [guestSaving, setGuestSaving] = useState(false);
+    const [guestAccessDirty, setGuestAccessDirty] = useState(false);
     const [ramTabsPerGb, setRamTabsPerGb] = useState(5);
     const [ramTabsSaving, setRamTabsSaving] = useState(false);
+    const [ramTabsDirty, setRamTabsDirty] = useState(false);
 
     const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -89,10 +91,14 @@ const SystemUpdates = () => {
         const enabled = systemState.guestAccessEnabled !== false;
         const limitValue = Number(systemState.guestAccessLimit);
         const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 1;
-        setGuestAccess({ enabled, limit });
+        if (!guestAccessDirty) {
+            setGuestAccess({ enabled, limit });
+        }
         const tabsValue = Number(systemState.ramTabsPerGb);
-        setRamTabsPerGb(Number.isFinite(tabsValue) && tabsValue > 0 ? tabsValue : 5);
-    }, [systemState]);
+        if (!ramTabsDirty) {
+            setRamTabsPerGb(Number.isFinite(tabsValue) && tabsValue > 0 ? tabsValue : 5);
+        }
+    }, [systemState, guestAccessDirty, ramTabsDirty]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -130,6 +136,7 @@ const SystemUpdates = () => {
                 guestAccessEnabled: guestAccess.enabled,
                 guestAccessLimit: normalizedLimit
             });
+            setGuestAccessDirty(false);
             await fetchSystemState();
             alert('Guest access settings updated.');
         } catch (err) {
@@ -146,6 +153,7 @@ const SystemUpdates = () => {
         const limitValue = Number(systemState.guestAccessLimit);
         const limit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 1;
         setGuestAccess({ enabled, limit });
+        setGuestAccessDirty(false);
     };
 
     const handleRamTabsSave = async () => {
@@ -155,6 +163,7 @@ const SystemUpdates = () => {
             await updateSystemState({
                 ramTabsPerGb: normalized
             });
+            setRamTabsDirty(false);
             await fetchSystemState();
             alert('RAM tab settings updated.');
         } catch (err) {
@@ -168,6 +177,7 @@ const SystemUpdates = () => {
     const handleRamTabsReset = () => {
         const tabsValue = Number(systemState?.ramTabsPerGb);
         setRamTabsPerGb(Number.isFinite(tabsValue) && tabsValue > 0 ? tabsValue : 5);
+        setRamTabsDirty(false);
     };
 
     const patchStatus = async (id, payload) => {
@@ -233,183 +243,152 @@ const SystemUpdates = () => {
     };
 
     return (
-        <div className="p-6 space-y-5">
-            <div className="relative overflow-hidden rounded-3xl border border-blue-900/20 bg-gradient-to-br from-slate-950 via-blue-900 to-blue-700 p-6 text-white shadow-lg">
-                <div className="absolute -right-16 -top-12 h-44 w-44 rounded-full bg-blue-400/30 blur-3xl" />
-                <div className="absolute -left-16 -bottom-16 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" />
-                <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-2xl border border-white/20 bg-white/10 flex items-center justify-center shadow-sm">
-                            <Settings className="w-5 h-5" />
+        <div className="p-5">
+            <div className="max-w-6xl mx-auto space-y-4">
+                <div className="relative overflow-hidden rounded-2xl border border-blue-900/20 bg-gradient-to-br from-slate-950 via-blue-950 to-blue-800 p-4 text-white shadow-lg">
+                    <div className="absolute -right-16 -top-12 h-40 w-40 rounded-full bg-blue-400/25 blur-3xl" />
+                    <div className="absolute -left-16 -bottom-16 h-40 w-40 rounded-full bg-cyan-200/20 blur-3xl" />
+                    <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                        <div className="rounded-xl border border-white/15 bg-white/10 px-3 py-2">
+                            <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-blue-100/70">
+                                <span>Guest access</span>
+                                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]" />
                         </div>
-                        <div>
-                            <div className="text-[10px] uppercase tracking-[0.35em] text-blue-100/70 font-semibold">
-                                Control Room
-                            </div>
-                            <h2 className="text-[20px] font-semibold">System Updates</h2>
-                            <p className="text-[11px] text-blue-100/70">
-                                Release management and login-free access settings.
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            fetchUpdateNotice();
-                            loadUpdates();
-                            fetchSystemState();
-                        }}
-                        className="inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-3 py-2 text-[11px] font-semibold text-white hover:bg-white/20"
-                    >
-                        <RefreshCcw className="w-4 h-4" />
-                        Refresh
-                    </button>
-                </div>
-                <div className="relative z-10 mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Guest access</p>
-                        <p className="text-[15px] font-semibold">
+                        <p className="text-[13px] font-semibold">
                             {guestAccessEnabled ? `${guestAccessCap} tries` : 'Unlimited'}
                         </p>
-                        <p className="text-[10px] text-blue-100/70">
-                            {guestAccessEnabled ? 'Limit before login required' : 'No login limit applied'}
-                        </p>
                     </div>
-                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Latest release</p>
-                        <p className="text-[15px] font-semibold">
+                    <div className="rounded-xl border border-white/15 bg-white/10 px-3 py-2">
+                        <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-blue-100/70">
+                            <span>Latest release</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-200 shadow-[0_0_8px_rgba(191,219,254,0.8)]" />
+                        </div>
+                        <p className="text-[13px] font-semibold">
                             {latestUpdate?.version || 'No release'}
                         </p>
-                        <p className="text-[10px] text-blue-100/70">
-                            {latestUpdate?.updateType ? (typeLabels[latestUpdate.updateType] || latestUpdate.updateType) : 'Waiting for updates'}
-                        </p>
                     </div>
-                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Update queue</p>
-                        <p className="text-[15px] font-semibold">
+                    <div className="rounded-xl border border-white/15 bg-white/10 px-3 py-2">
+                        <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-blue-100/70">
+                            <span>Update queue</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-white/70 shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
+                        </div>
+                        <p className="text-[13px] font-semibold">
                             {isAdmin ? updates.length : 'Admin only'}
                         </p>
-                        <p className="text-[10px] text-blue-100/70">
-                            {isAdmin ? (listLoading ? 'Loading releases' : 'Total updates logged') : 'Sign in with admin to view'}
-                        </p>
                     </div>
-                    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-100/70">Tabs per GB</p>
-                        <p className="text-[15px] font-semibold">
+                    <div className="rounded-xl border border-white/15 bg-white/10 px-3 py-2">
+                        <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-blue-100/70">
+                            <span>Tabs per GB</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-200 shadow-[0_0_8px_rgba(167,243,208,0.8)]" />
+                        </div>
+                        <p className="text-[13px] font-semibold">
                             {Math.max(1, Number(ramTabsPerGb) || 1)}
-                        </p>
-                        <p className="text-[10px] text-blue-100/70">
-                            Free RAM multiplier for tab sizing
                         </p>
                     </div>
                 </div>
             </div>
 
-            {!isAdmin && latestUpdate && showCard && !dismissed && userUpdateState?.status !== 'applied' && (
-                <div className="rounded-2xl border border-blue-900/15 bg-white p-4 space-y-3 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="h-8 w-8 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
-                            <Bell className="w-4 h-4" />
+                {!isAdmin && latestUpdate && showCard && !dismissed && userUpdateState?.status !== 'applied' && (
+                    <div className="rounded-2xl border border-blue-900/15 bg-white p-3 space-y-2 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="h-8 w-8 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
+                                <Bell className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] text-slate-600 font-semibold">Update available</p>
+                                <p className="text-[14px] font-bold text-blue-950">Version {latestUpdate.version}</p>
+                            </div>
+                            <span className="ml-auto text-[9px] uppercase bg-blue-50 border border-blue-900/15 px-2 py-0.5 rounded-full text-blue-900 font-semibold">
+                                {typeLabels[latestUpdate.updateType] || latestUpdate.updateType}
+                            </span>
                         </div>
-                        <div>
-                            <p className="text-[11px] text-slate-700 font-semibold">Update available</p>
-                            <p className="text-[15px] font-bold text-blue-950">Version {latestUpdate.version}</p>
-                        </div>
-                        <span className="ml-auto text-[10px] uppercase bg-blue-50 border border-blue-900/15 px-2 py-1 rounded-full text-blue-900 font-semibold">
-                            {typeLabels[latestUpdate.updateType] || latestUpdate.updateType}
-                        </span>
-                    </div>
-                    <p className="text-[11px] text-slate-700">
-                        {latestUpdate.description || 'A new update is ready. Download and apply to continue.'}
-                    </p>
-                    <div className="text-[11px] text-slate-600">
-                        Window: {humanDate(latestUpdate.windowStart)} to {humanDate(latestUpdate.windowEnd)}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            onClick={handleDownload}
-                            className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
-                            disabled={downloading}
-                        >
-                            <Download className="w-4 h-4" />
-                            {userUpdateState?.status === 'downloaded' ? 'Downloaded' : (downloading ? 'Downloading...' : 'Download')}
-                        </button>
-                        {!isMandatory && (
-                            <button
-                                onClick={() => setDismissed(true)}
-                                className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
-                            >
-                                Later
-                            </button>
+                        {(latestUpdate.description || latestUpdate.notes) && (
+                            <p className="text-[10px] text-slate-600">
+                                {latestUpdate.description || latestUpdate.notes}
+                            </p>
                         )}
-                        {userUpdateState?.status === 'downloaded' && (
+                        <div className="text-[10px] text-slate-500">
+                            Window: {humanDate(latestUpdate.windowStart)} to {humanDate(latestUpdate.windowEnd)}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
                             <button
-                                onClick={handleApply}
-                                className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-500"
-                                disabled={userUpdateState?.status === 'applied'}
+                                onClick={handleDownload}
+                                className="inline-flex items-center gap-2 rounded-md bg-blue-900 px-3 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                                disabled={downloading}
                             >
-                                <ShieldCheck className="w-4 h-4" />
-                                {userUpdateState?.status === 'applied' ? 'Applied' : 'Apply'}
+                                <Download className="w-4 h-4" />
+                                {userUpdateState?.status === 'downloaded' ? 'Downloaded' : (downloading ? 'Downloading...' : 'Download')}
                             </button>
+                            {!isMandatory && (
+                                <button
+                                    onClick={() => setDismissed(true)}
+                                    className="inline-flex items-center gap-2 rounded-md border border-blue-900/20 bg-white px-3 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                                >
+                                    Later
+                                </button>
+                            )}
+                            {userUpdateState?.status === 'downloaded' && (
+                                <button
+                                    onClick={handleApply}
+                                    className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-emerald-500"
+                                    disabled={userUpdateState?.status === 'applied'}
+                                >
+                                    <ShieldCheck className="w-4 h-4" />
+                                    {userUpdateState?.status === 'applied' ? 'Applied' : 'Apply'}
+                                </button>
+                            )}
+                        </div>
+                        {downloading && (
+                            <div className="w-full bg-blue-900/10 h-2 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-blue-900 transition-all duration-200"
+                                    style={{ width: `${downloadProgress}%` }}
+                                />
+                            </div>
+                        )}
+                        {applyMessage && (
+                            <div className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                {applyMessage}
+                            </div>
                         )}
                     </div>
-                    {downloading && (
-                        <div className="w-full bg-blue-900/10 h-2 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-blue-900 transition-all duration-200"
-                                style={{ width: `${downloadProgress}%` }}
-                            />
-                        </div>
-                    )}
-                    {applyMessage && (
-                        <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                            {applyMessage}
-                        </div>
-                    )}
-                </div>
-            )}
+                )}
 
             {isAdmin ? (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    <div className="lg:col-span-1 space-y-5">
-                        <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${guestAccess.enabled ? 'bg-blue-900/10 text-blue-900' : 'bg-slate-200 text-slate-600'}`}>
-                                    <ShieldCheck className="w-5 h-5" />
+                <div className="space-y-3">
+                    <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${guestAccess.enabled ? 'bg-blue-900/10 text-blue-900' : 'bg-slate-200 text-slate-600'}`}>
+                                    <ShieldCheck className="w-4 h-4" />
                                 </div>
                                 <div>
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Guest access</p>
-                                    <p className="text-[15px] font-semibold text-blue-950">Login-free usage</p>
-                                    <p className="text-[11px] text-slate-600">
-                                        Control how many actions are allowed before login is required.
-                                    </p>
+                                    <p className="text-[13px] font-semibold text-blue-950">Login-free usage</p>
                                 </div>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Status</p>
-                                    <p className="text-[13px] font-semibold text-blue-950">
-                                        {guestAccess.enabled ? 'Limited' : 'Unlimited'}
-                                    </p>
-                                </div>
-                                <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Max tries</p>
-                                    <p className="text-[13px] font-semibold text-blue-950">
-                                        {guestAccess.enabled ? guestAccess.limit : 'No limit'}
-                                    </p>
-                                </div>
+                            <div className="flex items-center gap-2 text-[10px] font-semibold text-blue-900">
+                                <span className={`px-2 py-0.5 rounded-full border ${guestAccess.enabled ? 'bg-blue-50 border-blue-900/10' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                                    {guestAccess.enabled ? 'Limited' : 'Unlimited'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-900/10 text-blue-900">
+                                    {guestAccess.enabled ? `${guestAccess.limit} tries` : 'No limit'}
+                                </span>
                             </div>
+                        </div>
 
-                            <div className="flex items-center justify-between rounded-xl border border-blue-900/10 bg-white px-3 py-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 px-3 py-2 flex items-center justify-between">
                                 <div>
-                                    <p className="text-[11px] font-semibold text-blue-950">Limit login-free access</p>
-                                    <p className="text-[10px] text-slate-500">
-                                        Turn off to allow unlimited access without login.
-                                    </p>
+                                    <p className="text-[9px] uppercase tracking-[0.2em] text-blue-900/50">Limit access</p>
+                                    <p className="text-[11px] font-semibold text-blue-950">{guestAccess.enabled ? 'On' : 'Off'}</p>
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setGuestAccess((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                                    onClick={() => {
+                                        setGuestAccessDirty(true);
+                                        setGuestAccess((prev) => ({ ...prev, enabled: !prev.enabled }));
+                                    }}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${guestAccess.enabled ? 'bg-blue-900' : 'bg-slate-300'}`}
                                 >
                                     <span
@@ -418,25 +397,31 @@ const SystemUpdates = () => {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-blue-950 mb-1">Allowed tries</label>
+                            <div className="rounded-xl border border-blue-900/10 bg-white px-3 py-2 space-y-1">
+                                <label className="block text-[10px] font-semibold text-blue-950">Allowed tries</label>
+                                <div className="flex items-center gap-1.5">
                                     <input
                                         type="number"
                                         min="1"
                                         value={guestAccess.limit}
-                                        onChange={(e) => setGuestAccess((prev) => ({ ...prev, limit: e.target.value }))}
-                                        className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 disabled:bg-slate-50 disabled:text-slate-400"
+                                        onChange={(e) => {
+                                            setGuestAccessDirty(true);
+                                            setGuestAccess((prev) => ({ ...prev, limit: e.target.value }));
+                                        }}
+                                        className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 disabled:bg-slate-50 disabled:text-slate-400"
                                         disabled={!guestAccess.enabled}
                                     />
                                 </div>
-                                <div className="flex items-end gap-2">
+                                <div className="flex items-center gap-1.5">
                                     {[1, 3, 5].map((value) => (
                                         <button
                                             key={value}
                                             type="button"
-                                            onClick={() => setGuestAccess((prev) => ({ ...prev, limit: value }))}
-                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            onClick={() => {
+                                                setGuestAccessDirty(true);
+                                                setGuestAccess((prev) => ({ ...prev, limit: value }));
+                                            }}
+                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled={!guestAccess.enabled}
                                         >
                                             {value}
@@ -445,115 +430,121 @@ const SystemUpdates = () => {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2">
                                 <button
                                     type="button"
                                     onClick={handleGuestAccessSave}
                                     disabled={guestSaving}
-                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-3 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
                                 >
-                                    {guestSaving ? 'Saving...' : 'Save settings'}
+                                    {guestSaving ? 'Saving...' : 'Save'}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleGuestAccessReset}
-                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-3 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
                                 >
                                     Reset
                                 </button>
                             </div>
                         </div>
+                    </div>
 
-                        <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
-                                    <Settings className="w-5 h-5" />
+                    <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
+                                    <Settings className="w-4 h-4" />
                                 </div>
                                 <div>
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">RAM scaling</p>
-                                    <p className="text-[15px] font-semibold text-blue-950">Tabs per 1 GB</p>
-                                    <p className="text-[11px] text-slate-600">
-                                        Tune parallel tabs based on free RAM.
-                                    </p>
+                                    <p className="text-[13px] font-semibold text-blue-950">Tabs per 1 GB</p>
                                 </div>
                             </div>
-
-                            <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 p-3">
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Current value</p>
-                                <p className="text-[13px] font-semibold text-blue-950">
-                                    {Math.max(1, Number(ramTabsPerGb) || 1)} tab{Number(ramTabsPerGb) !== 1 ? 's' : ''} / GB
-                                </p>
+                            <div className="text-[10px] font-semibold text-blue-900 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-900/10">
+                                {Math.max(1, Number(ramTabsPerGb) || 1)} tabs / GB
                             </div>
+                        </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-blue-950 mb-1">Tabs per GB</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        step="1"
-                                        value={ramTabsPerGb}
-                                        onChange={(e) => setRamTabsPerGb(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                                    />
-                                </div>
-                                <div className="flex items-end gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-blue-900/10 bg-white px-3 py-2">
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Tabs per GB</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={ramTabsPerGb}
+                                    onChange={(e) => {
+                                        setRamTabsDirty(true);
+                                        setRamTabsPerGb(e.target.value);
+                                    }}
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                />
+                            </div>
+                            <div className="rounded-xl border border-blue-900/10 bg-blue-50/60 px-3 py-2">
+                                <div className="text-[9px] uppercase tracking-[0.2em] text-blue-900/50">Presets</div>
+                                <div className="mt-1 flex items-center gap-1.5">
                                     {[3, 5, 8].map((value) => (
                                         <button
                                             key={value}
                                             type="button"
-                                            onClick={() => setRamTabsPerGb(value)}
-                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-3 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                            onClick={() => {
+                                                setRamTabsDirty(true);
+                                                setRamTabsPerGb(value);
+                                            }}
+                                            className="flex-1 rounded-lg border border-blue-900/15 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
                                         >
                                             {value}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2">
                                 <button
                                     type="button"
                                     onClick={handleRamTabsSave}
                                     disabled={ramTabsSaving}
-                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                                    className="inline-flex items-center justify-center rounded-md bg-blue-900 px-3 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
                                 >
-                                    {ramTabsSaving ? 'Saving...' : 'Save tabs'}
+                                    {ramTabsSaving ? 'Saving...' : 'Save'}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleRamTabsReset}
-                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
+                                    className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-3 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
                                 >
                                     Reset
                                 </button>
                             </div>
                         </div>
+                    </div>
 
-                        <form onSubmit={handleSubmit} className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-4 space-y-4">
+                    <form onSubmit={handleSubmit} className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
                             <div>
                                 <p className="text-[10px] uppercase tracking-[0.2em] text-blue-900/50">Release builder</p>
-                                <h2 className="text-[15px] font-semibold text-blue-950">Create update</h2>
+                                <h2 className="text-[13px] font-semibold text-blue-950">Create update</h2>
                             </div>
-                        <div>
-                            <label className="block text-[11px] font-semibold text-blue-950 mb-1">Version</label>
-                            <input
-                                type="text"
-                                value={form.version}
-                                onChange={(e) => setForm({ ...form, version: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                                placeholder="e.g., v2.4.0"
-                                required
-                            />
+                            <div className="text-[10px] text-slate-500">Draft</div>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <div>
-                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Type</label>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Version</label>
+                                <input
+                                    type="text"
+                                    value={form.version}
+                                    onChange={(e) => setForm({ ...form, version: e.target.value })}
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    placeholder="e.g., v2.4.0"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Type</label>
                                 <select
                                     value={form.updateType}
                                     onChange={(e) => setForm({ ...form, updateType: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 >
                                     {Object.keys(typeLabels).map((key) => (
                                         <option key={key} value={key}>{typeLabels[key]}</option>
@@ -561,11 +552,11 @@ const SystemUpdates = () => {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Rollout</label>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Rollout</label>
                                 <select
                                     value={form.rolloutType}
                                     onChange={(e) => setForm({ ...form, rolloutType: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 >
                                     {Object.keys(rolloutLabels).map((key) => (
                                         <option key={key} value={key}>{rolloutLabels[key]}</option>
@@ -574,114 +565,113 @@ const SystemUpdates = () => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <div>
-                                <label className="block text-[11px] font-semibold text-blue-950 mb-1">Status</label>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Status</label>
                                 <select
                                     value={form.status}
                                     onChange={(e) => setForm({ ...form, status: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 >
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
                                     <option value="scheduled">Scheduled</option>
                                 </select>
                             </div>
-                            <div className="flex items-end">
-                                <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-blue-950">
-                                    <input
-                                        type="checkbox"
-                                        checked={form.broadcast}
-                                        onChange={(e) => setForm({ ...form, broadcast: e.target.checked })}
-                                    />
-                                    Broadcast to users
-                                </label>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-semibold text-blue-950 mb-1">Schedule window</label>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Window start</label>
                                 <input
                                     type="datetime-local"
                                     value={form.windowStart}
                                     onChange={(e) => setForm({ ...form, windowStart: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Window end</label>
                                 <input
                                     type="datetime-local"
                                     value={form.windowEnd}
                                     onChange={(e) => setForm({ ...form, windowEnd: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
                                 />
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-[11px] font-semibold text-blue-950 mb-1">Description</label>
-                            <textarea
-                                value={form.description}
-                                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                                rows={3}
-                                placeholder="What is included in this update?"
+                        <label className="inline-flex items-center gap-2 text-[10px] font-semibold text-blue-950">
+                            <input
+                                type="checkbox"
+                                checked={form.broadcast}
+                                onChange={(e) => setForm({ ...form, broadcast: e.target.checked })}
                             />
-                        </div>
+                            Broadcast to users
+                        </label>
 
-                        <div>
-                            <label className="block text-[11px] font-semibold text-blue-950 mb-1">Notes</label>
-                            <textarea
-                                value={form.notes}
-                                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                                rows={2}
-                                placeholder="Optional rollout notes"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Description</label>
+                                <textarea
+                                    value={form.description}
+                                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    rows={2}
+                                    placeholder="What is included in this update?"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-semibold text-blue-950 mb-0.5">Notes</label>
+                                <textarea
+                                    value={form.notes}
+                                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                                    className="w-full px-2 py-1.5 rounded-lg border border-blue-900/20 bg-white/90 text-[10px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                                    rows={2}
+                                    placeholder="Optional rollout notes"
+                                />
+                            </div>
                         </div>
 
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-blue-900 px-4 py-3 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-blue-900 px-4 py-2 text-[10px] font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-60"
                         >
                             <Send className="w-4 h-4" />
                             {loading ? 'Publishing...' : 'Publish update'}
                         </button>
                     </form>
-                </div>
 
-                    <div className="lg:col-span-2 rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
-                        <div className="px-6 py-4 border-b border-blue-900/10 flex items-center justify-between">
-                            <h2 className="text-[15px] font-semibold text-blue-950">Update history</h2>
-                            {listLoading && <span className="text-[11px] text-slate-500">Loading...</span>}
+                    <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
+                        <div className="px-4 py-3 border-b border-blue-900/10 flex items-center justify-between">
+                            <h2 className="text-[13px] font-semibold text-blue-950">Update history</h2>
+                            {listLoading && <span className="text-[10px] text-slate-500">Loading...</span>}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="min-w-full">
                                 <thead>
                                     <tr className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900">
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Version</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Type</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Rollout</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Status</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Window</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Notes</th>
-                                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-white/90">Actions</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Version</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Type</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Rollout</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Status</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Window</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Notes</th>
+                                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-white/90">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-blue-900/10">
                                     {updates.map((row) => (
                                         <tr key={row._id} className="hover:bg-blue-50/50 align-top">
-                                            <td className="px-4 py-3 text-[11px] font-semibold text-blue-950">{row.version}</td>
-                                            <td className="px-4 py-3 text-[11px] text-slate-700">
+                                            <td className="px-3 py-2 text-[10px] font-semibold text-blue-950">{row.version}</td>
+                                            <td className="px-3 py-2 text-[10px] text-slate-700">
                                                 {typeLabels[row.updateType] || row.updateType}
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-900 border border-blue-900/15">
+                                            <td className="px-3 py-2">
+                                                <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-50 text-blue-900 border border-blue-900/15">
                                                     {rolloutLabels[row.rolloutType] || row.rolloutType}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${row.status === 'active'
+                                            <td className="px-3 py-2">
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${row.status === 'active'
                                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                                     : row.status === 'scheduled'
                                                         ? 'bg-amber-50 text-amber-700 border-amber-200'
@@ -689,26 +679,26 @@ const SystemUpdates = () => {
                                                     }`}>
                                                     {row.status}
                                                 </span>
-                                                <div className="text-[10px] text-slate-500 mt-1">
+                                                <div className="text-[9px] text-slate-500 mt-1">
                                                     {row.broadcast ? 'Broadcast on' : 'Broadcast off'}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-[11px] text-slate-700">
+                                            <td className="px-3 py-2 text-[10px] text-slate-700">
                                                 {humanDate(row.windowStart)}<br />{humanDate(row.windowEnd)}
                                             </td>
-                                            <td className="px-4 py-3 text-[11px] text-slate-600 whitespace-pre-wrap">
+                                            <td className="px-3 py-2 text-[10px] text-slate-600 whitespace-pre-wrap">
                                                 {row.description || row.notes || '-'}
                                             </td>
-                                            <td className="px-4 py-3 space-y-2">
+                                            <td className="px-3 py-2 space-y-1.5">
                                                 <button
                                                     onClick={() => patchStatus(row._id, { status: row.status === 'active' ? 'inactive' : 'active' })}
-                                                    className="w-full px-3 py-2 rounded-md bg-blue-900 text-white text-[10px] font-semibold hover:bg-blue-800"
+                                                    className="w-full px-2 py-1.5 rounded-md bg-blue-900 text-white text-[9px] font-semibold hover:bg-blue-800"
                                                 >
                                                     {row.status === 'active' ? 'Set inactive' : 'Set active'}
                                                 </button>
                                                 <button
                                                     onClick={() => patchStatus(row._id, { broadcast: !row.broadcast })}
-                                                    className="w-full px-3 py-2 rounded-md border border-blue-900/20 bg-white text-blue-900 text-[10px] font-semibold hover:bg-blue-50"
+                                                    className="w-full px-2 py-1.5 rounded-md border border-blue-900/20 bg-white text-blue-900 text-[9px] font-semibold hover:bg-blue-50"
                                                 >
                                                     {row.broadcast ? 'Stop broadcast' : 'Broadcast'}
                                                 </button>
@@ -717,7 +707,7 @@ const SystemUpdates = () => {
                                     ))}
                                     {updates.length === 0 && (
                                         <tr>
-                                            <td colSpan="7" className="px-4 py-6 text-center text-slate-500 text-[11px]">
+                                            <td colSpan="7" className="px-4 py-6 text-center text-slate-500 text-[10px]">
                                                 No updates yet.
                                             </td>
                                         </tr>
@@ -740,6 +730,7 @@ const SystemUpdates = () => {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 };

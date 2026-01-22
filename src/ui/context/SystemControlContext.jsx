@@ -205,15 +205,8 @@ export const SystemControlProvider = ({ children }) => {
             ? Number(systemState.downtimeHours || 0) * 60 * 60 * 1000
             : Number(systemState.downtimeDays || 0) * 24 * 60 * 60 * 1000;
 
-        // If there is no target and no positive duration, flip active immediately.
+        // If there is no target and no positive duration, keep inactive until an admin changes it.
         if (!target && durationMs <= 0) {
-            setSystemState((prev) => ({
-                ...(prev || DEFAULT_STATE),
-                mode: 'active',
-                expectedReturn: null,
-                downtimeDays: 0,
-                downtimeHours: 0
-            }));
             return;
         }
 

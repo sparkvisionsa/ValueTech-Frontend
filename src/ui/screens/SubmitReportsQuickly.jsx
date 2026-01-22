@@ -21,7 +21,6 @@ import {
     Edit,
     RefreshCw,
     Table,
-    Info,
     Download,
     FileIcon,
     X,
@@ -560,6 +559,52 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         resetMessages();
     };
 
+    const ensureGuestSession = async () => {
+        if (token) return token;
+        if (!window?.electronAPI?.apiRequest) {
+            throw new Error("Desktop integration unavailable. Restart the app.");
+        }
+
+        const tokenObj = await window.electronAPI.getToken?.();
+        const bearer = tokenObj?.refreshToken || tokenObj?.token;
+        const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
+
+        const result = await window.electronAPI.apiRequest("POST", "/api/users/guest", {}, headers);
+        if (!result?.token || !result?.userId) {
+            throw new Error(result?.message || result?.error || "Failed to create guest session.");
+        }
+
+        if (result?.refreshToken && window.electronAPI?.setRefreshToken) {
+            try {
+                await window.electronAPI.setRefreshToken(result.refreshToken, {
+                    name: 'refreshToken',
+                    maxAgeDays: 7,
+                    sameSite: 'lax'
+                });
+            } catch (err) {
+                console.warn("Failed to set refresh token for guest session:", err);
+            }
+        }
+
+        const guestUser = { _id: result.userId, id: result.userId, guest: true };
+        login(guestUser, result.token);
+        return result.token;
+    };
+
+    const mergeReports = useCallback((existing = [], incoming = []) => {
+        const list = Array.isArray(existing) ? [...existing] : [];
+        const seen = new Set(list.map((report) => getReportRecordId(report)));
+        (incoming || []).forEach((report) => {
+            const id = getReportRecordId(report);
+            if (!id) return;
+            if (!seen.has(id)) {
+                seen.add(id);
+                list.unshift(report);
+            }
+        });
+        return list;
+    }, []);
+
     const handleStoreAndSubmit = async () => {
         try {
             setStoreAndSubmitLoading(true);
@@ -609,6 +654,11 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
 
             if (data.status !== "success") {
                 throw new Error(data.error || "Upload failed");
+            }
+
+            const createdReports = Array.isArray(data.reports) ? data.reports : [];
+            if (createdReports.length) {
+                setReports((prev) => mergeReports(prev, createdReports));
             }
 
             const insertedCount = data.created || 0;
@@ -723,9 +773,10 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         setShowValidationModal(false);
     };
 
-    const loadReports = useCallback(async () => {
+    const loadReports = useCallback(async (overrideToken) => {
         try {
-            if (!token) {
+            const activeToken = overrideToken || token;
+            if (!activeToken) {
                 setReports([]);
                 setReportsPagination({
                     page: 1,
@@ -753,7 +804,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 `/api/submit-reports-quickly/user?${params.toString()}`,
                 {},
                 {
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${activeToken}`
                 }
             );
 
@@ -1011,6 +1062,22 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
         : 0;
     const totalValidationIssues = validationIssueRows.length + pdfIssueCount;
     const hasValidationIssues = totalValidationIssues > 0;
+    const validationStatus = useMemo(() => {
+        if (validating) {
+            return { text: "Validating...", tone: "info" };
+        }
+        if (excelFiles.length === 0) {
+            return { text: "Upload an Excel file to validate.", tone: "neutral" };
+        }
+        if (hasValidationIssues || validationMessage?.type === "error") {
+            return { text: "You have issues in excel sheet.", tone: "error" };
+        }
+        if (validationItems.length > 0) {
+            return { text: "No issues, you can upload it now.", tone: "success" };
+        }
+        return { text: "Validation pending.", tone: "neutral" };
+    }, [validating, excelFiles.length, hasValidationIssues, validationItems.length, validationMessage?.type]);
+    const canOpenValidation = validationItems.length > 0 || Boolean(validationMessage);
 
     const runValidation = async (excelList, pdfMap) => {
         if (!excelList.length) {
@@ -1257,6 +1324,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 throw new Error("Please fix validation issues before uploading.");
             }
 
+            const activeToken = await ensureGuestSession();
+
             setSuccess("Uploading files to server...");
             const data = await submitReportsQuicklyUpload(
                 excelFiles,
@@ -1268,9 +1337,14 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 throw new Error(data.error || "Upload failed");
             }
 
+            const createdReports = Array.isArray(data.reports) ? data.reports : [];
+            if (createdReports.length) {
+                setReports((prev) => mergeReports(prev, createdReports));
+            }
+
             const insertedCount = data.created || 0;
             setSuccess(`Files uploaded successfully. Inserted ${insertedCount} report(s).`);
-            await loadReports();
+            await loadReports(activeToken);
             setExcelFiles([]);
             setPdfFiles([]);
             setWantsPdfUpload(false);
@@ -1294,7 +1368,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                 setError(apiError);
             }
         } finally {
-            setLoading(false);
+            setStoreOnlyLoading(false);
         }
     };
 
@@ -2322,86 +2396,29 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
             )}
 
             {/* Validation Console */}
-            <div className="space-y-1.5">
-                <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden card-animate">
-                    <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 px-2.5 py-2 text-white">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="space-y-0.5">
-                                <p className="text-xs font-semibold">Validation Console</p>
-                                <p className="text-[10px] text-blue-100">Review and validate your Excel files before upload</p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => runValidation(excelFiles, pdfMatchInfo.pdfMap)}
-                                    disabled={validating || !excelFiles.length}
-                                    className="inline-flex items-center gap-1.5 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    {validating ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    ) : (
-                                        <RefreshCw className="w-3.5 h-3.5" />
-                                    )}
-                                    {validating ? "Validating..." : "Re-validate"}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowValidationModal(true)}
-                                    disabled={!validationItems.length && !validationMessage}
-                                    className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    View validation
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-2 space-y-2">
-                        {validationMessage && (
-                            <div
-                                className={`rounded-md border px-3 py-2 inline-flex items-start gap-2 text-xs ${validationMessage.type === "error"
-                                    ? "bg-rose-50 text-rose-700 border-rose-300"
-                                    : validationMessage.type === "success"
-                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                                        : "bg-blue-50 text-blue-700 border-blue-300"
-                                    }`}
-                            >
-                                {validationMessage.type === "error" ? (
-                                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                ) : validationMessage.type === "success" ? (
-                                    <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                    <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div className="text-xs font-medium">{validationMessage.text}</div>
-                            </div>
-                        )}
-                        {validationItems.length > 0 ? (
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
-                                    Files: {validationItems.length}
-                                </span>
-                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${hasValidationIssues
-                                    ? "border-rose-200 bg-rose-50 text-rose-700"
-                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                    }`}>
-                                    Issues: {totalValidationIssues}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowValidationModal(true)}
-                                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                                >
-                                    View validation details
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="p-3 border border-dashed border-slate-300 rounded-lg bg-slate-50 text-xs text-slate-600 flex items-center justify-center font-medium">
-                                Validation results will appear here after reading the Excel.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+            <button
+                type="button"
+                onClick={() => {
+                    if (canOpenValidation) {
+                        setShowValidationModal(true);
+                    }
+                }}
+                disabled={!canOpenValidation}
+                className={`w-full rounded-lg border border-blue-200/60 bg-gradient-to-r from-blue-50/70 via-white to-blue-50/70 px-3 py-2 text-left shadow-sm card-animate flex flex-wrap items-center justify-between gap-2 ${canOpenValidation ? "hover:border-blue-300/70" : "cursor-default"} disabled:opacity-80`}
+            >
+                <span className="text-xs font-semibold text-slate-700">Validation on Excel sheet</span>
+                <span className={`text-xs font-semibold ${validationStatus.tone === "error"
+                    ? "text-rose-600"
+                    : validationStatus.tone === "success"
+                        ? "text-emerald-600"
+                        : validationStatus.tone === "info"
+                            ? "text-blue-600"
+                            : "text-slate-500"
+                    }`}
+                >
+                    {validationStatus.text}
+                </span>
+            </button>
 
             <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3 mb-3">
                 <div className="flex items-center justify-between mb-2">
@@ -2412,12 +2429,11 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                         <select
                             value={bulkAction}
                             onChange={(e) => setBulkAction(e.target.value)}
-                            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer"
+                            className="w-40 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 cursor-pointer truncate"
                         >
                             <option value="">Bulk Actions</option>
                             <option value="upload-submit">Upload & Submit to Taqeem</option>
                             <option value="delete">Delete</option>
-                            <option value="retry-submit">Retry Submit</option>
                             <option value="send-approver">Send to Approver</option>
                             <option value="approve">Approve</option>
                         </select>
@@ -2458,7 +2474,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                     setSearchTerm(e.target.value);
                                     setCurrentPage(1); // Reset to page 1 when searching
                                 }}
-                                className="rounded-md border border-slate-300 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-64"
+                                className="rounded-md border border-slate-300 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-52"
                             />
                             <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
                                 <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2499,35 +2515,17 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                             type="button"
                             onClick={() => loadReports()}
                             disabled={reportsLoading}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${reportsLoading ? 'animate-spin' : ''}`} />
                             {reportsLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
 
-                        <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
-                            Page:
-                            <input
-                                type="number"
-                                min="1"
-                                max={totalPages}
-                                value={currentPage}
-                                onChange={(e) => {
-                                    const page = parseInt(e.target.value) || 1;
-                                    if (page >= 1 && page <= totalPages) {
-                                        handlePageChange(page);
-                                    }
-                                }}
-                                className="w-16 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-                            />
-                            <span className="text-xs text-slate-600">of {totalPages}</span>
-                        </label>
-
-                        {filteredReports.length > 0 && (
-                            <div className="flex items-center gap-2 ml-auto">
-                                <span className="text-xs text-slate-600 font-medium">
-                                    Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
-                                </span>
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-700">
+                            <span className="text-slate-600">
+                                Total: {filteredReports.length} report{filteredReports.length !== 1 ? 's' : ''}
+                            </span>
+                            {filteredReports.length > 0 && (
                                 <button
                                     type="button"
                                     onClick={handleToggleSelectAll}
@@ -2535,8 +2533,8 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                 >
                                     {allFilteredSelected ? "Clear all" : "Select all"}
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -2712,7 +2710,7 @@ const SubmitReportsQuickly = ({ onViewChange }) => {
                                                                     >
                                                                         <option value="">Actions</option>
                                                                         <option value="check-status">Check status</option>
-                                                                        <option value="retry">Retry submit</option>
+                                                                        <option value="retry">retry incomplete assets </option>
                                                                         <option value="delete">Delete</option>
                                                                         <option value="edit">Edit</option>
                                                                         <option value="send-approver">Send to Approver</option>

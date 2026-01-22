@@ -47,25 +47,27 @@ const SystemOperatingStatus = () => {
         partialMessage: '',
         allowedModules: []
     });
+    const [draftDirty, setDraftDirty] = useState(false);
     const [saving, setSaving] = useState(false);
     const [countdown, setCountdown] = useState(null);
 
+    const buildDraftFromState = (state) => ({
+        systemName: state.systemName || 'Electron System',
+        mode: state.mode || 'active',
+        expectedReturn: state.expectedReturn ? state.expectedReturn.split('T')[0] : '',
+        downtimeDays: state.downtimeDays || 0,
+        downtimeHours: state.downtimeHours ?? 0,
+        notes: state.notes || '',
+        partialMessage: state.partialMessage || '',
+        allowedModules: state.allowedModules?.length
+            ? state.allowedModules
+            : (state.mode === 'demo' ? DEMO_MODULES : [])
+    });
+
     useEffect(() => {
-        if (systemState) {
-            setDraft({
-                systemName: systemState.systemName || 'Electron System',
-                mode: systemState.mode || 'active',
-                expectedReturn: systemState.expectedReturn ? systemState.expectedReturn.split('T')[0] : '',
-                downtimeDays: systemState.downtimeDays || 0,
-                downtimeHours: systemState.downtimeHours ?? 0,
-                notes: systemState.notes || '',
-                partialMessage: systemState.partialMessage || '',
-                allowedModules: systemState.allowedModules?.length
-                    ? systemState.allowedModules
-                    : (systemState.mode === 'demo' ? DEMO_MODULES : [])
-            });
-        }
-    }, [systemState]);
+        if (!systemState || draftDirty) return;
+        setDraft(buildDraftFromState(systemState));
+    }, [systemState, draftDirty]);
 
     useEffect(() => {
         if (!systemState) {
@@ -115,10 +117,12 @@ const SystemOperatingStatus = () => {
     }, [systemState]);
 
     const handleInput = (field, value) => {
+        setDraftDirty(true);
         setDraft((prev) => ({ ...prev, [field]: value }));
     };
 
     const toggleGroup = (group) => {
+        setDraftDirty(true);
         setDraft((prev) => {
             const groupTabIds = group.tabs.map((tab) => tab.id);
             const hasGroup = prev.allowedModules.includes(group.id);
@@ -134,6 +138,7 @@ const SystemOperatingStatus = () => {
     };
 
     const toggleModule = (moduleId) => {
+        setDraftDirty(true);
         setDraft((prev) => {
             const exists = prev.allowedModules.includes(moduleId);
             if (exists) {
@@ -151,7 +156,7 @@ const SystemOperatingStatus = () => {
     const computeExpectedFromDays = (days) => {
         const start = new Date();
         const num = Number(days);
-        if (Number.isNaN(num)) return '';
+        if (Number.isNaN(num) || num <= 0) return '';
         const date = new Date(start.getTime() + num * 24 * 60 * 60 * 1000);
         return date.toISOString().slice(0, 10);
     };
@@ -159,7 +164,7 @@ const SystemOperatingStatus = () => {
     const computeExpectedFromHours = (hours) => {
         const start = new Date();
         const num = Number(hours);
-        if (Number.isNaN(num)) return '';
+        if (Number.isNaN(num) || num <= 0) return '';
         const date = new Date(start.getTime() + num * 60 * 60 * 1000);
         return date.toISOString().slice(0, 10);
     };
@@ -193,6 +198,7 @@ const SystemOperatingStatus = () => {
                 partialMessage: draft.partialMessage,
                 allowedModules
             });
+            setDraftDirty(false);
             alert('System state updated.');
             await fetchSystemState();
         } catch (err) {
@@ -364,6 +370,16 @@ const SystemOperatingStatus = () => {
                                     value={draft.expectedReturn || ''}
                                     onChange={(e) => {
                                         const value = e.target.value;
+                                        setDraftDirty(true);
+                                        if (!value) {
+                                            setDraft((prev) => ({
+                                                ...prev,
+                                                expectedReturn: '',
+                                                downtimeDays: 0,
+                                                downtimeHours: 0
+                                            }));
+                                            return;
+                                        }
                                         const days = computeDaysFromExpected(value);
                                         setDraft((prev) => ({
                                             ...prev,
@@ -385,15 +401,15 @@ const SystemOperatingStatus = () => {
                                     onChange={(e) => {
                                         const value = e.target.value;
                                         const expectedReturn = computeExpectedFromDays(value);
+                                        setDraftDirty(true);
                                         setDraft((prev) => ({
                                             ...prev,
                                             downtimeDays: value,
                                             downtimeHours: prev.downtimeHours,
-                                            expectedReturn: expectedReturn || prev.expectedReturn
+                                            expectedReturn
                                         }));
                                     }}
                                     className="w-full px-3 py-2 rounded-lg border border-blue-900/20 bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
-                                    required
                                 />
                             </div>
                         </div>
@@ -411,6 +427,7 @@ const SystemOperatingStatus = () => {
                                     onChange={(e) => {
                                         const hoursVal = e.target.value;
                                         const daysFromHours = Number(hoursVal) / 24;
+                                        setDraftDirty(true);
                                         setDraft((prev) => ({
                                             ...prev,
                                             downtimeHours: hoursVal,
@@ -423,7 +440,7 @@ const SystemOperatingStatus = () => {
                             </div>
                             <div className="flex items-end">
                                 <div className="w-full px-3 py-2 rounded-lg bg-blue-50 border border-blue-900/10 text-[11px] text-blue-900/70">
-                                    Hours stay exactly as you enter them; we won't auto-convert them.
+                                    Hours stay exactly as you enter them. Set days/hours to 0 to keep the system inactive until you switch it back.
                                 </div>
                             </div>
                         </div>
@@ -504,7 +521,13 @@ const SystemOperatingStatus = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={fetchSystemState}
+                            onClick={() => {
+                                setDraftDirty(false);
+                                if (systemState) {
+                                    setDraft(buildDraftFromState(systemState));
+                                }
+                                fetchSystemState();
+                            }}
                             className="inline-flex items-center justify-center rounded-md border border-blue-900/20 bg-white px-4 py-2 text-[11px] font-semibold text-blue-900 hover:bg-blue-50"
                         >
                             Reset changes

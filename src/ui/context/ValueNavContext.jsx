@@ -174,7 +174,10 @@ export const ValueNavProvider = ({ children }) => {
         try {
             const res = await window.electronAPI.apiRequest('GET', `/api/companes/me?type=${type}`, {}, authHeaders);
             const list = normalizeCompanyList(res).map(normalizeCompany);
-            setCompanies(list);
+            const current = companiesRef.current || [];
+            if (list.length > 0 || current.length > 0) {
+                setCompanies(list);
+            }
             return list;
         } catch (err) {
             const msg = err?.response?.data?.message || err?.message || t('navigation.loadCompaniesFailed');

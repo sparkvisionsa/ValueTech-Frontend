@@ -173,7 +173,6 @@ const Profile = ({ onViewChange }) => {
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <p className="text-sm font-medium text-gray-600">Default company</p>
-                                <p className="text-xs text-gray-500">Used for uploading reports and main links.</p>
                             </div>
                             {preferredCompany && (
                                 <span className="text-[11px] rounded-full bg-green-100 text-green-700 px-2 py-1 font-semibold">

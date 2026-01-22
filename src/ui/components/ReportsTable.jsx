@@ -357,7 +357,8 @@ const ReportsTable = () => {
                 page: currentPage.toString(),
                 limit: pageSize.toString(),
                 sortBy: "createdAt",
-                sortOrder: "desc"
+                sortOrder: "desc",
+                excludeReportStatus: "DRAFT"
             });
 
             const result = await window.electronAPI.apiRequest(
