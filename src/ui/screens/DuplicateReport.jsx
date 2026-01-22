@@ -915,95 +915,170 @@ setPagination({
 
 
 
+  // const submitToTaqeem = useCallback(
+  //   async (recordId, tabsNum, options = {}) => {
+  //     const { withLoading = true, resume = false } = options;
+  //     const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
+
+  //     if (withLoading) setSubmitting(true);
+
+  //     try {
+  //       if (!recordId) {
+  //         setStatus({ type: "error", message: "Missing record id for submission." });
+  //         return;
+  //       }
+
+  //       const ok = await ensureTaqeemAuthorized(
+  //         token,
+  //         onViewChange,
+  //         isTaqeemLoggedIn
+  //       );
+  //       if (!ok) {
+  //         setStatus({
+  //           type: "info",
+  //           message: "Taqeem login required. Finish login and choose a company to continue.",
+  //         });
+  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+  //         setReturnView("duplicate-report");
+  //         return;
+  //       }
+
+  //       setStatus({
+  //         type: "info",
+  //         message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+  //       });
+
+  //       if (!window?.electronAPI?.duplicateReportNavigate) {
+  //         throw new Error("Desktop integration unavailable. Restart the app.");
+  //       }
+
+  //       const res = await window.electronAPI.duplicateReportNavigate(
+  //         recordId,
+  //         undefined,
+  //         resolvedTabs
+  //       );
+
+  //       if (res?.status === "SUCCESS") {
+  //         setStatus({
+  //           type: "success",
+  //           message: "Report submitted to Taqeem. Browser closed after completion.",
+  //         });
+  //         resetPendingSubmit();
+  //         resetReturnView();
+  //         return;
+  //       }
+
+  //       const errMsg =
+  //         res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+
+  //       if (/no company selected/i.test(errMsg)) {
+  //         setStatus({ type: "warning", message: errMsg });
+  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+  //         setReturnView("duplicate-report");
+  //         onViewChange?.("get-companies");
+  //         return;
+  //       }
+
+  //       throw new Error(errMsg);
+  //     } catch (err) {
+  //       setStatus({
+  //         type: "error",
+  //         message: err?.message || "Failed to submit report to Taqeem.",
+  //       });
+  //       resetPendingSubmit();
+  //       resetReturnView();
+  //     } finally {
+  //       if (withLoading) {
+  //         setSubmitting(false);
+  //       }
+  //     }
+  //   },
+  //   [
+  //     isTaqeemLoggedIn,
+  //     onViewChange,
+  //     resetPendingSubmit,
+  //     resetReturnView,
+  //     resolveTabsForAssets,
+  //     setPendingSubmit,
+  //     setReturnView,
+  //     token,
+  //   ]
+  // );
+
+
+
   const submitToTaqeem = useCallback(
-    async (recordId, tabsNum, options = {}) => {
-      const { withLoading = true, resume = false } = options;
-      const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
+  async (recordId, tabsNum, options = {}) => {
+    const { withLoading = true, resume = false } = options;
+    const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
 
-      if (withLoading) setSubmitting(true);
+    if (withLoading) setSubmitting(true);
 
-      try {
-        if (!recordId) {
-          setStatus({ type: "error", message: "Missing record id for submission." });
-          return;
-        }
+    try {
+      if (!recordId) {
+        setStatus({ type: "error", message: "Missing record id for submission." });
+        return;
+      }
 
-        const ok = await ensureTaqeemAuthorized(
-          token,
-          onViewChange,
-          isTaqeemLoggedIn
-        );
-        if (!ok) {
-          setStatus({
-            type: "info",
-            message: "Taqeem login required. Finish login and choose a company to continue.",
-          });
-          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-          setReturnView("duplicate-report");
-          return;
-        }
+      // ✅ REMOVED ensureTaqeemAuthorized from here (single source of truth = executeWithAuth)
 
+      setStatus({
+        type: "info",
+        message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
+      });
+
+      if (!window?.electronAPI?.duplicateReportNavigate) {
+        throw new Error("Desktop integration unavailable. Restart the app.");
+      }
+
+      const res = await window.electronAPI.duplicateReportNavigate(
+        recordId,
+        undefined,
+        resolvedTabs
+      );
+
+      if (res?.status === "SUCCESS") {
         setStatus({
-          type: "info",
-          message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
-        });
-
-        if (!window?.electronAPI?.duplicateReportNavigate) {
-          throw new Error("Desktop integration unavailable. Restart the app.");
-        }
-
-        const res = await window.electronAPI.duplicateReportNavigate(
-          recordId,
-          undefined,
-          resolvedTabs
-        );
-
-        if (res?.status === "SUCCESS") {
-          setStatus({
-            type: "success",
-            message: "Report submitted to Taqeem. Browser closed after completion.",
-          });
-          resetPendingSubmit();
-          resetReturnView();
-          return;
-        }
-
-        const errMsg =
-          res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
-
-        if (/no company selected/i.test(errMsg)) {
-          setStatus({ type: "warning", message: errMsg });
-          setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-          setReturnView("duplicate-report");
-          onViewChange?.("get-companies");
-          return;
-        }
-
-        throw new Error(errMsg);
-      } catch (err) {
-        setStatus({
-          type: "error",
-          message: err?.message || "Failed to submit report to Taqeem.",
+          type: "success",
+          message: "Report submitted to Taqeem. Browser closed after completion.",
         });
         resetPendingSubmit();
         resetReturnView();
-      } finally {
-        if (withLoading) {
-          setSubmitting(false);
-        }
+        return;
       }
-    },
-    [
-      isTaqeemLoggedIn,
-      onViewChange,
-      resetPendingSubmit,
-      resetReturnView,
-      resolveTabsForAssets,
-      setPendingSubmit,
-      setReturnView,
-      token,
-    ]
-  );
+
+      const errMsg =
+        res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
+
+      if (/no company selected/i.test(errMsg)) {
+        setStatus({ type: "warning", message: errMsg });
+        setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
+        setReturnView("duplicate-report");
+        onViewChange?.("get-companies");
+        return;
+      }
+
+      throw new Error(errMsg);
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err?.message || "Failed to submit report to Taqeem.",
+      });
+      resetPendingSubmit();
+      resetReturnView();
+    } finally {
+      if (withLoading) setSubmitting(false);
+    }
+  },
+  [
+    onViewChange,
+    resetPendingSubmit,
+    resetReturnView,
+    resolveTabsForAssets,
+    setPendingSubmit,
+    setReturnView,
+  ]
+);
 
 
 
@@ -1189,7 +1264,135 @@ setPagination({
   // };
 
 
-  const handleStoreAndSubmitNow = async () => {
+//   const handleStoreAndSubmitNow = async () => {
+//   if (!validate()) {
+//     setStatus({ type: "error", message: "Please fill required fields." });
+//     return;
+//   }
+//   if (!excelFile) {
+//     setStatus({ type: "error", message: "Excel file is required." });
+//     return;
+//   }
+//   if (excelValidationLoading) {
+//     setStatus({ type: "error", message: "Wait for Excel validation to finish." });
+//     return;
+//   }
+//   if (excelValidation.issues.length) {
+//     setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
+//     return;
+//   }
+//   if (wantsPdfUpload && !pdfFile) {
+//     setStatus({ type: "error", message: "PDF file is required when enabled." });
+//     return;
+//   }
+
+//   setSubmitting(true);
+//   setStatus({ type: "info", message: "Preparing..." });
+
+//   try {
+//     const requiredPoints = excelValidation?.counts?.total || 0;
+
+//     const result = await executeWithAuth(
+//       async ({ token: authToken }) => {
+//         // 1) STORE report (same as handleCreateReport but inside wrapper)
+//         const payload = new FormData();
+//         payload.append(
+//           "formData",
+//           JSON.stringify({
+//             ...formData,
+//             report_users: reportUsers || [],
+//             valuers,
+//           })
+//         );
+//         payload.append("excel", excelFile);
+//         if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
+
+//         const createRes = await createDuplicateReport(payload);
+//         if (!createRes?.success) {
+//           throw new Error(createRes?.message || "Could not save report.");
+//         }
+
+//         // 2) RELOAD reports and pick the latest record id (your existing logic)
+//         const fetched = await fetchDuplicateReports();
+//         const latestReports = normalizeReportsResponse(fetched);
+//         const latestReport = latestReports?.[latestReports.length - 1];
+//         const recordId = getReportRecordId(latestReport);
+
+//         if (!recordId) {
+//           throw new Error("Report stored but could not find its record id.");
+//         }
+
+//         // 3) Ensure Taqeem authorized
+//         const ok = await ensureTaqeemAuthorized(authToken, onViewChange, taqeemStatus?.state === "success");
+//         if (!ok) {
+//           // IMPORTANT: Let auth hook / your login flow handle the redirect
+//           // (If your executeWithAuth already redirects on LOGIN_REQUIRED, you can throw a special error)
+//           throw new Error("LOGIN_REQUIRED");
+//         }
+
+//         // 4) Submit via Electron
+//         const assetCount = Array.isArray(latestReport?.asset_data) ? latestReport.asset_data.length : 0;
+//         const tabsForAssets = resolveTabsForAssets(assetCount);
+
+//         const submitRes = await window.electronAPI.duplicateReportNavigate(recordId, undefined, tabsForAssets);
+//         if (submitRes?.status !== "SUCCESS") {
+//           const msg = submitRes?.error || "Upload to Taqeem failed.";
+//           if (/no company selected/i.test(msg)) {
+//             // keep your existing behavior
+//             setPendingSubmit({ recordId, tabsNum: tabsForAssets, resumeOnLoad: true });
+//             setReturnView("duplicate-report");
+//             onViewChange?.("get-companies");
+//             throw new Error(msg);
+//           }
+//           throw new Error(msg);
+//         }
+
+//         return { success: true, recordId };
+//       },
+//       {},
+//       {
+//         requiredPoints,
+//         onViewChange,
+//         showInsufficientPointsModal: () => {
+//           // you can implement similar modal logic if you have it here,
+//           // or just show a status message
+//           setStatus({ type: "warning", message: "Insufficient points." });
+//         },
+//         onAuthSuccess: () => {
+//           // THIS IS WHERE YOU FIX THE UI TO STAY ON
+//           setTaqeemStatus?.({ state: "success", message: "Authorized" });
+//         },
+//         onAuthFailure: (reason) => {
+//           if (reason === "LOGIN_REQUIRED") {
+//             setStatus({ type: "info", message: "Login required. Please login to continue." });
+//           } else if (reason === "INSUFFICIENT_POINTS") {
+//             setStatus({ type: "warning", message: "Insufficient points." });
+//           } else {
+//             setStatus({ type: "error", message: reason?.message || "Authentication failed." });
+//           }
+//         },
+//       }
+//     );
+
+//     if (result?.success) {
+//       setStatus({ type: "success", message: "Stored + submitted successfully." });
+//       await loadReports();
+//       setShowCreateModal(false);
+//     }
+//   } catch (err) {
+//     if (String(err?.message || err) === "LOGIN_REQUIRED") {
+//       // if your auth hook handles this, you may not need anything here
+//       setStatus({ type: "info", message: "Please login to Taqeem to continue." });
+//     } else {
+//       setStatus({ type: "error", message: err?.message || "Failed." });
+//     }
+//   } finally {
+//     setSubmitting(false);
+//   }
+// };
+
+
+const handleStoreAndSubmitNow = async () => {
   if (!validate()) {
     setStatus({ type: "error", message: "Please fill required fields." });
     return;
@@ -1203,7 +1406,10 @@ setPagination({
     return;
   }
   if (excelValidation.issues.length) {
-    setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
+    setStatus({
+      type: "error",
+      message: "Fix Excel validation issues before submitting.",
+    });
     return;
   }
   if (wantsPdfUpload && !pdfFile) {
@@ -1219,7 +1425,7 @@ setPagination({
 
     const result = await executeWithAuth(
       async ({ token: authToken }) => {
-        // 1) STORE report (same as handleCreateReport but inside wrapper)
+        // 1) STORE report
         const payload = new FormData();
         payload.append(
           "formData",
@@ -1237,7 +1443,7 @@ setPagination({
           throw new Error(createRes?.message || "Could not save report.");
         }
 
-        // 2) RELOAD reports and pick the latest record id (your existing logic)
+        // 2) RELOAD reports and find latest
         const fetched = await fetchDuplicateReports();
         const latestReports = normalizeReportsResponse(fetched);
         const latestReport = latestReports?.[latestReports.length - 1];
@@ -1247,30 +1453,13 @@ setPagination({
           throw new Error("Report stored but could not find its record id.");
         }
 
-        // 3) Ensure Taqeem authorized
-        const ok = await ensureTaqeemAuthorized(authToken, onViewChange, taqeemStatus?.state === "success");
-        if (!ok) {
-          // IMPORTANT: Let auth hook / your login flow handle the redirect
-          // (If your executeWithAuth already redirects on LOGIN_REQUIRED, you can throw a special error)
-          throw new Error("LOGIN_REQUIRED");
-        }
-
-        // 4) Submit via Electron
-        const assetCount = Array.isArray(latestReport?.asset_data) ? latestReport.asset_data.length : 0;
+        // 3) SUBMIT (auth already satisfied by executeWithAuth)
+        const assetCount = Array.isArray(latestReport?.asset_data)
+          ? latestReport.asset_data.length
+          : 0;
         const tabsForAssets = resolveTabsForAssets(assetCount);
 
-        const submitRes = await window.electronAPI.duplicateReportNavigate(recordId, undefined, tabsForAssets);
-        if (submitRes?.status !== "SUCCESS") {
-          const msg = submitRes?.error || "Upload to Taqeem failed.";
-          if (/no company selected/i.test(msg)) {
-            // keep your existing behavior
-            setPendingSubmit({ recordId, tabsNum: tabsForAssets, resumeOnLoad: true });
-            setReturnView("duplicate-report");
-            onViewChange?.("get-companies");
-            throw new Error(msg);
-          }
-          throw new Error(msg);
-        }
+        await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
 
         return { success: true, recordId };
       },
@@ -1279,21 +1468,21 @@ setPagination({
         requiredPoints,
         onViewChange,
         showInsufficientPointsModal: () => {
-          // you can implement similar modal logic if you have it here,
-          // or just show a status message
           setStatus({ type: "warning", message: "Insufficient points." });
-        },
-        onAuthSuccess: () => {
-          // THIS IS WHERE YOU FIX THE UI TO STAY ON
-          setTaqeemStatus?.({ state: "success", message: "Authorized" });
         },
         onAuthFailure: (reason) => {
           if (reason === "LOGIN_REQUIRED") {
-            setStatus({ type: "info", message: "Login required. Please login to continue." });
+            setStatus({
+              type: "info",
+              message: "Login required. Please login to continue.",
+            });
           } else if (reason === "INSUFFICIENT_POINTS") {
             setStatus({ type: "warning", message: "Insufficient points." });
           } else {
-            setStatus({ type: "error", message: reason?.message || "Authentication failed." });
+            setStatus({
+              type: "error",
+              message: reason?.message || "Authentication failed.",
+            });
           }
         },
       }
@@ -1305,16 +1494,14 @@ setPagination({
       setShowCreateModal(false);
     }
   } catch (err) {
-    if (String(err?.message || err) === "LOGIN_REQUIRED") {
-      // if your auth hook handles this, you may not need anything here
-      setStatus({ type: "info", message: "Please login to Taqeem to continue." });
-    } else {
-      setStatus({ type: "error", message: err?.message || "Failed." });
-    }
+    setStatus({ type: "error", message: err?.message || "Failed." });
   } finally {
     setSubmitting(false);
   }
 };
+
+
+
 
   const handleUpdateReport = async () => {
     if (!editingReportId) {
@@ -1539,70 +1726,171 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
     }
   };
 
-  const handleReportAction = async (report, action) => {
-    if (!action) return;
-    if (action === "edit") {
-      handleEditReport(report);
-      return;
-    }
+  // const handleReportAction = async (report, action) => {
+  //   if (!action) return;
+  //   if (action === "edit") {
+  //     handleEditReport(report);
+  //     return;
+  //   }
 
-    const recordId = getReportRecordId(report);
-    if (!recordId) {
-      setStatus({ type: "error", message: "Missing report record id." });
-      return;
-    }
+  //   const recordId = getReportRecordId(report);
+  //   if (!recordId) {
+  //     setStatus({ type: "error", message: "Missing report record id." });
+  //     return;
+  //   }
 
-    if (action === "send-approver") {
-      setStatus({ type: "info", message: "Report sent to approver." });
-      return;
-    }
+  //   if (action === "send-approver") {
+  //     setStatus({ type: "info", message: "Report sent to approver." });
+  //     return;
+  //   }
 
-    if (action === "delete") {
-      const confirmed = window.confirm("Delete this report and its assets?");
-      if (!confirmed) return;
-    }
+  //   if (action === "delete") {
+  //     const confirmed = window.confirm("Delete this report and its assets?");
+  //     if (!confirmed) return;
+  //   }
 
-    setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
+  //   setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
 
-    try {
-      if (action === "send" || action === "retry") {
-        const assetCount = Array.isArray(report.asset_data)
-          ? report.asset_data.length
-          : 0;
-        const tabsForAssets = resolveTabsForAssets(assetCount);
-        await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
-        await loadReports();
-      } else if (action === "approve") {
-        const result = await updateDuplicateReport(recordId, { checked: true });
-        if (!result?.success) {
-          throw new Error(result?.message || "Failed to approve report.");
+  //   try {
+  //     if (action === "send" || action === "retry") {
+  //       const assetCount = Array.isArray(report.asset_data)
+  //         ? report.asset_data.length
+  //         : 0;
+  //       const tabsForAssets = resolveTabsForAssets(assetCount);
+  //       await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+  //       await loadReports();
+  //     } else if (action === "approve") {
+  //       const result = await updateDuplicateReport(recordId, { checked: true });
+  //       if (!result?.success) {
+  //         throw new Error(result?.message || "Failed to approve report.");
+  //       }
+  //       setStatus({ type: "success", message: "Report approved." });
+  //       await loadReports();
+  //     } else if (action === "delete") {
+  //       const result = await deleteDuplicateReport(recordId);
+  //       if (!result?.success) {
+  //         throw new Error(result?.message || "Failed to delete report.");
+  //       }
+  //       setStatus({ type: "success", message: "Report deleted." });
+  //       await loadReports();
+  //     } else if (action === "download") {
+  //       await downloadCertificatesForReports([report]);
+  //     }
+  //   } catch (err) {
+  //     setStatus({
+  //       type: "error",
+  //       message:
+  //         err?.response?.data?.message || err?.message || "Action failed.",
+  //     });
+  //   } finally {
+  //     setReportActionBusy((prev) => {
+  //       const next = { ...prev };
+  //       delete next[recordId];
+  //       return next;
+  //     });
+  //   }
+  // };
+
+
+
+const handleReportAction = async (report, action) => {
+  if (!action) return;
+
+  if (action === "edit") {
+    handleEditReport(report);
+    return;
+  }
+
+  const recordId = getReportRecordId(report);
+  if (!recordId) {
+    setStatus({ type: "error", message: "Missing report record id." });
+    return;
+  }
+
+  if (action === "send-approver") {
+    setStatus({ type: "info", message: "Report sent to approver." });
+    return;
+  }
+
+  if (action === "delete") {
+    const confirmed = window.confirm("Delete this report and its assets?");
+    if (!confirmed) return;
+  }
+
+  setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
+
+  try {
+    await executeWithAuth(
+      async ({ token: authToken, recordId, report }) => {
+        if (action === "send" || action === "retry") {
+          const assetCount = Array.isArray(report.asset_data)
+            ? report.asset_data.length
+            : 0;
+          const tabsForAssets = resolveTabsForAssets(assetCount);
+
+          // ✅ submitToTaqeem no longer checks auth; executeWithAuth already did.
+          await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+          await loadReports();
+          return { success: true };
         }
-        setStatus({ type: "success", message: "Report approved." });
-        await loadReports();
-      } else if (action === "delete") {
-        const result = await deleteDuplicateReport(recordId);
-        if (!result?.success) {
-          throw new Error(result?.message || "Failed to delete report.");
+
+        if (action === "approve") {
+          const result = await updateDuplicateReport(recordId, { checked: true });
+          if (!result?.success) {
+            throw new Error(result?.message || "Failed to approve report.");
+          }
+          setStatus({ type: "success", message: "Report approved." });
+          await loadReports();
+          return { success: true };
         }
-        setStatus({ type: "success", message: "Report deleted." });
-        await loadReports();
-      } else if (action === "download") {
-        await downloadCertificatesForReports([report]);
+
+        if (action === "delete") {
+          const result = await deleteDuplicateReport(recordId);
+          if (!result?.success) {
+            throw new Error(result?.message || "Failed to delete report.");
+          }
+          setStatus({ type: "success", message: "Report deleted." });
+          await loadReports();
+          return { success: true };
+        }
+
+        if (action === "download") {
+          await downloadCertificatesForReports([report]);
+          return { success: true };
+        }
+
+        throw new Error("Unsupported action.");
+      },
+      { recordId, report },
+      {
+        requiredPoints: 0,
+        onViewChange,
+        showInsufficientPointsModal: () =>
+          setShowInsufficientPointsModal?.(true),
+        onAuthFailure: (reason) => {
+          setStatus({
+            type: "error",
+            message: reason?.message || "Authentication failed for action",
+          });
+        },
       }
-    } catch (err) {
-      setStatus({
-        type: "error",
-        message:
-          err?.response?.data?.message || err?.message || "Action failed.",
-      });
-    } finally {
-      setReportActionBusy((prev) => {
-        const next = { ...prev };
-        delete next[recordId];
-        return next;
-      });
-    }
-  };
+    );
+  } catch (err) {
+    setStatus({
+      type: "error",
+      message: err?.response?.data?.message || err?.message || "Action failed.",
+    });
+  } finally {
+    setReportActionBusy((prev) => {
+      const next = { ...prev };
+      delete next[recordId];
+      return next;
+    });
+  }
+};
+
+
+
 
   const handleBulkReportAction = async (action) => {
     if (!action) return;
