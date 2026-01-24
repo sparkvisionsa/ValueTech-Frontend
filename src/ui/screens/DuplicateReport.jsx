@@ -32,6 +32,60 @@ import {
 } from "lucide-react";
 import { downloadTemplateFile } from "../utils/templateDownload";
 
+
+
+const toComparable = (v) => String(v ?? "").trim().toLowerCase();
+
+const numComparable = (v) => {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : NaN;
+};
+
+const findCreatedReport = (list, draft) => {
+  const draftTitle = toComparable(draft.title);
+  const draftClient = toComparable(draft.client_name);
+  const draftEmail = toComparable(draft.email);
+  const draftTel = toComparable(draft.telephone);
+  const draftValue = numComparable(draft.value);
+
+  // Strong match: title + client + value + (email or tel)
+  const strong = list.find((r) => {
+    const rTitle = toComparable(r?.title);
+    const rClient = toComparable(r?.client_name);
+    const rEmail = toComparable(r?.email);
+    const rTel = toComparable(r?.telephone);
+    const rValue = numComparable(r?.value ?? r?.final_value);
+
+    const valueOk =
+      Number.isFinite(draftValue) &&
+      Number.isFinite(rValue) &&
+      Math.abs(rValue - draftValue) < 0.0001;
+
+    const identityOk = (draftEmail && rEmail === draftEmail) || (draftTel && rTel === draftTel);
+
+    return rTitle === draftTitle && rClient === draftClient && valueOk && identityOk;
+  });
+
+  if (strong) return strong;
+
+  // Fallback match: title + client + value
+  const medium = list.find((r) => {
+    const rTitle = toComparable(r?.title);
+    const rClient = toComparable(r?.client_name);
+    const rValue = numComparable(r?.value ?? r?.final_value);
+
+    const valueOk =
+      Number.isFinite(draftValue) &&
+      Number.isFinite(rValue) &&
+      Math.abs(rValue - draftValue) < 0.0001;
+
+    return rTitle === draftTitle && rClient === draftClient && valueOk;
+  });
+
+  return medium || null;
+};
+
+
 const InputField = ({
   label,
   required = false,
@@ -233,6 +287,89 @@ const buildAssetPreview = (rows = [], sheetLabel) =>
       city: pickFieldValue(row, ["city", "city name", "city_name"]),
     }));
 
+
+    const parsePositiveNumber = (v) => {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : NaN;
+};
+
+const validateAssetRow = (asset, rowIndex) => {
+  const errors = [];
+
+  const assetName = String(asset.assetName ?? "").trim();
+  const region = String(asset.region ?? "").trim();
+  const city = String(asset.city ?? "").trim();
+
+  // asset usage id can come as string/number
+  const usageRaw = String(asset.assetUsageId ?? "").trim();
+  const usageId = Number(usageRaw);
+
+  const finalValue = parsePositiveNumber(asset.finalValue);
+
+  if (!assetName) errors.push(`Row ${rowIndex + 2}: Asset name is required`);
+
+  if (!usageRaw) {
+    errors.push(`Row ${rowIndex + 2}: Asset usage id is required`);
+  } else if (!Number.isInteger(usageId)) {
+    errors.push(`Row ${rowIndex + 2}: Asset usage id must be an integer`);
+  } else if (usageId < 38 || usageId > 56) {
+    errors.push(`Row ${rowIndex + 2}: Asset usage id must be between 38 and 56`);
+  }
+
+  if (!Number.isFinite(finalValue) || finalValue <= 0) {
+    errors.push(`Row ${rowIndex + 2}: Final value must be a number > 0`);
+  }
+
+  if (!region) errors.push(`Row ${rowIndex + 2}: Region is required`);
+  if (!city) errors.push(`Row ${rowIndex + 2}: City is required`);
+
+  return errors;
+};
+
+
+// const parseExcelValidation = async (file) => {
+//   const workbook = new ExcelJS.Workbook();
+//   const buffer = await file.arrayBuffer();
+//   await workbook.xlsx.load(buffer);
+
+//   const marketSheet = workbook.getWorksheet("market");
+//   const costSheet = workbook.getWorksheet("cost");
+//   const issues = [];
+
+//   if (!marketSheet) {
+//     issues.push({ sheet: "market", message: "Missing sheet \"market\"." });
+//   }
+
+//   if (!costSheet) {
+//     issues.push({ sheet: "cost", message: "Missing sheet \"cost\"." });
+//   }
+
+//   const marketRows = marketSheet ? worksheetToObjects(marketSheet) : [];
+//   const costRows = costSheet ? worksheetToObjects(costSheet) : [];
+//   const marketAssets = marketSheet ? buildAssetPreview(marketRows, "market") : [];
+//   const costAssets = costSheet ? buildAssetPreview(costRows, "cost") : [];
+
+//   if (marketSheet && marketAssets.length === 0) {
+//     issues.push({ sheet: "market", message: "No assets found in \"market\" sheet." });
+//   }
+//   if (costSheet && costAssets.length === 0) {
+//     issues.push({ sheet: "cost", message: "No assets found in \"cost\" sheet." });
+//   }
+
+//   const assets = [...marketAssets, ...costAssets];
+//   return {
+//     issues,
+//     assets,
+//     counts: {
+//       market: marketAssets.length,
+//       cost: costAssets.length,
+//       total: assets.length,
+//     },
+//   };
+// };
+
+
+
 const parseExcelValidation = async (file) => {
   const workbook = new ExcelJS.Workbook();
   const buffer = await file.arrayBuffer();
@@ -240,32 +377,57 @@ const parseExcelValidation = async (file) => {
 
   const marketSheet = workbook.getWorksheet("market");
   const costSheet = workbook.getWorksheet("cost");
+
   const issues = [];
 
-  if (!marketSheet) {
-    issues.push({ sheet: "market", message: "Missing sheet \"market\"." });
-  }
-
-  if (!costSheet) {
-    issues.push({ sheet: "cost", message: "Missing sheet \"cost\"." });
-  }
+  if (!marketSheet) issues.push({ sheet: "market", message: 'Missing sheet "market".' });
+  if (!costSheet) issues.push({ sheet: "cost", message: 'Missing sheet "cost".' });
 
   const marketRows = marketSheet ? worksheetToObjects(marketSheet) : [];
   const costRows = costSheet ? worksheetToObjects(costSheet) : [];
+
   const marketAssets = marketSheet ? buildAssetPreview(marketRows, "market") : [];
   const costAssets = costSheet ? buildAssetPreview(costRows, "cost") : [];
 
+  // If sheet exists but no non-empty rows
   if (marketSheet && marketAssets.length === 0) {
-    issues.push({ sheet: "market", message: "No assets found in \"market\" sheet." });
+    issues.push({ sheet: "market", message: 'No assets found in "market" sheet.' });
   }
   if (costSheet && costAssets.length === 0) {
-    issues.push({ sheet: "cost", message: "No assets found in \"cost\" sheet." });
+    issues.push({ sheet: "cost", message: 'No assets found in "cost" sheet.' });
   }
 
+  // Row-level validations + totals
+  let marketTotal = 0;
+  let costTotal = 0;
+
+  marketAssets.forEach((asset, index) => {
+    validateAssetRow(asset, index).forEach((msg) =>
+      issues.push({ sheet: "market", message: msg })
+    );
+    const v = parsePositiveNumber(asset.finalValue);
+    if (Number.isFinite(v)) marketTotal += v;
+  });
+
+  costAssets.forEach((asset, index) => {
+    validateAssetRow(asset, index).forEach((msg) =>
+      issues.push({ sheet: "cost", message: msg })
+    );
+    const v = parsePositiveNumber(asset.finalValue);
+    if (Number.isFinite(v)) costTotal += v;
+  });
+
   const assets = [...marketAssets, ...costAssets];
+  const grandTotal = marketTotal + costTotal;
+
   return {
     issues,
     assets,
+    totals: {
+      market: marketTotal,
+      cost: costTotal,
+      total: grandTotal,
+    },
     counts: {
       market: marketAssets.length,
       cost: costAssets.length,
@@ -273,6 +435,7 @@ const parseExcelValidation = async (file) => {
     },
   };
 };
+
 
 const buildDefaultFormData = () => ({
   report_id: "",
@@ -402,12 +565,14 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   const [reportUsers, setReportUsers, resetReportUsers] = usePersistentState("duplicate:reportUsers", formData?.report_users || []);
   const [valuers, setValuers, resetValuers] = usePersistentState("duplicate:valuers", buildDefaultValuers());
   const [fileNotes, setFileNotes, resetFileNotes] = usePersistentState("duplicate:fileNotes", { excelName: null, pdfName: null });
-  const [excelValidation, setExcelValidation] = useState({
-    status: "idle",
-    issues: [],
-    assets: [],
-    counts: { market: 0, cost: 0, total: 0 },
-  });
+ const [excelValidation, setExcelValidation] = useState({
+  status: "idle",
+  issues: [],
+  assets: [],
+  totals: { market: 0, cost: 0, total: 0 },
+  counts: { market: 0, cost: 0, total: 0 },
+});
+
   const [excelValidationLoading, setExcelValidationLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingReportId, setEditingReportId] = useState(null);
@@ -493,22 +658,7 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     []
   );
 
-  // const requiredFields = useMemo(
-  //   () => [
-  //     "title",
-  //     "purpose_id",
-  //     "value_premise_id",
-  //     "report_type",
-  //     "valued_at",
-  //     "submitted_at",
-  //     "inspection_date",
-  //     "value",
-  //     "client_name",
-  //     "telephone",
-  //     "email",
-  //   ],
-  //   []
-  // );
+
 
 
 
@@ -529,62 +679,121 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     []
   );
 
-  const validate = () => {
-    const newErrors = {};
-    
-    // Check required fields
-    requiredFields.forEach((field) => {
-      if (!formData[field]) {
-        const fieldLabels = {
-          purpose_id: "Purpose of Valuation",
-          value_premise_id: "Value Attributes",
-          submitted_at: "Report Issuing Date",
-          valued_at: "Date of Valuation",
-          inspection_date: "Inspection Date",
-          value: "Final Value",
-          client_name: "Client Name",
-          telephone: "Client Telephone",
-          email: "Client Email",
-          title: "Report Title",
-          report_type: "Report Type"
-        };
-        newErrors[field] = `${fieldLabels[field] || field} is required`;
+
+ // ✅ parse report value once (shared by UI + validate)
+const parsedValue = useMemo(() => {
+  const rawValue = formData.value;
+  const n =
+    rawValue === null || rawValue === undefined
+      ? NaN
+      : Number(String(rawValue).replace(/,/g, "").trim());
+  return n;
+}, [formData.value]);
+
+// ✅ compute mismatch message OUTSIDE validate (safe)
+const excelMismatchMessage = useMemo(() => {
+  if (!excelFile) return "";
+  if ((excelValidation?.counts?.total || 0) <= 0) return "";
+
+  const excelTotal = Number(excelValidation?.totals?.total ?? NaN);
+  if (!Number.isFinite(excelTotal)) return "Excel totals not ready yet. Please re-upload the Excel file.";
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) return ""; // value not valid -> handled by validate()
+
+  const same = Math.abs(excelTotal - parsedValue) < 0.0001;
+  return same
+    ? ""
+    : `Final Value must equal to Sum of Final value in Excel . Excel: ${excelTotal}, Report: ${parsedValue}`;
+}, [excelFile, excelValidation, parsedValue]);
+
+const validate = () => {
+  const newErrors = {};
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  requiredFields.forEach((field) => {
+    if (!formData[field]) {
+      const fieldLabels = {
+        purpose_id: "Purpose of Valuation",
+        value_premise_id: "Value Attributes",
+        submitted_at: "Report Issuing Date",
+        valued_at: "Date of Valuation",
+        inspection_date: "Inspection Date",
+        value: "Final Value",
+        client_name: "Client Name",
+        telephone: "Client Telephone",
+        email: "Client Email",
+        title: "Report Title",
+        report_type: "Report Type",
+      };
+      newErrors[field] = `${fieldLabels[field] || field} is required`;
+    }
+  });
+
+  if (formData.purpose_id === "to set") {
+    newErrors.purpose_id = "Purpose of Valuation is required";
+  }
+
+  if (formData.value_premise_id === "to set") {
+    newErrors.value_premise_id = "Value Attributes is required";
+  }
+
+  ["submitted_at", "valued_at", "inspection_date"].forEach((field) => {
+    if (formData[field]) {
+      const date = new Date(formData[field]);
+      date.setHours(0, 0, 0, 0);
+      if (date > today) newErrors[field] = "Future dates are not allowed";
+    }
+  });
+
+  if (formData.valued_at && formData.submitted_at) {
+    const valuedAtDate = new Date(formData.valued_at);
+    const submittedAtDate = new Date(formData.submitted_at);
+    if (valuedAtDate > submittedAtDate) {
+      newErrors.valued_at =
+        "Date of Valuation must be on or before Report Issuing Date";
+    }
+  }
+
+  if (formData.client_name && formData.client_name.trim().length < 9) {
+    newErrors.client_name = "Client Name must be at least 9 characters";
+  }
+
+  if (formData.telephone && formData.telephone.trim().length < 8) {
+    newErrors.telephone = "Client Telephone must be at least 8 characters";
+  }
+
+  if (formData.email) {
+    if (formData.email.trim().length < 8) {
+      newErrors.email = "Client Email must be at least 8 characters";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        newErrors.email = "Client Email must be a valid email address";
       }
-    });
-
-    // Check if purpose_id is set to default "to set"
-    if (formData.purpose_id === "to set") {
-      newErrors.purpose_id = "Purpose of Valuation is required";
     }
+  }
 
-    // Check if value_premise_id is set to default "to set"
-    if (formData.value_premise_id === "to set") {
-      newErrors.value_premise_id = "Value Attributes is required";
-    }
+  // ✅ use memoized parsedValue (do NOT re-declare it)
+  if (!Number.isFinite(parsedValue)) {
+    newErrors.value = "Final Value must be a valid number";
+  } else if (parsedValue <= 0) {
+    newErrors.value = "Final Value must be greater than zero";
+  }
 
-    // Date validation: Date of Valuation must be on or before Report Issuing Date
-    if (formData.valued_at && formData.submitted_at) {
-      const valuedAtDate = new Date(formData.valued_at);
-      const submittedAtDate = new Date(formData.submitted_at);
-      
-      if (valuedAtDate > submittedAtDate) {
-        newErrors.valued_at = "Date of Valuation must be on or before Report Issuing Date";
-      }
-    }
+  // ✅ enforce excel totals match (uses memoized message)
+  if (!newErrors.value && excelMismatchMessage) {
+    newErrors.value = excelMismatchMessage;
+  }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-  // const validate = () => {
-  //   const newErrors = {};
-  //   requiredFields.forEach((field) => {
-  //     if (!formData[field]) {
-  //       newErrors[field] = "Required";
-  //     }
-  //   });
-  //   setErrors(newErrors);
-  //   return Object.keys(newErrors).length === 0;
-  // };
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
+
+
+
+
+
+
 
   const purgePersistedState = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -616,12 +825,14 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
       }
       setStatus(null);
       setFileNotes({ excelName: null, pdfName: null });
-      setExcelValidation({
-        status: "idle",
-        issues: [],
-        assets: [],
-        counts: { market: 0, cost: 0, total: 0 },
-      });
+     setExcelValidation({
+  status: "idle",
+  issues: [],
+  assets: [],
+  totals: { market: 0, cost: 0, total: 0 },
+  counts: { market: 0, cost: 0, total: 0 },
+});
+
       setExcelValidationLoading(false);
       if (clearTableState) {
         setSelectedReportIds([]);
@@ -679,7 +890,7 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     if (Array.isArray(payload?.reports)) return payload.reports;
     if (Array.isArray(payload?.data?.reports)) return payload.data.reports;
     if (Array.isArray(payload?.data)) return payload.data;
-    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload)) return payload;F
     return [];
   }, []);
 
@@ -827,61 +1038,72 @@ setPagination({
     setPdfFile(null);
     setWantsPdfUpload(false);
     setFileNotes({ excelName: null, pdfName: report?.pdf_path || null });
-    setExcelValidation({
-      status: "idle",
-      issues: [],
-      assets: [],
-      counts: { market: 0, cost: 0, total: 0 },
-    });
+  setExcelValidation({
+  status: result.issues.length ? "error" : "success",
+  issues: result.issues,
+  assets: result.assets,
+  totals: result.totals,
+  counts: result.counts,
+});
+
     setExcelValidationLoading(false);
     applyReportToForm(report);
   };
 
   const setExcelFileAndRemember = async (file) => {
-    setExcelFile(file);
-    setFileNotes((prev) => ({ ...prev, excelName: file ? file.name : null }));
-    if (!file) {
-      setExcelValidation({
-        status: "idle",
-        issues: [],
-        assets: [],
-        counts: { market: 0, cost: 0, total: 0 },
-      });
-      setExcelValidationLoading(false);
-      return;
-    }
+  setExcelFile(file);
+  setFileNotes((prev) => ({ ...prev, excelName: file ? file.name : null }));
 
-    setExcelValidationLoading(true);
+  if (!file) {
     setExcelValidation({
-      status: "loading",
-      issues: [],
+  status: "idle",
+  issues: [],
+  assets: [],
+  totals: { market: 0, cost: 0, total: 0 },
+  counts: { market: 0, cost: 0, total: 0 },
+});
+
+    setExcelValidationLoading(false);
+    return;
+  }
+
+  setExcelValidationLoading(true);
+ setExcelValidation({
+  status: "idle",
+  issues: [],
+  assets: [],
+  totals: { market: 0, cost: 0, total: 0 },
+  counts: { market: 0, cost: 0, total: 0 },
+});
+
+  try {
+    const result = await parseExcelValidation(file); // ✅ defined here
+
+    setExcelValidation({
+      status: result.issues.length ? "error" : "success",
+      issues: result.issues,
+      assets: result.assets,
+      totals: result.totals,     // ✅ now safe
+      counts: result.counts,
+    });
+  } catch (err) {
+    setExcelValidation({
+      status: "error",
+      issues: [
+        {
+          sheet: "workbook",
+          message: err?.message || "Failed to read Excel file.",
+        },
+      ],
       assets: [],
+      totals: { market: 0, cost: 0, total: 0 },
       counts: { market: 0, cost: 0, total: 0 },
     });
-    try {
-      const result = await parseExcelValidation(file);
-      setExcelValidation({
-        status: result.issues.length ? "error" : "success",
-        issues: result.issues,
-        assets: result.assets,
-        counts: result.counts,
-      });
-    } catch (err) {
-      setExcelValidation({
-        status: "error",
-        issues: [
-          {
-            sheet: "workbook",
-            message: err?.message || "Failed to read Excel file.",
-          },
-        ],
-        assets: [],
-        counts: { market: 0, cost: 0, total: 0 },
-      });
-    } finally {
-      setExcelValidationLoading(false);
-    }
-  };
+  } finally {
+    setExcelValidationLoading(false);
+  }
+};
+
 
   const setPdfFileAndRemember = (file) => {
     setPdfFile(file);
@@ -912,100 +1134,6 @@ setPagination({
   );
 
   
-
-
-
-  // const submitToTaqeem = useCallback(
-  //   async (recordId, tabsNum, options = {}) => {
-  //     const { withLoading = true, resume = false } = options;
-  //     const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
-
-  //     if (withLoading) setSubmitting(true);
-
-  //     try {
-  //       if (!recordId) {
-  //         setStatus({ type: "error", message: "Missing record id for submission." });
-  //         return;
-  //       }
-
-  //       const ok = await ensureTaqeemAuthorized(
-  //         token,
-  //         onViewChange,
-  //         isTaqeemLoggedIn
-  //       );
-  //       if (!ok) {
-  //         setStatus({
-  //           type: "info",
-  //           message: "Taqeem login required. Finish login and choose a company to continue.",
-  //         });
-  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-  //         setReturnView("duplicate-report");
-  //         return;
-  //       }
-
-  //       setStatus({
-  //         type: "info",
-  //         message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
-  //       });
-
-  //       if (!window?.electronAPI?.duplicateReportNavigate) {
-  //         throw new Error("Desktop integration unavailable. Restart the app.");
-  //       }
-
-  //       const res = await window.electronAPI.duplicateReportNavigate(
-  //         recordId,
-  //         undefined,
-  //         resolvedTabs
-  //       );
-
-  //       if (res?.status === "SUCCESS") {
-  //         setStatus({
-  //           type: "success",
-  //           message: "Report submitted to Taqeem. Browser closed after completion.",
-  //         });
-  //         resetPendingSubmit();
-  //         resetReturnView();
-  //         return;
-  //       }
-
-  //       const errMsg =
-  //         res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
-
-  //       if (/no company selected/i.test(errMsg)) {
-  //         setStatus({ type: "warning", message: errMsg });
-  //         setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-  //         setReturnView("duplicate-report");
-  //         onViewChange?.("get-companies");
-  //         return;
-  //       }
-
-  //       throw new Error(errMsg);
-  //     } catch (err) {
-  //       setStatus({
-  //         type: "error",
-  //         message: err?.message || "Failed to submit report to Taqeem.",
-  //       });
-  //       resetPendingSubmit();
-  //       resetReturnView();
-  //     } finally {
-  //       if (withLoading) {
-  //         setSubmitting(false);
-  //       }
-  //     }
-  //   },
-  //   [
-  //     isTaqeemLoggedIn,
-  //     onViewChange,
-  //     resetPendingSubmit,
-  //     resetReturnView,
-  //     resolveTabsForAssets,
-  //     setPendingSubmit,
-  //     setReturnView,
-  //     token,
-  //   ]
-  // );
-
-
 
   const submitToTaqeem = useCallback(
   async (recordId, tabsNum, options = {}) => {
@@ -1225,171 +1353,7 @@ setPagination({
     }
   };
 
-  // const handleStoreAndSubmitNow = async () => {
-  //   // Call the original create report function but keep modal open
-  //   const success = await handleCreateReport(false);
 
-  //   if (success) {
-  //     try {
-  //       // Get the latest reports to find the newly created one
-  //       const result = await fetchDuplicateReports();
-  //       const latestReports = normalizeReportsResponse(result);
-
-  //       if (latestReports.length > 0) {
-  //         // Get the most recent report (should be the one we just created)
-  //         const latestReport = latestReports[latestReports.length - 1];
-  //         const recordId = getReportRecordId(latestReport);
-
-  //         if (recordId) {
-  //           // Close the modal
-  //           setShowCreateModal(false);
-
-  //           // Submit to Taqeem
-  //           const assetCount = Array.isArray(latestReport.asset_data)
-  //             ? latestReport.asset_data.length
-  //             : 0;
-  //           const tabsForAssets = resolveTabsForAssets(assetCount);
-
-  //           await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
-  //         }
-  //       }
-  //     } catch (err) {
-  //       setStatus({
-  //         type: "error",
-  //         message: "Report stored but failed to submit to Taqeem: " +
-  //           (err?.message || "Unknown error")
-  //       });
-  //     }
-  //   }
-  // };
-
-
-//   const handleStoreAndSubmitNow = async () => {
-//   if (!validate()) {
-//     setStatus({ type: "error", message: "Please fill required fields." });
-//     return;
-//   }
-//   if (!excelFile) {
-//     setStatus({ type: "error", message: "Excel file is required." });
-//     return;
-//   }
-//   if (excelValidationLoading) {
-//     setStatus({ type: "error", message: "Wait for Excel validation to finish." });
-//     return;
-//   }
-//   if (excelValidation.issues.length) {
-//     setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
-//     return;
-//   }
-//   if (wantsPdfUpload && !pdfFile) {
-//     setStatus({ type: "error", message: "PDF file is required when enabled." });
-//     return;
-//   }
-
-//   setSubmitting(true);
-//   setStatus({ type: "info", message: "Preparing..." });
-
-//   try {
-//     const requiredPoints = excelValidation?.counts?.total || 0;
-
-//     const result = await executeWithAuth(
-//       async ({ token: authToken }) => {
-//         // 1) STORE report (same as handleCreateReport but inside wrapper)
-//         const payload = new FormData();
-//         payload.append(
-//           "formData",
-//           JSON.stringify({
-//             ...formData,
-//             report_users: reportUsers || [],
-//             valuers,
-//           })
-//         );
-//         payload.append("excel", excelFile);
-//         if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
-
-//         const createRes = await createDuplicateReport(payload);
-//         if (!createRes?.success) {
-//           throw new Error(createRes?.message || "Could not save report.");
-//         }
-
-//         // 2) RELOAD reports and pick the latest record id (your existing logic)
-//         const fetched = await fetchDuplicateReports();
-//         const latestReports = normalizeReportsResponse(fetched);
-//         const latestReport = latestReports?.[latestReports.length - 1];
-//         const recordId = getReportRecordId(latestReport);
-
-//         if (!recordId) {
-//           throw new Error("Report stored but could not find its record id.");
-//         }
-
-//         // 3) Ensure Taqeem authorized
-//         const ok = await ensureTaqeemAuthorized(authToken, onViewChange, taqeemStatus?.state === "success");
-//         if (!ok) {
-//           // IMPORTANT: Let auth hook / your login flow handle the redirect
-//           // (If your executeWithAuth already redirects on LOGIN_REQUIRED, you can throw a special error)
-//           throw new Error("LOGIN_REQUIRED");
-//         }
-
-//         // 4) Submit via Electron
-//         const assetCount = Array.isArray(latestReport?.asset_data) ? latestReport.asset_data.length : 0;
-//         const tabsForAssets = resolveTabsForAssets(assetCount);
-
-//         const submitRes = await window.electronAPI.duplicateReportNavigate(recordId, undefined, tabsForAssets);
-//         if (submitRes?.status !== "SUCCESS") {
-//           const msg = submitRes?.error || "Upload to Taqeem failed.";
-//           if (/no company selected/i.test(msg)) {
-//             // keep your existing behavior
-//             setPendingSubmit({ recordId, tabsNum: tabsForAssets, resumeOnLoad: true });
-//             setReturnView("duplicate-report");
-//             onViewChange?.("get-companies");
-//             throw new Error(msg);
-//           }
-//           throw new Error(msg);
-//         }
-
-//         return { success: true, recordId };
-//       },
-//       {},
-//       {
-//         requiredPoints,
-//         onViewChange,
-//         showInsufficientPointsModal: () => {
-//           // you can implement similar modal logic if you have it here,
-//           // or just show a status message
-//           setStatus({ type: "warning", message: "Insufficient points." });
-//         },
-//         onAuthSuccess: () => {
-//           // THIS IS WHERE YOU FIX THE UI TO STAY ON
-//           setTaqeemStatus?.({ state: "success", message: "Authorized" });
-//         },
-//         onAuthFailure: (reason) => {
-//           if (reason === "LOGIN_REQUIRED") {
-//             setStatus({ type: "info", message: "Login required. Please login to continue." });
-//           } else if (reason === "INSUFFICIENT_POINTS") {
-//             setStatus({ type: "warning", message: "Insufficient points." });
-//           } else {
-//             setStatus({ type: "error", message: reason?.message || "Authentication failed." });
-//           }
-//         },
-//       }
-//     );
-
-//     if (result?.success) {
-//       setStatus({ type: "success", message: "Stored + submitted successfully." });
-//       await loadReports();
-//       setShowCreateModal(false);
-//     }
-//   } catch (err) {
-//     if (String(err?.message || err) === "LOGIN_REQUIRED") {
-//       // if your auth hook handles this, you may not need anything here
-//       setStatus({ type: "info", message: "Please login to Taqeem to continue." });
-//     } else {
-//       setStatus({ type: "error", message: err?.message || "Failed." });
-//     }
-//   } finally {
-//     setSubmitting(false);
-//   }
-// };
 
 
 const handleStoreAndSubmitNow = async () => {
@@ -1406,10 +1370,7 @@ const handleStoreAndSubmitNow = async () => {
     return;
   }
   if (excelValidation.issues.length) {
-    setStatus({
-      type: "error",
-      message: "Fix Excel validation issues before submitting.",
-    });
+    setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
     return;
   }
   if (wantsPdfUpload && !pdfFile) {
@@ -1424,17 +1385,16 @@ const handleStoreAndSubmitNow = async () => {
     const requiredPoints = excelValidation?.counts?.total || 0;
 
     const result = await executeWithAuth(
-      async ({ token: authToken }) => {
-        // 1) STORE report
+      async () => {
+        // 1) STORE report using CURRENT edited formData (this is already correct)
         const payload = new FormData();
-        payload.append(
-          "formData",
-          JSON.stringify({
-            ...formData,
-            report_users: reportUsers || [],
-            valuers,
-          })
-        );
+        const draftSnapshot = {
+          ...formData,
+          report_users: reportUsers || [],
+          valuers,
+        };
+
+        payload.append("formData", JSON.stringify(draftSnapshot));
         payload.append("excel", excelFile);
         if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
 
@@ -1443,20 +1403,35 @@ const handleStoreAndSubmitNow = async () => {
           throw new Error(createRes?.message || "Could not save report.");
         }
 
-        // 2) RELOAD reports and find latest
-        const fetched = await fetchDuplicateReports();
-        const latestReports = normalizeReportsResponse(fetched);
-        const latestReport = latestReports?.[latestReports.length - 1];
-        const recordId = getReportRecordId(latestReport);
+        // 2) FETCH newest reports (page 1, status all) and MATCH by content
+        // ⚠️ Adjust params below to what your backend supports
+        const fetched = await fetchDuplicateReports({
+          page: 1,
+          limit: 50,
+          status: "all",
+          // if your API supports sorting, add it:
+          // sort: "createdAt:desc"
+        });
+
+        const list = normalizeReportsResponse(fetched) || [];
+
+        // If backend returns newest-first already, great.
+        // If not, we sort safely on frontend too.
+        const newestFirst = [...list].sort((a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a));
+
+        const created = findCreatedReport(newestFirst, draftSnapshot);
+
+        // As a last fallback, use newest report
+        const chosen = created || newestFirst[0];
+
+        const recordId = getReportRecordId(chosen);
 
         if (!recordId) {
-          throw new Error("Report stored but could not find its record id.");
+          throw new Error("Report stored but could not determine its record id (matching failed).");
         }
 
-        // 3) SUBMIT (auth already satisfied by executeWithAuth)
-        const assetCount = Array.isArray(latestReport?.asset_data)
-          ? latestReport.asset_data.length
-          : 0;
+        // 3) SUBMIT that exact recordId
+        const assetCount = excelValidation?.counts?.total || 0;
         const tabsForAssets = resolveTabsForAssets(assetCount);
 
         await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
@@ -1472,17 +1447,11 @@ const handleStoreAndSubmitNow = async () => {
         },
         onAuthFailure: (reason) => {
           if (reason === "LOGIN_REQUIRED") {
-            setStatus({
-              type: "info",
-              message: "Login required. Please login to continue.",
-            });
+            setStatus({ type: "info", message: "Login required. Please login to continue." });
           } else if (reason === "INSUFFICIENT_POINTS") {
             setStatus({ type: "warning", message: "Insufficient points." });
           } else {
-            setStatus({
-              type: "error",
-              message: reason?.message || "Authentication failed.",
-            });
+            setStatus({ type: "error", message: reason?.message || "Authentication failed." });
           }
         },
       }
