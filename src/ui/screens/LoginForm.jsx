@@ -68,7 +68,10 @@ const LoginForm = ({ onViewChange }) => {
                     type: 'success'
                 });
                 setTimeout(() => {
-                    if (onViewChange) onViewChange('apps');
+                    if (onViewChange) {
+                        console.log("was in login page before");
+                        onViewChange('apps')
+                    };
                 }, 500);
             } else {
                 throw new Error(result?.error || result?.message || t('login.errors.loginFailed'));

@@ -25,6 +25,7 @@ const UploadAssets = ({ onViewChange }) => {
     const [reportId, setReportId] = useState("");
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
+
     const openFileDialogAndExtract = async () => {
         try {
             setError("");
@@ -492,7 +493,8 @@ const UploadAssets = ({ onViewChange }) => {
         setUploadLoading(true);
 
         try {
-            const activeToken = await ensureGuestSession();
+            const tokenObj = await window.electronAPI.getToken?.();
+            const activeToken = tokenObj?.refreshToken || tokenObj?.token;
 
             console.log("[UploadAssets] Storing report for later submission with token:", !!activeToken);
 
@@ -512,7 +514,7 @@ const UploadAssets = ({ onViewChange }) => {
                     storeOnly: true
                 },
                 {
-                    Authorization: `Bearer ${activeToken}`
+                    Authorization: `Bearer ${token}`
                 }
             );
 

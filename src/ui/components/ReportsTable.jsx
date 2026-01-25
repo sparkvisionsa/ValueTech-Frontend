@@ -348,10 +348,15 @@ const ReportsTable = () => {
         );
     };
 
-    const fetchAllReports = async () => {
+    const fetchAllReports = async (overrideToken) => {
         try {
             setLoading(true);
             setError("");
+
+            const activeToken = overrideToken || token;
+
+            if (!activeToken) return;
+
 
             const params = new URLSearchParams({
                 page: currentPage.toString(),
@@ -366,7 +371,7 @@ const ReportsTable = () => {
                 `/api/report/getReportsByUserId?${params.toString()}`,
                 {},
                 {
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${activeToken}`
                 }
             );
 
@@ -594,8 +599,10 @@ const ReportsTable = () => {
     };
 
     useEffect(() => {
-        const handleRefreshEvent = () => {
-            fetchAllReports();
+        const handleRefreshEvent = async () => {
+            const tokenObj = await window.electronAPI.getToken?.();
+            const activeToken = tokenObj?.refreshToken || tokenObj?.token;
+            fetchAllReports(activeToken);
         };
 
         window.addEventListener('refreshReportsTable', handleRefreshEvent);
@@ -611,6 +618,38 @@ const ReportsTable = () => {
             document.removeEventListener('click', handleClickOutside);
         };
     }, []);
+
+    const ensureGuestSession = async () => {
+        if (token) return token;
+        if (!window?.electronAPI?.apiRequest) {
+            throw new Error("Desktop integration unavailable. Restart the app.");
+        }
+
+        const tokenObj = await window.electronAPI.getToken?.();
+        const bearer = tokenObj?.refreshToken || tokenObj?.token;
+        const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
+
+        const result = await window.electronAPI.apiRequest("POST", "/api/users/guest", {}, headers);
+        if (!result?.token || !result?.userId) {
+            throw new Error(result?.message || result?.error || "Failed to create guest session.");
+        }
+
+        if (result?.refreshToken && window.electronAPI?.setRefreshToken) {
+            try {
+                await window.electronAPI.setRefreshToken(result.refreshToken, {
+                    name: 'refreshToken',
+                    maxAgeDays: 7,
+                    sameSite: 'lax'
+                });
+            } catch (err) {
+                console.warn("Failed to set refresh token for guest session:", err);
+            }
+        }
+
+        const guestUser = { _id: result.userId, id: result.userId, guest: true };
+        login(guestUser, result.token);
+        return result.token;
+    };
 
 
     return (
