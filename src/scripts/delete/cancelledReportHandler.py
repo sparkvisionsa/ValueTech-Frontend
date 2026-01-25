@@ -1,6 +1,6 @@
 import asyncio
 from scripts.core.utils import log, wait_for_element
-from scripts.core.browser import new_tab
+from scripts.core.browser import new_tab, close_extra_tabs
 from scripts.core.company_context import build_report_url, require_selected_company
 from .reportInfo import extract_report_info
 from .pagination import go_to_last_asset_page
@@ -132,6 +132,7 @@ async def handle_cancelled_report(report_id: str, control_state=None) -> dict:
             "message": str
         }
     """
+    page = None
     try:
         try:
             require_selected_company()
@@ -218,3 +219,6 @@ async def handle_cancelled_report(report_id: str, control_state=None) -> dict:
             "wasCancelled": False,
             "error": str(e)
         }
+    
+    finally:
+        await close_extra_tabs()

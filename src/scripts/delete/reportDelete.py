@@ -1092,35 +1092,29 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10, user_id: str 
 
         async def open_visible_window(url):
             base_browser = None
+            new_browser = None
             try:
-                base_browser = await get_browser()
-            except Exception:
-                base_browser = None
-
-            if base_browser:
                 try:
-                    visible_browser = await spawn_new_browser(base_browser, headless=False)
-                except Exception as e:
-                    return {"status": "FAILED", "error": str(e)}
-
-                try:
-                    await base_browser.stop()
+                    base_browser = await get_browser()
                 except Exception:
-                    pass
+                    base_browser = None
 
-                browser_ctx.browser = visible_browser
-                try:
-                    return await visible_browser.get(url, new_window=True)
-                except Exception as e:
-                    return {"status": "FAILED", "error": str(e)}
+                if base_browser:
+                    new_browser = await spawn_new_browser(base_browser, headless=False)
 
-            try:
-                visible_browser = await get_browser(force_new=True, headless_override=False)
-                return await visible_browser.get(url, new_window=True)
+                    browser_ctx.browser = new_browser
+                    page = await new_browser.get(url, new_window=True)
+                    return page, new_browser
+
+                new_browser = await get_browser(force_new=True, headless_override=False)
+                page = await new_browser.get(url, new_window=True)
+                return page, new_browser
+
             except Exception as e:
-                return {"status": "FAILED", "error": str(e)}
+                return {"status": "FAILED", "error": str(e)}, None
 
-        page = await open_visible_window(report_url)
+
+        page, new_browser = await open_visible_window(report_url)
         if not page or isinstance(page, dict):
             error_msg = page.get("error") if isinstance(page, dict) else "Failed to open report window."
             log(f"Report {report_id}: could not open report window ({error_msg})", "ERR")
@@ -1440,6 +1434,13 @@ async def delete_report_flow(report_id: str, max_rounds: int = 10, user_id: str 
             "error": str(e),
             "reportId": report_id
         }
+    
+    finally:
+        try:
+            if new_browser:
+                new_browser.stop()
+        except Exception as e:
+            log(f"Report {report_id}: Failed to close new browser: {e}", "WARN")
     
 async def delete_multiple_reports_flow(
     report_ids: list[str],

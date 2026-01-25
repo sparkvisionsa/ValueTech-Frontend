@@ -38,6 +38,16 @@ async def spawn_new_browser(
         pass
     return new_browser    
 
+async def close_extra_tabs(browser = None):
+    if not browser:
+        browser = await get_browser()
+    
+    for tab in browser.tabs[1:]:
+        try:
+            await tab.close()
+        except Exception as e:
+            print(f"Failed to close tab: {e}")
+    
 
 async def switch_to_headless():
     global browser
