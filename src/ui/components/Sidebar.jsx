@@ -407,7 +407,8 @@ const Sidebar = ({ currentView, onViewChange }) => {
     const renderEvaluationSourcesLinks = () => {
         if (selectedCard !== 'evaluation-sources') return null;
         const evaluationLinks = [
-            { id: 'haraj', label: 'Haraj Data', icon: Database }
+            { id: 'haraj', label: 'Haraj Data', icon: Database },
+            { id: 'haraj-data-updated', label: 'Haraj Data Updated', icon: Database }
         ];
         return (
             <div
@@ -421,7 +422,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                     {evaluationLinks.map((item, index) => {
                         const Icon = item.icon;
                         const blocked = isFeatureBlocked(item.id);
-                        const isActive = currentView === item.id || currentView === 'haraj-data';
+                        const isActive = currentView === item.id || (item.id === 'haraj' && currentView === 'haraj-data');
                         return (
                             <li
                                 key={item.id}
@@ -432,7 +433,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
                                     onClick={() => {
                                         if (blocked) return;
                                         setActiveGroup('evaluationSources');
-                                        delayViewChange('haraj');
+                                        delayViewChange(item.id);
                                     }}
                                     disabled={blocked}
                                     className={`group relative w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all duration-150 text-[11px] ${

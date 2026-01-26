@@ -101,9 +101,23 @@ const Apps = ({ onViewChange }) => {
         })();
     };
 
+    const openEvaluationSources = (card) => {
+        const evaluationTabs = valueSystemGroups.evaluationSources?.tabs || [];
+        const mainTab = evaluationTabs.find((tab) => tab.id === 'haraj')?.id || evaluationTabs[0]?.id || 'haraj';
+
+        chooseCard(card.id);
+        setActiveGroup('evaluationSources');
+        setActiveTab(mainTab);
+        if (onViewChange) onViewChange(mainTab);
+    };
+
     const handleCardClick = async (card) => {
         if (card.id === 'uploading-reports') {
             await openUploadingReports(card);
+            return;
+        }
+        if (card.id === 'evaluation-sources') {
+            openEvaluationSources(card);
             return;
         }
         chooseCard(card.id);

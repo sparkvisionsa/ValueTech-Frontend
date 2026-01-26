@@ -14,6 +14,7 @@ import { useSession } from "../context/SessionContext";
 import { useSystemControl } from "../context/SystemControlContext";
 import { useRam } from "../context/RAMContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { useValueNav } from "../context/ValueNavContext";
 import usePersistentState from "../hooks/usePersistentState";
 import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import {
@@ -39,6 +40,40 @@ const toComparable = (v) => String(v ?? "").trim().toLowerCase();
 const numComparable = (v) => {
   const n = Number(String(v ?? "").replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : NaN;
+};
+
+const normalizeValuerOption = (valuer = {}) => {
+  const valuerId = (valuer.valuerId || valuer.valuer_id || valuer.id || "").toString().trim();
+  const valuerName = (valuer.valuerName || valuer.valuer_name || valuer.name || "").toString().trim();
+  return { valuerId, valuerName };
+};
+
+const normalizeValuerList = (list = []) =>
+  (Array.isArray(list) ? list : [])
+    .map((valuer) => normalizeValuerOption(valuer))
+    .filter((valuer) => valuer.valuerId || valuer.valuerName);
+
+const toValuerLabel = (valuer = {}) => {
+  const id = (valuer.valuerId || "").toString().trim();
+  const name = (valuer.valuerName || "").toString().trim();
+  if (id && name) return `${id} - ${name}`;
+  return name || id || "";
+};
+
+const matchCompanyBySelection = (companies = [], selectedCompany) => {
+  if (!selectedCompany) return null;
+  const officeId = selectedCompany?.officeId || selectedCompany?.office_id;
+  const match = (companies || []).find((company) => {
+    const candidateOffice = company?.officeId || company?.office_id;
+    if (officeId !== undefined && officeId !== null) {
+      return String(candidateOffice) === String(officeId);
+    }
+    if (selectedCompany?.url) {
+      return company?.url === selectedCompany.url;
+    }
+    return company?.name === selectedCompany?.name;
+  });
+  return match || selectedCompany;
 };
 
 const findCreatedReport = (list, draft) => {
@@ -460,7 +495,7 @@ const buildDefaultFormData = () => ({
 
 const buildDefaultValuers = () => ([
   {
-    valuer_name: "4210000296 - فالح مفلح فالح الشهراني",
+    valuer_name: "",
     contribution_percentage: 100,
   },
 ]);
@@ -547,7 +582,14 @@ const [currentPage, setCurrentPage] = useState(1);
   const { ramInfo } = useRam();
   const { executeWithAuth, authLoading, authError } = useAuthAction();
 
-const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+  const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+  const {
+    selectedCompany,
+    companies,
+    loadSavedCompanies,
+    syncCompanies,
+    replaceCompanies,
+  } = useValueNav();
 
 
 
@@ -564,6 +606,9 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [reportUsers, setReportUsers, resetReportUsers] = usePersistentState("duplicate:reportUsers", formData?.report_users || []);
   const [valuers, setValuers, resetValuers] = usePersistentState("duplicate:valuers", buildDefaultValuers());
+  const [overrideCompanyValuers, setOverrideCompanyValuers] = useState(null);
+  const [fetchingCompanyValuers, setFetchingCompanyValuers] = useState(false);
+  const [valuerNotice, setValuerNotice] = useState(null);
   const [fileNotes, setFileNotes, resetFileNotes] = usePersistentState("duplicate:fileNotes", { excelName: null, pdfName: null });
  const [excelValidation, setExcelValidation] = useState({
   status: "idle",
@@ -599,6 +644,7 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   const [pendingSubmit, setPendingSubmit, resetPendingSubmit] = usePersistentState("duplicate:pendingSubmit", null, { storage: "session" });
   const [, setReturnView, resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
   const pdfInputRef = useRef(null);
+  const fetchCompanyValuersPromiseRef = useRef(null);
   const recommendedTabs = ramInfo?.recommendedTabs || 1;
   const guestAccessEnabled = systemState?.guestAccessEnabled ?? true;
   const guestSession = isGuest || !token;
@@ -610,46 +656,26 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
   const previewLimit = 200;
   const isEditing = Boolean(editingReportId);
   const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
-  const valuerOptions = useMemo(
-    () => [
-      "4210000352 - حسام سعيد علي الاسمري",
-      "4210000088 - أحمد محمد عبدالله ابابطين",
-      "4210000102 - خالد عبدالكريم بن عبدالعزيز الجاسر",
-      "4210000091 - هاني ابراهيم محمد رواس",
-      "4210000334 - سعيد بن علي بن سعيد الزهراني",
-      "4210000375 - احمد زبن دبيان الروقي",
-      "4210000059 - عبدالله بن عبدالرحمن بن عبدالله الصعب",
-      "4210000096 - سيف مساعد بن فالح الحربي",
-      "4210000258 - فايز عويض ساير الحربي",
-      "4210000010 - حمزه مشبب فهد العاصمي",
-      "4210000364 - أسامه محمد بن قائد هزازي",
-      "4210000113 - مالك انس سليمان حافظ",
-      "4210000078 - رائد ناصر عبدالله العميره",
-      "4210000183 - فيصل عايض جربوع الرويلي",
-      "4210000170 - عبدالله نجيب بن خالد الحليبي",
-      "4210000193 - محمد حمود عبدالرحمن العايد",
-      "4210000282 - عبيد مناحي سياف الشهراني",
-      "4210000356 - بندر عبدالله ابن سعد الهويمل",
-      "4210000374 - لميس حسن جميل ثقه",
-      "4210000210 - عبدالرحمن مساعد محمدراشد الصبحي",
-      "4210000382 - ناصر عبدالله ابراهيم البصيص",
-      "4210000201 - فهد محمد عيد الرشيدي",
-      "4210000285 - تركي محمد عبدالمحسن الحربي",
-      "4220000293 - عمر سالم عثمان على",
-      "4210000277 - حسين علي بن احمد ابوحسون",
-      "4210000323 - علي بن معتوق بن ابراهيم الحسين",
-      "4210000347 - عبدالله محمد عبدالله العجاجى",
-      "4210000296 - فالح مفلح فالح الشهراني",
-      "4210000335 - خالد محمد ابراهيم العضيبى",
-      "4210000346 - عبدالله احمد عبدالله الغامدي",
-      "4210000340 - شريفة سعيد عوض القحطاني",
-      "4210000381 - آحمد ابراهيم عبدالعزيز اللهيب",
-      "4210000369 - سعود حسين بن علي آل فطيح",
-      "4210000366 - حسام موسى سعد السويري",
-      "4210000008 - حمد عبدالله ناصر الحمد",
-    ],
-    []
+  const companyFromList = useMemo(
+    () => matchCompanyBySelection(companies, selectedCompany),
+    [companies, selectedCompany]
   );
+  const companyValuers = useMemo(
+    () => normalizeValuerList(companyFromList?.valuers || []),
+    [companyFromList]
+  );
+  const displayCompanyValuers = overrideCompanyValuers ?? companyValuers;
+  const valuerOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    displayCompanyValuers.forEach((valuer) => {
+      const label = toValuerLabel(valuer);
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      options.push(label);
+    });
+    return options;
+  }, [displayCompanyValuers]);
   const contributionOptions = useMemo(
     () => [
       5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95,
@@ -657,6 +683,14 @@ const { taqeemStatus, setTaqeemStatus } = useNavStatus();
     ],
     []
   );
+  const selectedCompanyKey = useMemo(
+    () =>
+      String(
+        selectedCompany?.officeId || selectedCompany?.office_id || selectedCompany?.url || ""
+      ),
+    [selectedCompany]
+  );
+  const valuerInputsDisabled = valuerOptions.length === 0;
 
 
 
@@ -704,6 +738,30 @@ const excelMismatchMessage = useMemo(() => {
     ? ""
     : `Final Value must equal to Sum of Final value in Excel . Excel: ${excelTotal}, Report: ${parsedValue}`;
 }, [excelFile, excelValidation, parsedValue]);
+
+  useEffect(() => {
+    setOverrideCompanyValuers(null);
+    setValuerNotice(null);
+  }, [selectedCompanyKey]);
+
+  useEffect(() => {
+    setValuers((prev) => {
+      const base = Array.isArray(prev) && prev.length ? prev : buildDefaultValuers();
+      if (!valuerOptions.length) {
+        return base.map((valuer) => ({ ...valuer, valuer_name: "" }));
+      }
+      const cleaned = base.map((valuer) =>
+        valuerOptions.includes(valuer.valuer_name)
+          ? valuer
+          : { ...valuer, valuer_name: "" }
+      );
+      const hasAny = cleaned.some((valuer) => valuer.valuer_name);
+      if (!hasAny && valuerOptions.length === 1) {
+        return [{ valuer_name: valuerOptions[0], contribution_percentage: 100 }];
+      }
+      return cleaned;
+    });
+  }, [selectedCompanyKey, setValuers, valuerOptions]);
 
 const validate = () => {
   const newErrors = {};
@@ -1133,6 +1191,147 @@ setPagination({
     [recommendedTabs]
   );
 
+  const waitForTaqeemLogin = useCallback(async (timeoutMs = 180000, intervalMs = 2000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (!window?.electronAPI?.checkStatus) return true;
+      const status = await window.electronAPI.checkStatus();
+      const ok = status?.browserOpen
+        && String(status?.status || "").toUpperCase().includes("SUCCESS");
+      if (ok) {
+        setTaqeemStatus?.("success", "Taqeem login: On");
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    throw new Error("Timed out waiting for Taqeem login.");
+  }, [setTaqeemStatus]);
+
+  const refreshCompaniesFromTaqeem = useCallback(async () => {
+    if (fetchCompanyValuersPromiseRef.current) {
+      return fetchCompanyValuersPromiseRef.current;
+    }
+    const run = (async () => {
+      if (!window?.electronAPI?.getCompanies) {
+        throw new Error("Desktop integration unavailable. Restart the app.");
+      }
+      setFetchingCompanyValuers(true);
+      try {
+        let isLoggedIn = taqeemStatus?.state === "success";
+        if (window?.electronAPI?.checkStatus) {
+          const status = await window.electronAPI.checkStatus();
+          isLoggedIn = status?.browserOpen
+            && String(status?.status || "").toUpperCase().includes("SUCCESS");
+          if (isLoggedIn) {
+            setTaqeemStatus?.("success", "Taqeem login: On");
+          }
+        }
+
+        if (!isLoggedIn) {
+          if (!window?.electronAPI?.openTaqeemLogin) {
+            throw new Error("Taqeem login handler unavailable.");
+          }
+          const loginResult = await window.electronAPI.openTaqeemLogin({
+            automationOnly: true,
+            onlyIfClosed: true,
+            navigateIfOpen: false
+          });
+          if (loginResult?.status !== "SUCCESS") {
+            throw new Error(loginResult?.error || "Failed to open Taqeem login.");
+          }
+          await waitForTaqeemLogin();
+        }
+
+        const data = await window.electronAPI.getCompanies();
+        if (data?.status && data.status !== "SUCCESS") {
+          throw new Error(data?.error || "Failed to fetch companies from Taqeem.");
+        }
+        const fetched = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.companies)
+            ? data.companies
+            : [];
+        if (!fetched.length) {
+          throw new Error("No companies found in Taqeem.");
+        }
+        const prepared = fetched.map((company) => ({
+          ...company,
+          type: company.type || "equipment",
+        }));
+        let synced = prepared;
+        if (syncCompanies && !isGuest) {
+          try {
+            const syncedRes = await syncCompanies(prepared, "equipment");
+            if (Array.isArray(syncedRes) && syncedRes.length > 0) {
+              synced = syncedRes;
+            }
+          } catch (err) {
+            console.warn("Failed to sync companies after Taqeem login", err);
+          }
+        }
+        if (replaceCompanies) {
+          await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: false });
+        } else if (loadSavedCompanies) {
+          await loadSavedCompanies("equipment");
+        }
+        return synced;
+      } finally {
+        setFetchingCompanyValuers(false);
+      }
+    })();
+    fetchCompanyValuersPromiseRef.current = run;
+    try {
+      return await run;
+    } finally {
+      fetchCompanyValuersPromiseRef.current = null;
+    }
+  }, [
+    fetchCompanyValuersPromiseRef,
+    isGuest,
+    loadSavedCompanies,
+    replaceCompanies,
+    setTaqeemStatus,
+    syncCompanies,
+    taqeemStatus?.state,
+    waitForTaqeemLogin
+  ]);
+
+  const handleLoadValuers = useCallback(async () => {
+    if (!selectedCompany) {
+      setValuerNotice({
+        type: "warning",
+        message: "Select a company first to load valuers.",
+      });
+      return;
+    }
+    setValuerNotice({
+      type: "info",
+      message: "Connecting to Taqeem to load valuers...",
+    });
+    try {
+      const refreshed = await refreshCompaniesFromTaqeem();
+      const match = matchCompanyBySelection(refreshed, selectedCompany);
+      const available = normalizeValuerList(match?.valuers || []);
+      if (available.length) {
+        setOverrideCompanyValuers(available);
+        setValuerNotice({
+          type: "success",
+          message: "Valuers loaded successfully.",
+        });
+      } else {
+        setValuerNotice({
+          type: "warning",
+          message: "No valuers found for the selected company in Taqeem.",
+        });
+      }
+    } catch (err) {
+      setValuerNotice({
+        type: "error",
+        message: err?.message || "Failed to load valuers from Taqeem.",
+      });
+    }
+  }, [refreshCompaniesFromTaqeem, selectedCompany]);
+
   
 
   const submitToTaqeem = useCallback(
@@ -1258,7 +1457,7 @@ setPagination({
     setValuers((prev) => [
       ...prev,
       {
-        valuer_name: "4210000296 - فالح مفلح فالح الشهراني",
+        valuer_name: valuerOptions.length === 1 ? valuerOptions[0] : "",
         contribution_percentage: 100,
       },
     ]);
@@ -2926,7 +3125,11 @@ const handleReportAction = async (report, action) => {
                 <button
                   type="button"
                   onClick={addValuer}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                  disabled={valuerInputsDisabled}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold ${valuerInputsDisabled
+                    ? "bg-blue-900/20 text-blue-900/50 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
                 >
                   اضافة مقيم اخر
                 </button>
@@ -2940,6 +3143,44 @@ const handleReportAction = async (report, action) => {
               </div>
             </div>
 
+            {!selectedCompany && (
+              <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-900">
+                Select a company from the dropdown to load valuers.
+              </div>
+            )}
+
+            {selectedCompany && !valuerOptions.length && (
+              <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                <span>Connect to Taqeem first to load valuers for this company.</span>
+                <button
+                  type="button"
+                  onClick={handleLoadValuers}
+                  disabled={fetchingCompanyValuers}
+                  className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[10px] font-semibold ${fetchingCompanyValuers
+                    ? "bg-amber-200 text-amber-800 cursor-not-allowed"
+                    : "bg-amber-600 text-white hover:bg-amber-700"
+                    }`}
+                >
+                  {fetchingCompanyValuers ? "Loading..." : "Connect to Taqeem"}
+                </button>
+              </div>
+            )}
+
+            {valuerNotice && (
+              <div
+                className={`mb-2 rounded-lg border px-3 py-2 text-[10px] ${valuerNotice.type === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : valuerNotice.type === "error"
+                    ? "border-rose-200 bg-rose-50 text-rose-800"
+                    : valuerNotice.type === "warning"
+                      ? "border-amber-200 bg-amber-50 text-amber-900"
+                      : "border-blue-200 bg-blue-50 text-blue-800"
+                  }`}
+              >
+                {valuerNotice.message}
+              </div>
+            )}
+
             <div className="space-y-2">
               {valuers.map((valuer, idx) => (
                 <div
@@ -2951,7 +3192,8 @@ const handleReportAction = async (report, action) => {
                       اسم المقيم *
                     </label>
                     <select
-                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                      disabled={valuerInputsDisabled}
+                      className={`w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 ${valuerInputsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
                       value={valuer.valuer_name}
                       onChange={(e) =>
                         handleValuerChange(idx, "valuer_name", e.target.value)
@@ -2970,7 +3212,8 @@ const handleReportAction = async (report, action) => {
                       نسبة المساهمة *
                     </label>
                     <select
-                      className="w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                      disabled={valuerInputsDisabled}
+                      className={`w-full px-2.5 py-1.5 border border-blue-900/20 rounded-md bg-white/90 text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 ${valuerInputsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
                       value={valuer.contribution_percentage}
                       onChange={(e) =>
                         handleValuerChange(
