@@ -86,7 +86,7 @@ const checkMissingPages = async (reportId) => {
     return await httpClient.get(url);
 }
 
-const uploadElrajhiBatch = async (validationExcelFile, validationPdfFiles) => {
+const uploadElrajhiBatch = async (validationExcelFile, validationPdfFiles, valuers = null) => {
     const formData = new FormData();
 
     // field name MUST match Multer config: 'excel'
@@ -96,6 +96,10 @@ const uploadElrajhiBatch = async (validationExcelFile, validationPdfFiles) => {
     (validationPdfFiles || []).forEach((file) => {
         formData.append("pdfs", file);
     });
+
+    if (Array.isArray(valuers) && valuers.length > 0) {
+        formData.append("valuers", JSON.stringify(valuers));
+    }
 
     const response = await httpClient.post(
         "/elrajhi-upload",

@@ -374,6 +374,16 @@ export const ValueNavProvider = ({ children }) => {
         }
     }, [companySyncDone, selectedCompany, setSelectedCompany, taqeemStatus?.state]);
 
+    useEffect(() => {
+        if (!selectedCompany || !companies || companies.length === 0) return;
+        const key = getCompanyKey(selectedCompany);
+        if (!key) return;
+        const match = companies.find((company) => getCompanyKey(company) === key);
+        if (match && match !== selectedCompany) {
+            setSelectedCompanyState(normalizeCompany(match));
+        }
+    }, [companies, selectedCompany, setSelectedCompanyState]);
+
     const ensureCompaniesLoaded = useCallback(async (type = 'equipment') => {
         if (companies && companies.length > 0) return companies;
         return loadSavedCompanies(type);

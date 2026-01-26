@@ -1,4 +1,4 @@
-import React, { use, useEffect, useRef, useState } from "react";
+import React, { use, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { uploadElrajhiBatch, fetchElrajhiBatches, fetchElrajhiBatchReports, updateUrgentReport } from "../../api/report";
@@ -6,9 +6,9 @@ import httpClient from "../../api/httpClient";
 import { useElrajhiUpload } from "../context/ElrajhiUploadContext";
 import EditReportModal from "../components/EditReportModal";
 import { useRam } from "../context/RAMContext";
-import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { useValueNav } from "../context/ValueNavContext";
 import { downloadTemplateFile } from "../utils/templateDownload";
 import { useAuthAction } from "../hooks/useAuthAction";
 import InsufficientPointsModal from "../components/InsufficientPointsModal";
@@ -125,6 +125,30 @@ const parseExcelDateValue = (value) => {
 const formatDateForDisplay = (date) => {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
     return date.toISOString().slice(0, 10);
+};
+
+const CONTRIBUTION_OPTIONS = Array.from({ length: 20 }, (_, idx) => (idx + 1) * 5);
+
+const normalizeValuerOption = (valuer = {}) => {
+    const valuerId = (valuer.valuerId || valuer.valuer_id || valuer.id || valuer.value || "").toString().trim();
+    const valuerName = (valuer.valuerName || valuer.valuer_name || valuer.name || valuer.label || valuer.text || "").toString().trim();
+    return {
+        valuerId,
+        valuerName
+    };
+};
+
+const normalizeValuerList = (list = []) =>
+    (Array.isArray(list) ? list : [])
+        .map((valuer) => normalizeValuerOption(valuer))
+        .filter((valuer) => valuer.valuerId || valuer.valuerName);
+
+const sumValuerPercentages = (list = []) => {
+    const total = (Array.isArray(list) ? list : []).reduce(
+        (sum, valuer) => sum + (Number(valuer.percentage) || 0),
+        0
+    );
+    return Math.round(total * 100) / 100;
 };
 
 const hasValue = (val) =>
@@ -446,6 +470,27 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [batchActionLoading, setBatchActionLoading] = useState({});
     const [selectedBulkActions, setSelectedBulkActions] = useState({});
     const { executeWithAuth } = useAuthAction();
+    const { selectedCompany, companies, loadSavedCompanies, syncCompanies, replaceCompanies } = useValueNav();
+    const [valuerModalOpen, setValuerModalOpen] = useState(false);
+    const [valuerModalMode, setValuerModalMode] = useState("validation");
+    const [valuerModalError, setValuerModalError] = useState("");
+    const [draftValuers, setDraftValuers] = useState([]);
+    const [selectedValuers, setSelectedValuers] = useState([]);
+    const [overrideCompanyValuers, setOverrideCompanyValuers] = useState(null);
+    const [fetchingCompanyValuers, setFetchingCompanyValuers] = useState(false);
+    const selectedCompanyRef = useRef(selectedCompany);
+    const selectedValuersRef = useRef(selectedValuers);
+    const fetchCompanyValuersPromiseRef = useRef(null);
+    const valuerModalPromiseRef = useRef(null);
+    const valuerModalResolveRef = useRef(null);
+
+    useEffect(() => {
+        selectedCompanyRef.current = selectedCompany;
+    }, [selectedCompany]);
+
+    useEffect(() => {
+        selectedValuersRef.current = selectedValuers;
+    }, [selectedValuers]);
 
     const refreshAfterEdit = async (batchId) => {
         if (batchId) {
@@ -458,6 +503,295 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             });
         }
     };
+
+    const companyFromList = useMemo(() => {
+        if (!selectedCompany) return null;
+        const officeId = selectedCompany?.officeId || selectedCompany?.office_id;
+        if (!Array.isArray(companies) || companies.length === 0) return selectedCompany;
+        const match = companies.find((company) => {
+            const candidateOffice = company?.officeId || company?.office_id;
+            if (officeId !== undefined && officeId !== null) {
+                return String(candidateOffice) === String(officeId);
+            }
+            if (selectedCompany?.url) {
+                return company?.url === selectedCompany.url;
+            }
+            return company?.name === selectedCompany?.name;
+        });
+        return match || selectedCompany;
+    }, [companies, selectedCompany]);
+
+    const companyValuers = normalizeValuerList(companyFromList?.valuers || []);
+    const displayCompanyValuers = overrideCompanyValuers ?? companyValuers;
+    const selectedValuersTotal = sumValuerPercentages(selectedValuers);
+    const selectedValuersValid = selectedValuers.length > 0 && Math.abs(selectedValuersTotal - 100) < 0.001;
+    const selectedCompanyKey = String(
+        selectedCompany?.officeId || selectedCompany?.office_id || selectedCompany?.url || ""
+    );
+
+    useEffect(() => {
+        setSelectedValuers([]);
+        selectedValuersRef.current = [];
+        setValuerModalOpen(false);
+        setDraftValuers([]);
+        setValuerModalError("");
+        setOverrideCompanyValuers(null);
+        if (valuerModalResolveRef.current) {
+            valuerModalResolveRef.current(false);
+            valuerModalResolveRef.current = null;
+            valuerModalPromiseRef.current = null;
+        }
+    }, [selectedCompanyKey]);
+
+    const pushValuerMessage = (mode, type, text) => {
+        if (mode === "validation") {
+            setValidationMessage({ type, text });
+            return;
+        }
+        if (type === "error") {
+            setError(text);
+            return;
+        }
+        setSuccess(text);
+    };
+
+    const waitForTaqeemLogin = async (timeoutMs = 180000, intervalMs = 2000) => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (!window?.electronAPI?.checkStatus) return true;
+            const status = await window.electronAPI.checkStatus();
+            const ok = status?.browserOpen
+                && String(status?.status || "").toUpperCase().includes("SUCCESS");
+            if (ok) {
+                setTaqeemStatus?.("success", "Taqeem login: On");
+                return true;
+            }
+            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+        throw new Error("Timed out waiting for Taqeem login.");
+    };
+
+    const refreshCompaniesFromTaqeem = async (mode = "validation") => {
+        if (fetchCompanyValuersPromiseRef.current) {
+            return fetchCompanyValuersPromiseRef.current;
+        }
+        const run = (async () => {
+            if (!window?.electronAPI?.getCompanies) {
+                throw new Error("Desktop integration unavailable. Restart the app.");
+            }
+            setFetchingCompanyValuers(true);
+            try {
+                let isLoggedIn = taqeemStatus?.state === "success";
+                if (window?.electronAPI?.checkStatus) {
+                    const status = await window.electronAPI.checkStatus();
+                    isLoggedIn = status?.browserOpen
+                        && String(status?.status || "").toUpperCase().includes("SUCCESS");
+                    if (isLoggedIn) {
+                        setTaqeemStatus?.("success", "Taqeem login: On");
+                    }
+                }
+
+                if (!isLoggedIn) {
+                    pushValuerMessage(mode, "info", "Opening Taqeem login to load valuers...");
+                    if (!window?.electronAPI?.openTaqeemLogin) {
+                        throw new Error("Taqeem login handler unavailable.");
+                    }
+                    const loginResult = await window.electronAPI.openTaqeemLogin({
+                        automationOnly: true,
+                        onlyIfClosed: true,
+                        navigateIfOpen: false
+                    });
+                    if (loginResult?.status !== "SUCCESS") {
+                        throw new Error(loginResult?.error || "Failed to open Taqeem login.");
+                    }
+                    pushValuerMessage(mode, "info", "Waiting for you to finish Taqeem login...");
+                    await waitForTaqeemLogin();
+                }
+
+                setCompanyStatus?.("info", "Fetching companies and valuers from Taqeem...");
+                const data = await window.electronAPI.getCompanies();
+                if (data?.status !== "SUCCESS") {
+                    throw new Error(data?.error || "Failed to fetch companies from Taqeem.");
+                }
+                const fetched = Array.isArray(data?.data)
+                    ? data.data
+                    : Array.isArray(data?.companies)
+                        ? data.companies
+                        : [];
+                if (!fetched.length) {
+                    throw new Error("No companies found in Taqeem.");
+                }
+                const prepared = fetched.map((c) => ({ ...c, type: c.type || "equipment" }));
+                let synced = prepared;
+                if (syncCompanies && !isGuest) {
+                    try {
+                        const syncedRes = await syncCompanies(prepared, "equipment");
+                        if (Array.isArray(syncedRes) && syncedRes.length > 0) {
+                            synced = syncedRes;
+                        }
+                    } catch (err) {
+                        console.warn("Failed to sync companies after Taqeem login", err);
+                    }
+                }
+                if (replaceCompanies) {
+                    await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: false });
+                } else if (loadSavedCompanies) {
+                    await loadSavedCompanies("equipment");
+                }
+                return synced;
+            } finally {
+                setFetchingCompanyValuers(false);
+            }
+        })();
+        fetchCompanyValuersPromiseRef.current = run;
+        try {
+            return await run;
+        } finally {
+            fetchCompanyValuersPromiseRef.current = null;
+        }
+    };
+
+    const getValuerModalPromise = () => {
+        if (valuerModalPromiseRef.current) return valuerModalPromiseRef.current;
+        valuerModalPromiseRef.current = new Promise((resolve) => {
+            valuerModalResolveRef.current = resolve;
+        });
+        return valuerModalPromiseRef.current;
+    };
+
+    const closeValuerModal = (result = false) => {
+        setValuerModalOpen(false);
+        setValuerModalError("");
+        setOverrideCompanyValuers(null);
+        if (valuerModalResolveRef.current) {
+            valuerModalResolveRef.current(result);
+            valuerModalResolveRef.current = null;
+            valuerModalPromiseRef.current = null;
+        }
+    };
+
+    const ensureCompanyValuersLoaded = async (mode = "validation") => {
+        const currentCompany = companyFromList || selectedCompanyRef.current || selectedCompany;
+        if (!currentCompany) return false;
+        const availableValuers = normalizeValuerList(currentCompany?.valuers || []);
+        if (availableValuers.length) return true;
+        if (!valuerModalOpen) {
+            setValuerModalMode(mode);
+            setDraftValuers([]);
+            setValuerModalError("");
+            setValuerModalOpen(true);
+        }
+        try {
+            await refreshCompaniesFromTaqeem(mode);
+            return true;
+        } catch (err) {
+            pushValuerMessage(mode, "error", err?.message || "Failed to fetch valuers from Taqeem.");
+            setValuerModalError(err?.message || "Failed to fetch valuers from Taqeem.");
+            return false;
+        }
+    };
+
+    const openValuerModal = async (mode = "validation", options = {}) => {
+        const { waitForSelection = false } = options;
+        if (valuerModalOpen) {
+            return waitForSelection ? getValuerModalPromise() : true;
+        }
+
+        const currentCompany = companyFromList || selectedCompanyRef.current || selectedCompany;
+        if (!currentCompany) {
+            const msg = "Select a company to load its valuers.";
+            pushValuerMessage(mode, "error", msg);
+            return false;
+        }
+
+        let availableValuers = normalizeValuerList(currentCompany?.valuers || []);
+        if (!availableValuers.length) {
+            try {
+                const refreshed = await refreshCompaniesFromTaqeem(mode);
+                const officeId = currentCompany?.officeId || currentCompany?.office_id;
+                const match = Array.isArray(refreshed)
+                    ? refreshed.find((company) => {
+                        if (officeId !== undefined && officeId !== null) {
+                            return String(company?.officeId || company?.office_id) === String(officeId);
+                        }
+                        if (currentCompany?.url) {
+                            return company?.url === currentCompany.url;
+                        }
+                        return company?.name === currentCompany?.name;
+                    })
+                    : null;
+                availableValuers = normalizeValuerList(match?.valuers || []);
+                if (availableValuers.length) {
+                    setOverrideCompanyValuers(availableValuers);
+                }
+            } catch (err) {
+                pushValuerMessage(mode, "error", err?.message || "Failed to fetch valuers from Taqeem.");
+                return false;
+            }
+        }
+
+        if (!availableValuers.length) {
+            pushValuerMessage(mode, "error", "No valuers found for the selected company.");
+            return false;
+        }
+
+        const currentSelected = selectedValuersRef.current || [];
+        const initialDraft = currentSelected.length
+            ? currentSelected.map((v) => ({ ...v }))
+            : availableValuers.length === 1
+                ? [{ ...availableValuers[0], percentage: 100 }]
+                : [];
+
+        setValuerModalMode(mode);
+        setDraftValuers(initialDraft);
+        setValuerModalError("");
+        setValuerModalOpen(true);
+        return waitForSelection ? getValuerModalPromise() : true;
+    };
+
+    const ensureValuerSelection = async (mode = "validation") => {
+        if (selectedValuersValid) return true;
+        const result = await openValuerModal(mode, { waitForSelection: true });
+        return result === true;
+    };
+
+    const normalizeSelectedValuers = (list = []) =>
+        (Array.isArray(list) ? list : [])
+            .map((valuer) => ({
+                valuerId: (valuer?.valuerId || "").toString().trim(),
+                valuerName: (valuer?.valuerName || "").toString().trim(),
+                percentage: Number(valuer?.percentage) || 0
+            }))
+            .filter((valuer) => valuer.valuerId || valuer.valuerName);
+
+    const syncValuersToAssets = (valuers = []) => {
+        const normalized = normalizeSelectedValuers(valuers);
+        const hasValuerData = normalized.length > 0;
+        const totalPct = hasValuerData ? sumValuerPercentages(normalized) : null;
+
+        setMarketAssets((prev) =>
+            (prev || []).map((asset) => ({
+                ...asset,
+                valuers: normalized,
+                hasValuerData,
+                totalPercentage: hasValuerData ? totalPct : null,
+            }))
+        );
+        setValidationReports((prev) =>
+            (prev || []).map((report) => ({
+                ...report,
+                valuers: normalized,
+                hasValuerData,
+                totalPercentage: hasValuerData ? totalPct : null,
+            }))
+        );
+    };
+
+    useEffect(() => {
+        if (marketAssets.length || validationReports.length) {
+            syncValuersToAssets(selectedValuers);
+        }
+    }, [selectedValuers, marketAssets.length, validationReports.length]);
 
 
 
@@ -704,6 +1038,45 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             switch (action) {
                 case 'check-status':
                     await runBatchCheck(batchId);
+                    break;
+
+                case 'approve-reports':
+                    if (!window?.electronAPI?.openTaqeemLogin) {
+                        throw new Error("Desktop integration unavailable. Restart the app.");
+                    }
+
+                    setBatchMessage({
+                        type: "info",
+                        text: `Opening secondary Taqeem login for batch ${batchId}...`
+                    });
+
+                    {
+                        const result = await window.electronAPI.openTaqeemLogin({
+                            batchId,
+                            preferChrome: false,
+                            waitForLogin: true
+                        });
+
+                        if (result?.status !== "SUCCESS") {
+                            throw new Error(result?.error || "Failed to open Taqeem login");
+                        }
+
+                        const summary = result?.batch;
+                        const summaryText = summary
+                            ? `Processed reports: ${summary.succeeded}/${summary.total} succeeded, ${summary.failed} failed.`
+                            : "";
+
+                        setBatchMessage({
+                            type: summary?.failed ? "info" : "success",
+                            text: [
+                                result?.message || "Opened Taqeem login in a separate browser window.",
+                                summaryText,
+                                "Refreshing status..."
+                            ].filter(Boolean).join(" ")
+                        });
+
+                        await runBatchCheck(batchId);
+                    }
                     break;
 
                 case 'download-certificates':
@@ -1010,11 +1383,11 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         throw new Error("uploadExcelOnly is deprecated in this flow.");
     };
 
-    const { token } = useSession();
+    const { token, isGuest } = useSession();
 
     console.log("TOKEN:", token);
 
-    const { taqeemStatus } = useNavStatus();
+    const { taqeemStatus, setTaqeemStatus, setCompanyStatus } = useNavStatus();
 
 
     const handleSubmitElrajhi = async () => {
@@ -1022,13 +1395,6 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             async (params) => {
                 try {
                     const { token: authToken } = params;
-                    setSendingValidation(true);
-                    setIsPausedValidation(false);
-                    setValidationMessage({
-                        type: "info",
-                        text: "Saving reports to database..."
-                    });
-
                     if (!validationExcelFile) {
                         throw new Error("Select an Excel file before sending.");
                     }
@@ -1039,10 +1405,22 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     if (wantsPdfUpload && !validationPdfFiles.length) {
                         throw new Error("Add PDF files or turn off PDF upload to use temporary PDFs.");
                     }
+                    if (!await ensureValuerSelection("validation")) {
+                        return;
+                    }
+
+                    setSendingValidation(true);
+                    setIsPausedValidation(false);
+                    setValidationMessage({
+                        type: "info",
+                        text: "Saving reports to database..."
+                    });
                     // Upload to backend
+                    const valuersToSend = normalizeSelectedValuers(selectedValuersRef.current || []);
                     const data = await uploadElrajhiBatch(
                         validationExcelFile,
-                        wantsPdfUpload ? validationPdfFiles : []
+                        wantsPdfUpload ? validationPdfFiles : [],
+                        valuersToSend
                     );
 
                     console.log("ELRAJHI BATCH:", data);
@@ -1147,13 +1525,6 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
     const handleSubmitPdfOnly = async () => {
         try {
-            setPdfOnlySending(true);
-            setIsPausedPdfOnly(false);
-            setValidationMessage({
-                type: "info",
-                text: "Saving PDF reports to database..."
-            });
-
             if (!validationExcelFile) {
                 throw new Error("Select an Excel file before sending.");
             }
@@ -1161,10 +1532,21 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             if (validationReportIssues.length) {
                 throw new Error("Resolve the report info validation issues before sending.");
             }
+            if (!await ensureValuerSelection("validation")) {
+                return;
+            }
+            setPdfOnlySending(true);
+            setIsPausedPdfOnly(false);
+            setValidationMessage({
+                type: "info",
+                text: "Saving PDF reports to database..."
+            });
             // Upload to backend
+            const valuersToSend = normalizeSelectedValuers(selectedValuersRef.current || []);
             const data = await uploadElrajhiBatch(
                 validationExcelFile,
-                validationPdfFiles
+                validationPdfFiles,
+                valuersToSend
             );
 
             console.log("ELRAJHI BATCH (PDF Only):", data);
@@ -1756,6 +2138,79 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }
     };
 
+    const toggleDraftValuer = (valuer, checked) => {
+        const key = valuer.valuerId || valuer.valuerName;
+        setDraftValuers((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((v) => (v.valuerId || v.valuerName) === key);
+            if (checked) {
+                if (idx === -1) {
+                    const nextPct = next.length === 0 ? 100 : 0;
+                    next.push({ ...valuer, percentage: nextPct });
+                }
+            } else if (idx !== -1) {
+                next.splice(idx, 1);
+            }
+
+            if (next.length === 1) {
+                next[0].percentage = 100;
+            }
+            return next;
+        });
+    };
+
+    const updateDraftPercentage = (valuer, percentage) => {
+        const key = valuer.valuerId || valuer.valuerName;
+        setDraftValuers((prev) =>
+            prev.map((v) =>
+                (v.valuerId || v.valuerName) === key
+                    ? { ...v, percentage: Number(percentage) || 0 }
+                    : v
+            )
+        );
+    };
+
+    const autoSplitDraft = () => {
+        setDraftValuers((prev) => {
+            const count = prev.length;
+            if (!count) return prev;
+            const base = Math.floor(100 / count / 5) * 5;
+            let remainder = 100 - base * count;
+            return prev.map((v) => {
+                const add = remainder >= 5 ? 5 : 0;
+                remainder -= add;
+                return { ...v, percentage: base + add };
+            });
+        });
+    };
+
+    const applyValuerDraft = () => {
+        const total = sumValuerPercentages(draftValuers);
+        if (!draftValuers.length) {
+            setValuerModalError("Select at least one valuer.");
+            return;
+        }
+        if (Math.abs(total - 100) > 0.001) {
+            setValuerModalError(`Total must be 100%. Currently ${total}%.`);
+            return;
+        }
+        const cleaned = draftValuers.map((v) => ({
+            valuerId: v.valuerId || "",
+            valuerName: v.valuerName || "",
+            percentage: Number(v.percentage) || 0,
+        }));
+        selectedValuersRef.current = cleaned;
+        setSelectedValuers(cleaned);
+        setValuerModalError("");
+        closeValuerModal(true);
+        if (valuerModalMode === "validation") {
+            setValidationMessage({
+                type: "success",
+                text: `Selected ${cleaned.length} valuer(s).`,
+            });
+        }
+    };
+
     const clearFileInput = (inputRef) => {
         if (inputRef?.current) {
             inputRef.current.value = null;
@@ -1776,6 +2231,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }));
         if (file) {
             await runReportValidationForFile(file, "main");
+            await ensureCompanyValuersLoaded("main");
+            await openValuerModal("main");
         }
         clearFileInput(mainExcelInputRef);
     };
@@ -1831,8 +2288,6 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             setValidationReportIssues(reportValidation.issues);
             setValidationReportSnapshot(reportValidation.snapshot);
 
-            const valuerCols = detectValuerColumns(marketRows[0]);
-
             const pdfMap = {};
             pdfList.forEach((file) => {
                 const base = file.name.replace(/\.pdf$/i, "");
@@ -1841,30 +2296,24 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
             const assets = [];
             const invalidTotals = [];
+            const normalizedSelectedValuers = normalizeSelectedValuers(selectedValuers);
+            const hasSelectedValuers = normalizedSelectedValuers.length > 0;
+            const selectedTotal = hasSelectedValuers ? sumValuerPercentages(normalizedSelectedValuers) : null;
 
             for (let i = 0; i < marketRows.length; i++) {
                 const row = marketRows[i];
                 if (!row.asset_name) continue;
 
-                const hasValuerData = valuerCols.hasValuerColumns
-                    && valuerCols.allKeys.some((key) => hasValue(row[key]));
-                const valuers = hasValuerData ? buildValuersForAsset(row, valuerCols) : [];
-                let roundedTotal = null;
+                const hasValuerData = hasSelectedValuers;
+                const valuers = hasSelectedValuers ? normalizedSelectedValuers.map((v) => ({ ...v })) : [];
+                let roundedTotal = hasSelectedValuers ? selectedTotal : null;
 
-                if (hasValuerData) {
-                    const total = valuers.reduce(
-                        (sum, v) => sum + Number(v.percentage || 0),
-                        0
-                    );
-                    roundedTotal = Math.round(total * 100) / 100;
-
-                    if (Math.abs(roundedTotal - 100) > 0.001) {
-                        invalidTotals.push({
-                            assetName: row.asset_name,
-                            rowNumber: i + 2,
-                            total: roundedTotal,
-                        });
-                    }
+                if (hasSelectedValuers && Math.abs((roundedTotal || 0) - 100) > 0.001) {
+                    invalidTotals.push({
+                        assetName: row.asset_name,
+                        rowNumber: i + 2,
+                        total: roundedTotal,
+                    });
                 }
 
                 const pdf_name = pdfMap[normalizeKey(row.asset_name)] || null;
@@ -1914,7 +2363,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 } else {
                     const valuerNote = hasAnyValuerData
                         ? ""
-                        : " No valuer data found; totals check skipped.";
+                        : " Select valuers to include in the report.";
                     setValidationMessage({
                         type: "success",
                         text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.${valuerNote} Report info looks valid.`,
@@ -2070,7 +2519,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         );
     };
 
-    const handleValidationExcelChange = (e) => {
+    const handleValidationExcelChange = async (e) => {
         resetValidationBanner();
         resetValidationCardState();
         setValidationReports([]);
@@ -2083,6 +2532,10 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             ...prev,
             validationExcel: excel ? excel.name : null,
         }));
+        if (excel) {
+            await ensureCompanyValuersLoaded("validation");
+            await openValuerModal("validation");
+        }
         clearFileInput(validationExcelInputRef);
     };
 
@@ -2126,7 +2579,10 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const allAssetsTotalsValid = marketAssets.every(
         (a) => !a.hasValuerData || Math.abs((a.totalPercentage || 0) - 100) < 0.001
     );
-    const canSendReports = marketAssets.length > 0 && allAssetsTotalsValid && !loadingValuers && !validationReportIssues.length;
+    const canSendReports = marketAssets.length > 0
+        && allAssetsTotalsValid
+        && !loadingValuers
+        && !validationReportIssues.length;
     const pdfReportCount = validationReports.filter((report) => report.pdf_name).length;
     const canSendPdfOnly = canSendReports && wantsPdfUpload && pdfReportCount > 0;
 
@@ -2215,7 +2671,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             const pdfCount = wantsPdfUpload ? validationPdfFiles.length : 0;
             const valuerNote = assets.some((asset) => asset.hasValuerData)
                 ? ""
-                : " No valuer data found; totals check skipped.";
+                : " Select valuers to include in the report.";
             const pdfNote = wantsPdfUpload ? ` and ${pdfCount} PDF(s)` : "";
 
             setValidationMessage({
@@ -2661,6 +3117,119 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         (issue) => !reportInfoFieldLabels.includes(issue.field)
     );
     const hasReportInfoData = Boolean(validationReportSnapshot) || validationReportIssues.length > 0;
+
+    const draftTotal = sumValuerPercentages(draftValuers);
+    const draftValid = draftValuers.length > 0 && Math.abs(draftTotal - 100) < 0.001;
+    const valuerModal = valuerModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-3xl rounded-2xl bg-white border border-blue-900/15 shadow-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                        <h3 className="text-sm font-semibold text-blue-900">
+                            Select valuers for {selectedCompany?.name || "company"}
+                        </h3>
+                        <p className="text-xs text-blue-900/70">
+                            Choose valuers and set contribution percentages. Total must be 100%.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => closeValuerModal(false)}
+                        className="text-xs text-slate-500 hover:text-slate-700"
+                        aria-label="Close valuer modal"
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <div className="mt-3 max-h-[320px] overflow-y-auto rounded-xl border border-blue-900/10">
+                    {fetchingCompanyValuers ? (
+                        <div className="flex items-center gap-2 px-3 py-4 text-xs text-blue-900/70">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Retrieving valuers from Taqeem... Please wait.
+                        </div>
+                    ) : displayCompanyValuers.length ? (
+                        displayCompanyValuers.map((valuer) => {
+                            const key = valuer.valuerId || valuer.valuerName;
+                            const selected = draftValuers.find(
+                                (v) => (v.valuerId || v.valuerName) === key
+                            );
+                            return (
+                                <div key={key} className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0">
+                                    <label className="flex items-center gap-2 text-xs text-blue-900">
+                                        <input
+                                            type="checkbox"
+                                            className="h-4 w-4"
+                                            checked={!!selected}
+                                            onChange={(e) => toggleDraftValuer(valuer, e.target.checked)}
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="font-semibold">{valuer.valuerName || "Valuer"}</span>
+                                            {valuer.valuerId ? (
+                                                <span className="text-[10px] text-blue-900/60">ID: {valuer.valuerId}</span>
+                                            ) : null}
+                                        </div>
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-blue-900/70">Contribution</span>
+                                        <select
+                                            className="rounded-md border border-blue-900/15 px-2 py-1 text-[10px] text-blue-900"
+                                            disabled={!selected}
+                                            value={selected?.percentage || ""}
+                                            onChange={(e) => updateDraftPercentage(valuer, e.target.value)}
+                                        >
+                                            <option value="">Select</option>
+                                            {CONTRIBUTION_OPTIONS.map((pct) => (
+                                                <option key={pct} value={pct}>
+                                                    {pct}%
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div className="px-3 py-4 text-xs text-blue-900/70">
+                            {fetchingCompanyValuers
+                                ? "Fetching valuers from Taqeem..."
+                                : "No valuers found for the selected company."}
+                        </div>
+                    )}
+                </div>
+
+                {valuerModalError ? (
+                    <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+                        {valuerModalError}
+                    </div>
+                ) : null}
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-blue-900/80">
+                        Selected: {draftValuers.length || 0} • Total: {draftTotal}%
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={autoSplitDraft}
+                            disabled={draftValuers.length < 2}
+                            className="px-3 py-1.5 rounded-md border border-blue-900/20 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+                        >
+                            Auto split
+                        </button>
+                        <button
+                            type="button"
+                            onClick={applyValuerDraft}
+                            disabled={!draftValid}
+                            className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            Save valuers
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    ) : null;
 
 
     const validationContent = (
@@ -3576,6 +4145,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                                                             >
                                                                 <option value="">Select Action</option>
                                                                 <option value="check-status">Check Status</option>
+                                                                <option value="approve-reports">Approve Reports</option>
                                                                 <option value="download-certificates">Download Certificates</option>
                                                                 <option value="retry-batch">Retry Batch</option>
                                                             </select>
@@ -4084,6 +4654,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
 
     return (
         <div className="p-2 space-y-2">
+            {valuerModal}
             {validationContent}
             {checkReportsContent}
         </div>
