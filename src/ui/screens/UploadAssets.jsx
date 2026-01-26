@@ -316,23 +316,23 @@ const UploadAssets = ({ onViewChange }) => {
         setSuccess("");
         setUploadLoading(true);
 
-        // Initialize progress
-        setSubmitProgress(prev => ({
-            ...prev,
-            [reportId.trim()]: {
-                current: 0,
-                total: 1,
-                percentage: 0,
-                message: 'Starting submission...',
-                status: 'RUNNING'
-            }
-        }));
 
         try {
             // Use auth wrapper
             const result = await executeWithAuth(
                 // Action function
                 async (params) => {
+                    // Initialize progress
+                    setSubmitProgress(prev => ({
+                        ...prev,
+                        [reportId.trim()]: {
+                            current: 0,
+                            total: 1,
+                            percentage: 0,
+                            message: 'Starting submission...',
+                            status: 'RUNNING'
+                        }
+                    }));
                     const {
                         token: authToken,
                         previewData,
