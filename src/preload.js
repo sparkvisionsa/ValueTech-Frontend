@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     navigateToCompany: (company) => safeInvoke('navigate-to-company', company),
     register: (userData) => safeInvoke('register', userData),
     openTaqeemLogin: (opts = {}) => safeInvoke('open-taqeem-login', opts),
+    // Complete flow pause/resume/stop controls
+    pauseCompleteFlow: (reportId) => safeInvoke('pause-complete-flow', reportId),
+    resumeCompleteFlow: (reportId) => safeInvoke('resume-complete-flow', reportId),
+    stopCompleteFlow: (reportId) => safeInvoke('stop-complete-flow', reportId),
 
     // Set refresh token (main process will store this as HttpOnly cookie)
     setRefreshToken: (token, opts = {}) => {

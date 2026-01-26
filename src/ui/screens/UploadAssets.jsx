@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRam } from "../context/RAMContext";
 import { useNavStatus } from "../context/NavStatusContext";
 import { useSession } from "../context/SessionContext";
@@ -23,7 +23,36 @@ const UploadAssets = ({ onViewChange }) => {
     const [success, setSuccess] = useState("");
     const [uploadLoading, setUploadLoading] = useState(false);
     const [reportId, setReportId] = useState("");
+    const [flowPaused, setFlowPaused] = useState({});
+    const [flowStopped, setFlowStopped] = useState({});
     const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+    const [submitProgress, setSubmitProgress] = useState({});
+
+    // Add this useEffect to listen for progress updates
+    useEffect(() => {
+        const unsubscribe = window.electronAPI.onSubmitReportsQuicklyProgress?.((data) => {
+            console.log('[UploadAssets] Progress update:', data);
+
+            if (data.reportId || data.processId) {
+                const reportId = data.reportId || data.processId;
+                setSubmitProgress(prev => ({
+                    ...prev,
+                    [reportId]: {
+                        current: data.completed || data.current || 0,
+                        total: data.total || 1,
+                        percentage: data.percentage || 0,
+                        message: data.message || '',
+                        status: data.status
+                    }
+                }));
+            }
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
 
 
     const openFileDialogAndExtract = async () => {
@@ -287,6 +316,18 @@ const UploadAssets = ({ onViewChange }) => {
         setSuccess("");
         setUploadLoading(true);
 
+        // Initialize progress
+        setSubmitProgress(prev => ({
+            ...prev,
+            [reportId.trim()]: {
+                current: 0,
+                total: 1,
+                percentage: 0,
+                message: 'Starting submission...',
+                status: 'RUNNING'
+            }
+        }));
+
         try {
             // Use auth wrapper
             const result = await executeWithAuth(
@@ -328,12 +369,15 @@ const UploadAssets = ({ onViewChange }) => {
                     if (!uploadResult.success) {
                         throw new Error(uploadResult.message || "Failed to create report");
                     }
-                    window.dispatchEvent(new CustomEvent('refreshReportsTable'));
+                    window.dispatchEvent(new CustomEvent('refreshReportsTable', {
+                        detail: { reportId: reportId.trim() }
+                    }));
 
                     // 2. Complete the flow (automation)
                     const tabsNum = getTabsCount();
                     console.log("[UploadAssets] Calling completeFlow for report:", reportId, "tabsNum:", tabsNum);
 
+                    await new Promise(resolve => setTimeout(resolve, 500));
                     const flowResult = await window.electronAPI.completeFlow(reportId.trim(), tabsNum);
                     console.log("[UploadAssets] completeFlow result:", flowResult);
 
@@ -406,6 +450,12 @@ const UploadAssets = ({ onViewChange }) => {
                     },
                     onAuthFailure: (reason) => {
                         console.warn("[UploadAssets] Authentication failed:", reason);
+                        // Clear progress on auth failure
+                        setSubmitProgress(prev => {
+                            const next = { ...prev };
+                            delete next[reportId.trim()];
+                            return next;
+                        });
                         // Only show error if it's not one of the handled auth cases
                         if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
                             setError(reason?.message || "Authentication failed");
@@ -417,6 +467,15 @@ const UploadAssets = ({ onViewChange }) => {
             // Handle the result
             if (result?.success) {
                 setSuccess(result.message);
+
+                // Clear progress after success
+                setTimeout(() => {
+                    setSubmitProgress(prev => {
+                        const next = { ...prev };
+                        delete next[reportId.trim()];
+                        return next;
+                    });
+                }, 2000);
 
                 // Clear form if upload was successful
                 if (result.completedAssets > 0) {
@@ -431,9 +490,58 @@ const UploadAssets = ({ onViewChange }) => {
             }
         } catch (error) {
             console.error("[UploadAssets] Error in handleUploadToDB:", error);
+            // Clear progress on error
+            setSubmitProgress(prev => {
+                const next = { ...prev };
+                delete next[reportId.trim()];
+                return next;
+            });
             setError(error?.message || "An unexpected error occurred");
         } finally {
             setUploadLoading(false);
+        }
+    };
+
+    const handlePauseFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.pauseCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                setFlowPaused(prev => ({ ...prev, [reportId]: true }));
+            }
+        } catch (error) {
+            console.error('[UploadAssets] Error pausing flow:', error);
+            setError('Failed to pause flow');
+        }
+    };
+
+    const handleResumeFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.resumeCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                setFlowPaused(prev => ({ ...prev, [reportId]: false }));
+            }
+        } catch (error) {
+            console.error('[UploadAssets] Error resuming flow:', error);
+            setError('Failed to resume flow');
+        }
+    };
+
+    const handleStopFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.stopCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                setFlowStopped(prev => ({ ...prev, [reportId]: true }));
+                setUploadLoading(false);
+                // Clear progress
+                setSubmitProgress(prev => {
+                    const next = { ...prev };
+                    delete next[reportId];
+                    return next;
+                });
+            }
+        } catch (error) {
+            console.error('[UploadAssets] Error stopping flow:', error);
+            setError('Failed to stop flow');
         }
     };
 
@@ -511,7 +619,6 @@ const UploadAssets = ({ onViewChange }) => {
                         inspectionDate: inspectionDate || undefined,
                         ownerName: ownerName || undefined
                     },
-                    storeOnly: true
                 },
                 {
                     Authorization: `Bearer ${token}`
@@ -925,6 +1032,72 @@ const UploadAssets = ({ onViewChange }) => {
                     {uploadLoading ? "Storing..." : "Store & Submit Later"}
                 </button>
             </div>
+
+            {/* Progress Bar with Controls - Show if there's active progress */}
+            {submitProgress[reportId?.trim()] && uploadLoading && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-3">
+                    <div className="space-y-2">
+                        {/* Progress info */}
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                    <span className="text-sm font-medium text-blue-900">
+                                        {submitProgress[reportId.trim()]?.message || 'Processing...'}
+                                    </span>
+                                </div>
+                                <span className="text-sm font-semibold text-blue-900">
+                                    {submitProgress[reportId.trim()]?.current}/{submitProgress[reportId.trim()]?.total} ({Math.round(submitProgress[reportId.trim()]?.percentage || 0)}%)
+                                </span>
+                            </div>
+                            <div className="w-full bg-blue-200 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+                                    style={{ width: `${submitProgress[reportId.trim()]?.percentage || 0}%` }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Control buttons */}
+                        <div className="flex items-center gap-2">
+                            {!flowPaused[reportId.trim()] ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handlePauseFlow(reportId.trim())}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-amber-600 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors"
+                                >
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                    Pause
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => handleResumeFlow(reportId.trim())}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-green-600 bg-green-50 text-green-700 text-xs font-semibold hover:bg-green-100 transition-colors"
+                                >
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                                    </svg>
+                                    Resume
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => handleStopFlow(reportId.trim())}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-600 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
+                            >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                                </svg>
+                                Stop
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Preview Table - Full Width Below Everything */}
             <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">

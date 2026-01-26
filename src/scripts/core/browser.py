@@ -29,6 +29,9 @@ async def spawn_new_browser(
     new_browser = await uc.start(
         user_data_dir=profile_dir,
         headless=headless,
+        browser_args=[
+            "--no_sandbox=True"
+        ]
     )
 
     try:

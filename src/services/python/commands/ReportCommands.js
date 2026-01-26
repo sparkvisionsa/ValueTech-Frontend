@@ -26,6 +26,27 @@ class ReportCommands {
         });
     }
 
+    async pauseCompleteFlow(reportId) {
+        return this._sendCommand({
+            action: 'pause-complete-flow',
+            reportId
+        });
+    }
+
+    async resumeCompleteFlow(reportId) {
+        return this._sendCommand({
+            action: 'resume-complete-flow',
+            reportId
+        });
+    }
+
+    async stopCompleteFlow(reportId) {
+        return this._sendCommand({
+            action: 'stop-complete-flow',
+            reportId
+        });
+    }
+
     async createMacros(reportId, macroCount, tabsNum, batchSize) {
         return this._sendCommand({
             action: 'create-macros',

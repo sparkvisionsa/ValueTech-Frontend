@@ -18,7 +18,7 @@ from scripts.submission.createMacros import (
     stop_create_macros
 )
 
-from scripts.submission.completeFlow import run_complete_report_flow
+from scripts.submission.completeFlow import run_complete_report_flow, pause_complete_flow, resume_complete_flow, stop_complete_flow
 from scripts.submission.grabMacroIds import (
     get_all_macro_ids_parallel, 
     pause_grab_macro_ids,
@@ -351,29 +351,19 @@ async def handle_command(cmd):
         print(json.dumps(result), flush=True)
 
     elif action == "run-macro-edit-retry":
-        # Force a visible browser for retries
-        base_browser = await get_browser(force_new=True, headless_override=False)
-        retry_browser = None
-
-        report_id = cmd.get("reportId")
-        record_id = cmd.get("recordId")
-        tabs_num = int(cmd.get("tabsNum", 3))
-        asset_data = cmd.get("assetData")
-
         try:
-            retry_browser = await spawn_new_browser(base_browser, headless=False)
+            browser = await get_browser()
+
+            report_id = cmd.get("reportId")
+            tabs_num = int(cmd.get("tabsNum", 3))
+
+            result = await run_macro_edit_retry(browser, report_id, tabs_num)
+            result["commandId"] = cmd.get("commandId")
+            print(json.dumps(result), flush=True)
+
+
         except Exception:
-            retry_browser = None
-
-        try:
-            target_browser = retry_browser or base_browser
-            result = await run_macro_edit_retry(target_browser, report_id, tabs_num, record_id=record_id, asset_data=asset_data)
-        finally:
-            try:
-                if retry_browser:
-                    retry_browser.stop()
-            except Exception:
-                pass
+            pass
 
         result["commandId"] = cmd.get("commandId")
 
@@ -872,6 +862,24 @@ async def handle_command(cmd):
         result = await finalize_multiple_reports(browser, report_ids)
         result["commandId"] = cmd.get("commandId")
 
+        print(json.dumps(result), flush=True)
+
+    elif action == "pause-complete-flow":
+        report_id = cmd.get("reportId")
+        result = await pause_complete_flow(report_id)
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "resume-complete-flow":
+        report_id = cmd.get("reportId")
+        result = await resume_complete_flow(report_id)
+        result["commandId"] = cmd.get("commandId")
+        print(json.dumps(result), flush=True)
+
+    elif action == "stop-complete-flow":
+        report_id = cmd.get("reportId")
+        result = await stop_complete_flow(report_id)
+        result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
     elif action == "navigate-to-company":

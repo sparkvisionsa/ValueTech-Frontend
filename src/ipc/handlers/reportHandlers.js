@@ -60,18 +60,114 @@ const reportHandlers = {
         }
     },
 
-
     async handleCompleteFlow(event, reportId, tabsNum) {
         try {
             console.log('[MAIN] Received complete flow request:', reportId, tabsNum);
 
-            const result = await pythonAPI.report.completeFlow(reportId, tabsNum);
-            console.log("Result at handler:", result);
+            // Get the window that sent the event
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
 
-            return result;
+            if (!senderWindow || senderWindow.isDestroyed()) {
+                return { status: 'FAILED', error: 'Window not available' };
+            }
+
+            // IMPORTANT: The process ID in Python is 'complete-flow-{reportId}'
+            const processId = `complete-flow-${reportId}`;
+
+            // Store the cleanup function
+            const unregisterProgress = () => {
+                pythonAPI.workerService.unregisterProgressCallback(processId);
+            };
+
+            try {
+                // Register progress callback using the correct process ID format
+                pythonAPI.workerService.registerProgressCallback(processId, (progressData) => {
+                    console.log('[MAIN] Complete flow progress update:', progressData);
+
+                    // Make sure we have a valid sender window
+                    if (!senderWindow || senderWindow.isDestroyed()) {
+                        console.warn('[MAIN] Window destroyed, cannot send progress');
+                        unregisterProgress();
+                        return;
+                    }
+
+                    // Send progress to renderer via IPC
+                    // Use 'submit-reports-quickly-progress' channel to match ReportsTable listener
+                    senderWindow.webContents.send('submit-reports-quickly-progress', {
+                        ...progressData,
+                        reportId: reportId,  // Include original reportId for table matching
+                        processId: processId
+                    });
+                });
+
+                // Execute the complete flow
+                const result = await pythonAPI.report.completeFlow(reportId, tabsNum);
+
+                // Ensure cleanup
+                unregisterProgress();
+
+                return result;
+
+            } catch (err) {
+                console.error('[MAIN] Complete flow error:', err);
+
+                // Ensure cleanup on error
+                unregisterProgress();
+
+                // Also send an error progress update
+                if (senderWindow && !senderWindow.isDestroyed()) {
+                    senderWindow.webContents.send('submit-reports-quickly-progress', {
+                        reportId: reportId,
+                        processId: processId,
+                        status: 'FAILED',
+                        error: err.message,
+                        current: 0,
+                        total: 1,
+                        percentage: 0
+                    });
+                }
+
+                return { status: 'FAILED', error: err.message || String(err) };
+            }
         } catch (error) {
             console.error('[MAIN] Complete flow error:', error);
-            return { status: 'ERROR', error: error.message };
+            return { status: 'FAILED', error: error.message };
+        }
+    },
+
+    async handlePauseCompleteFlow(event, reportId) {
+        try {
+            console.log('[MAIN] Received pause complete flow request:', reportId);
+            const result = await pythonAPI.report.pauseCompleteFlow(reportId);
+            console.log("[MAIN] Pause result:", result);
+            return result;
+        } catch (err) {
+            console.error("[MAIN] Pause complete flow error:", err && err.stack ? err.stack : err);
+            return { status: "FAILED", error: err.message || String(err) };
+        }
+    },
+
+    async handleResumeCompleteFlow(event, reportId) {
+        try {
+            console.log('[MAIN] Received resume complete flow request:', reportId);
+            const result = await pythonAPI.report.resumeCompleteFlow(reportId);
+            console.log("[MAIN] Resume result:", result);
+            return result;
+        } catch (err) {
+            console.error("[MAIN] Resume complete flow error:", err && err.stack ? err.stack : err);
+            return { status: "FAILED", error: err.message || String(err) };
+        }
+    },
+
+    async handleStopCompleteFlow(event, reportId) {
+        try {
+            console.log('[MAIN] Received stop complete flow request:', reportId);
+            const result = await pythonAPI.report.stopCompleteFlow(reportId);
+            console.log("[MAIN] Stop result:", result);
+            return result;
+        } catch (err) {
+            console.error("[MAIN] Stop complete flow error:", err && err.stack ? err.stack : err);
+            return { status: "FAILED", error: err.message || String(err) };
         }
     },
 

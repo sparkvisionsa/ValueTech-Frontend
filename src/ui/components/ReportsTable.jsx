@@ -29,6 +29,7 @@ import EditAssetModal from "./EditAssetModal";
 
 const ReportsTable = () => {
     const [reports, setReports] = useState([]);
+    const [flowPaused, setFlowPaused] = useState({});
     const [assetFilter, setAssetFilter] = useState("all");
     const [actionDropdown, setActionDropdown] = useState({});
     const [submitToTaqeemLoading, setSubmitToTaqeemLoading] = useState({});
@@ -51,6 +52,32 @@ const ReportsTable = () => {
     const [dropdownOpen, setDropdownOpen] = useState(null);
     const [highlightReportId, setHighlightReportId] = useState(null);
     const [showInsufficientPointsModal, setShowInsufficientPointsModal] = useState(false); // Add this state
+    const [submitProgress, setSubmitProgress] = useState({});
+
+    // Add this useEffect to listen for progress updates
+    useEffect(() => {
+        const unsubscribe = window.electronAPI.onSubmitReportsQuicklyProgress?.((data) => {
+            console.log('[ReportsTable] Progress update:', data);
+
+            if (data.reportId || data.processId) {
+                const reportId = data.reportId || data.processId;
+                setSubmitProgress(prev => ({
+                    ...prev,
+                    [reportId]: {
+                        current: data.completed || data.current || 0,
+                        total: data.total || 1,
+                        percentage: data.percentage || 0,
+                        message: data.message || '',
+                        status: data.status
+                    }
+                }));
+            }
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
 
     const [loadingActions, setLoadingActions] = useState({
         fullCheck: {},
@@ -76,7 +103,6 @@ const ReportsTable = () => {
             return;
         }
 
-
         if (submitToTaqeemLoading[reportId]) return;
 
         await executeWithAuth(
@@ -84,17 +110,27 @@ const ReportsTable = () => {
                 const { token: authToken, reportId: id, tabsNum: tabs } = params;
 
                 setSubmitToTaqeemLoading(prev => ({ ...prev, [reportId]: true }));
+                // Initialize progress
+                setSubmitProgress(prev => ({
+                    ...prev,
+                    [reportId]: {
+                        current: 0,
+                        total: 1,
+                        percentage: 0,
+                        message: 'Starting submission...',
+                        status: 'RUNNING'
+                    }
+                }));
                 setDropdownOpen(null);
 
                 try {
-                    console.log("[ReportsTable] Calling completeReportFlow for report:", id);
+                    console.log("[ReportsTable] Calling completeFlow for report:", id);
 
-                    const flowResult = await window.electronAPI.completeReportFlow(id, tabs);
+                    const flowResult = await window.electronAPI.completeFlow(id, tabs);
 
-                    console.log("[ReportsTable] completeReportFlow result:", flowResult);
+                    console.log("[ReportsTable] completeFlow result:", flowResult);
 
                     if (flowResult?.status === "SUCCESS") {
-                        // Show success message
                         const completedAssets = flowResult?.summary?.complete_macros || 0;
 
                         // Deduct points if assets were completed
@@ -109,9 +145,17 @@ const ReportsTable = () => {
                                 console.log("[ReportsTable] Deducted points for:", completedAssets, "assets");
                             } catch (deductError) {
                                 console.error("[ReportsTable] Error deducting points:", deductError);
-                                // Don't throw here - deduction failure shouldn't fail the whole submission
                             }
                         }
+
+                        // Clear progress after success
+                        setTimeout(() => {
+                            setSubmitProgress(prev => {
+                                const next = { ...prev };
+                                delete next[reportId];
+                                return next;
+                            });
+                        }, 2000);
 
                         return {
                             success: true,
@@ -123,6 +167,12 @@ const ReportsTable = () => {
                     }
                 } catch (error) {
                     console.error("[ReportsTable] Error submitting to Taqeem:", error);
+                    // Clear progress on error
+                    setSubmitProgress(prev => {
+                        const next = { ...prev };
+                        delete next[reportId];
+                        return next;
+                    });
                     throw error;
                 } finally {
                     setSubmitToTaqeemLoading(prev => ({ ...prev, [reportId]: false }));
@@ -130,13 +180,19 @@ const ReportsTable = () => {
             },
             { token, reportId, tabsNum },
             {
-                requiredPoints: 1, // Submit to Taqeem costs 1 point (adjust as needed)
+                requiredPoints: 1,
                 showInsufficientPointsModal: () => setShowInsufficientPointsModal(true),
                 onAuthSuccess: () => {
                     console.log('Submit to Taqeem authentication successful');
                 },
                 onAuthFailure: (reason) => {
                     console.warn('Submit to Taqeem authentication failed:', reason);
+                    // Clear progress on auth failure
+                    setSubmitProgress(prev => {
+                        const next = { ...prev };
+                        delete next[reportId];
+                        return next;
+                    });
                     if (reason !== "INSUFFICIENT_POINTS" && reason !== "LOGIN_REQUIRED") {
                         setError(reason?.message || "Authentication failed for Submit to Taqeem");
                     }
@@ -145,15 +201,79 @@ const ReportsTable = () => {
         ).then(result => {
             if (result?.success) {
                 setSuccess(result.message);
-                // Refresh the reports table
                 fetchAllReports();
             }
         }).catch(error => {
-            // Error is already handled in onAuthFailure callback
             if (!error?.message?.includes("INSUFFICIENT_POINTS") && !error?.message?.includes("LOGIN_REQUIRED")) {
                 setError(error?.message || "Failed to submit to Taqeem");
             }
         });
+    };
+
+    const handlePauseFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.pauseCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                console.log('[ReportsTable] Flow paused successfully');
+                // Update local paused state
+                setFlowPaused(prev => ({ ...prev, [reportId]: true }));
+                // Also update progress status
+                setSubmitProgress(prev => ({
+                    ...prev,
+                    [reportId]: {
+                        ...prev[reportId],
+                        status: 'PAUSED'
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[ReportsTable] Error pausing flow:', error);
+            setError('Failed to pause flow');
+        }
+    };
+
+    const handleResumeFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.resumeCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                console.log('[ReportsTable] Flow resumed successfully');
+                // Clear local paused state
+                setFlowPaused(prev => ({ ...prev, [reportId]: false }));
+                // Update progress status
+                setSubmitProgress(prev => ({
+                    ...prev,
+                    [reportId]: {
+                        ...prev[reportId],
+                        status: 'RUNNING'
+                    }
+                }));
+            }
+        } catch (error) {
+            console.error('[ReportsTable] Error resuming flow:', error);
+            setError('Failed to resume flow');
+        }
+    };
+
+    const handleStopFlow = async (reportId) => {
+        try {
+            const result = await window.electronAPI.stopCompleteFlow?.(reportId);
+            if (result?.status === "SUCCESS") {
+                console.log('[ReportsTable] Flow stopped successfully');
+                setSubmitToTaqeemLoading(prev => ({ ...prev, [reportId]: false }));
+                // Clear paused state
+                setFlowPaused(prev => ({ ...prev, [reportId]: false }));
+                // Clear progress
+                setSubmitProgress(prev => {
+                    const next = { ...prev };
+                    delete next[reportId];
+                    return next;
+                });
+                fetchAllReports();
+            }
+        } catch (error) {
+            console.error('[ReportsTable] Error stopping flow:', error);
+            setError('Failed to stop flow');
+        }
     };
 
     const setActionLoading = (actionType, reportId, isLoading) => {
@@ -363,7 +483,6 @@ const ReportsTable = () => {
                 limit: pageSize.toString(),
                 sortBy: "createdAt",
                 sortOrder: "desc",
-                excludeReportStatus: "DRAFT"
             });
 
             const result = await window.electronAPI.apiRequest(
@@ -822,9 +941,11 @@ const ReportsTable = () => {
                                                 const isSubmitToTaqeemLoading = submitToTaqeemLoading[report.report_id];
 
                                                 const isAnyActionLoading = isFullCheckLoading || isHalfCheckLoading || isRetryLoading || isSendLoading || isSubmitToTaqeemLoading;
+                                                const progress = submitProgress[report.report_id];
+                                                const hasProgress = progress && isSubmitToTaqeemLoading;
                                                 return (
                                                     <React.Fragment key={report._id}>
-                                                        <tr className={`${isHighlighted ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-gray-50'} transition-colors`}>
+                                                        <tr data-report-id={report.report_id} className={`${isHighlighted ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-gray-50'} transition-colors`}>
                                                             <td className="px-3 py-2">
                                                                 <button
                                                                     type="button"
@@ -937,6 +1058,88 @@ const ReportsTable = () => {
                                                                 </div>
                                                             </td>
                                                         </tr>
+
+                                                        {hasProgress && (
+                                                            <tr>
+                                                                <td colSpan="6" className="px-3 py-0 bg-blue-50 border-t border-blue-200">
+                                                                    <div className="py-2 space-y-2">
+                                                                        {/* Progress info */}
+                                                                        <div>
+                                                                            <div className="flex items-center justify-between mb-1">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    {flowPaused[report.report_id] ? (
+                                                                                        <svg className="w-3 h-3 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                                                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                                                        </svg>
+                                                                                    ) : (
+                                                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                                                                    )}
+                                                                                    <span className="text-xs font-medium text-blue-900">
+                                                                                        {flowPaused[report.report_id] ? 'Paused' : (progress.message || 'Processing...')}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <span className="text-xs font-semibold text-blue-900">
+                                                                                    {progress.current}/{progress.total} ({Math.round(progress.percentage)}%)
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                                                                                <div
+                                                                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                                                                    style={{ width: `${progress.percentage}%` }}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Control buttons */}
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            {!flowPaused[report.report_id] ? (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handlePauseFlow(report.report_id);
+                                                                                    }}
+                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-600 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors"
+                                                                                >
+                                                                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                                                    </svg>
+                                                                                    Pause
+                                                                                </button>
+                                                                            ) : (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleResumeFlow(report.report_id);
+                                                                                    }}
+                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-600 bg-green-50 text-green-700 text-xs font-semibold hover:bg-green-100 transition-colors"
+                                                                                >
+                                                                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                                                                                    </svg>
+                                                                                    Resume
+                                                                                </button>
+                                                                            )}
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleStopFlow(report.report_id);
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded border border-red-600 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
+                                                                            >
+                                                                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                                                                                </svg>
+                                                                                Stop
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
 
                                                         {isExpanded && (
                                                             <tr>
