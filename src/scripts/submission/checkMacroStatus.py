@@ -424,14 +424,14 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
         print(f"[HALF CHECK] Report {report_id} overall status: {report_status}")
         
         # Update report status in database
-        await collection.update_one(report_key, {"$set": {"report_status": report_status}})
+        await collection.update_one({"report_id": report_id}, {"$set": {"report_status": report_status}})
 
         # If report has delete button OR is SENT/CONFIRMED, mark all assets as complete
         if status_info['has_delete_button'] or report_status in ["SENT", "CONFIRMED"]:
             print(f"[HALF CHECK] Report is {report_status}, marking all macros as complete.")
             # Mark all assets as complete
             await collection.update_one(
-                report_key,
+                {"report_id": report_id},
                 {"$set": {f"asset_data.{i}.submitState": 1 for i in range(len(report.get("asset_data", [])))}}
             )
             await update_report_completion_status(collection, report["_id"])
@@ -654,13 +654,13 @@ async def half_check_incomplete_macros(browser, report_id, browsers_num=3):
                                 )
 
                                 if update_result.matched_count == 0:
-                                    report_after = await collection.find_one(report_key)
+                                    report_after = await collection.find_one({"report_id": report_id})
                                     if report_after:
                                         asset_data = report_after.get("asset_data", [])
                                         for idx, asset in enumerate(asset_data):
                                             if asset.get("id") == str(macro_id):
                                                 await collection.update_one(
-                                                    report_key,
+                                                    {"report_id": report_id},
                                                     {"$set": {f"asset_data.{idx}.submitState": submit_state}}
                                                 )
                                                 print(f"[HALF-TAB-{tab_id}] Updated Macro {macro_id} using index {idx}")

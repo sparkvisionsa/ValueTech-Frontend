@@ -546,3 +546,4 @@ async def stop_macro_edit(report_id):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
+
