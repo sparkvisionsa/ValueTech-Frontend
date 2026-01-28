@@ -78,6 +78,12 @@ async function ensureTaqeemAuthorized(
                     return { success: true, token: res.token };
                 }
 
+                if (res?.status === "LOGIN_SUCCESS") {
+                    setTaqeemStatus?.("success", "Taqeem login: On");
+                    login({ id: res.userId, guest: true }, res.token);
+                    return { success: true, token: res.token };
+                }
+
                 if (res?.status === "LOGIN_REQUIRED") {
                     setTaqeemStatus?.("info", "Taqeem login: Off");
                     redirectToSystemLogin();

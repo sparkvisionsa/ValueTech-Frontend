@@ -1,95 +1,97 @@
-import asyncio, sys, json, traceback, platform
+import asyncio
+import json
+import platform
+import sys
+import traceback
 from datetime import datetime
 
-from .browser import closeBrowser, get_browser, check_browser_status, spawn_new_browser
+from motor.motor_asyncio import AsyncIOMotorClient
 
+from scripts.core.company_context import set_selected_company
+from scripts.delete.cancelledReportHandler import handle_cancelled_report
+from scripts.delete.deleteIncompleteAssets import (
+    delete_incomplete_assets_flow,
+    pause_delete_incomplete_assets,
+    resume_delete_incomplete_assets,
+    stop_delete_incomplete_assets,
+)
+from scripts.delete.reportDelete import (
+    delete_multiple_reports_flow,
+    delete_report_flow,
+    pause_delete_report,
+    resume_delete_report,
+    stop_delete_report,
+)
+from scripts.loginFlow.companyNavigate import navigate_to_company
+from scripts.loginFlow.getCompanies import get_companies
 from scripts.loginFlow.login import startLogin, submitOtp
 from scripts.loginFlow.newLogin import public_login_flow
 from scripts.loginFlow.register import register_user
-
-
-from scripts.submission.validateReport import validate_report
-from motor.motor_asyncio import AsyncIOMotorClient
-
+from scripts.submission.checkMacroStatus import (
+    RunCheckMacroStatus,
+    RunHalfCheckMacroStatus,
+    pause_full_check,
+    pause_half_check,
+    resume_full_check,
+    resume_half_check,
+    stop_full_check,
+    stop_half_check,
+)
+from scripts.submission.completeFlow import (
+    pause_complete_flow,
+    resume_complete_flow,
+    run_complete_report_flow,
+    stop_complete_flow,
+)
 from scripts.submission.createMacros import (
-    run_create_assets,
     pause_create_macros,
     resume_create_macros,
-    stop_create_macros
+    run_create_assets,
+    stop_create_macros,
 )
-
-from scripts.submission.completeFlow import run_complete_report_flow, pause_complete_flow, resume_complete_flow, stop_complete_flow
-from scripts.submission.grabMacroIds import (
-    get_all_macro_ids_parallel, 
-    pause_grab_macro_ids,
-    resume_grab_macro_ids,
-    stop_grab_macro_ids,
-
-    retry_get_missing_macro_ids,
-    pause_retry_macro_ids,
-    resume_retry_macro_ids, 
-    stop_retry_macro_ids
+from scripts.submission.duplicateReport import run_duplicate_report
+from scripts.submission.ElRajhiChecker import (
+    check_elrajhi_batches,
+    reupload_elrajhi_report,
 )
-
-from scripts.submission.macroFiller import (
-    run_macro_edit,
-    run_macro_edit_retry,
-
-    pause_macro_edit, 
-    resume_macro_edit, 
-    stop_macro_edit
-)
-
 from scripts.submission.ElRajhiFiller import (
     ElRajhiFiller,
     ElrajhiRetry,
-    ElrajhiRetryByReportIds,
     ElrajhiRetryByRecordIds,
-
+    ElrajhiRetryByReportIds,
+    finalize_multiple_reports,
     pause_batch,
     resume_batch,
     stop_batch,
-
-    finalize_multiple_reports
 )
-
-from scripts.submission.ElRajhiChecker import check_elrajhi_batches, reupload_elrajhi_report
-from scripts.submission.registrationCertificateDownloader import download_registration_certificates
-from scripts.submission.duplicateReport import run_duplicate_report
-from scripts.submission.mutliReportFiller import create_reports_by_batch, create_new_report, retry_create_new_report
-
-from scripts.submission.checkMacroStatus import (
-    RunCheckMacroStatus, 
-    pause_full_check, 
-    resume_full_check, 
-    stop_full_check,
-
-    RunHalfCheckMacroStatus,
-    pause_half_check, 
-    resume_half_check, 
-    stop_half_check
+from scripts.submission.grabMacroIds import (
+    get_all_macro_ids_parallel,
+    pause_grab_macro_ids,
+    pause_retry_macro_ids,
+    resume_grab_macro_ids,
+    resume_retry_macro_ids,
+    retry_get_missing_macro_ids,
+    stop_grab_macro_ids,
+    stop_retry_macro_ids,
 )
-
-from scripts.delete.reportDelete import (
-    delete_report_flow,
-    delete_multiple_reports_flow,
-
-    pause_delete_report, 
-    resume_delete_report, 
-    stop_delete_report
+from scripts.submission.macroFiller import (
+    pause_macro_edit,
+    resume_macro_edit,
+    run_macro_edit,
+    run_macro_edit_retry,
+    stop_macro_edit,
 )
+from scripts.submission.mutliReportFiller import (
+    create_new_report,
+    create_reports_by_batch,
+    retry_create_new_report,
+)
+from scripts.submission.registrationCertificateDownloader import (
+    download_registration_certificates,
+)
+from scripts.submission.validateReport import validate_report
 
-from scripts.delete.deleteIncompleteAssets import (
-    delete_incomplete_assets_flow,
-    pause_delete_incomplete_assets, 
-    resume_delete_incomplete_assets, 
-    stop_delete_incomplete_assets
-    )
-from scripts.delete.cancelledReportHandler import handle_cancelled_report
-
-from scripts.loginFlow.getCompanies import get_companies
-from scripts.loginFlow.companyNavigate import navigate_to_company
-from scripts.core.company_context import set_selected_company
+from .browser import check_browser_status, closeBrowser, get_browser, spawn_new_browser
 
 if platform.system().lower() == "windows":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -104,6 +106,7 @@ mongo_db = mongo_client["test"]
 # Track running macro-edit tasks
 running_tasks = {}
 
+
 async def get_reports_by_batch(batch_id):
     if not batch_id:
         return {"status": "FAILED", "error": "Missing batchId"}
@@ -112,7 +115,11 @@ async def get_reports_by_batch(batch_id):
         cursor = mongo_db.urgentreports.find({"batch_id": batch_id})
         docs = await cursor.to_list(length=None)
         if not docs:
-            return {"status": "FAILED", "error": f"No reports found for batchId {batch_id}", "reports": []}
+            return {
+                "status": "FAILED",
+                "error": f"No reports found for batchId {batch_id}",
+                "reports": [],
+            }
 
         report_ids = []
         for doc in docs:
@@ -123,17 +130,18 @@ async def get_reports_by_batch(batch_id):
         return {
             "status": "SUCCESS" if report_ids else "FAILED",
             "message": f"Fetched {len(report_ids)} report ids for batch {batch_id}",
-            "reports": report_ids
+            "reports": report_ids,
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e), "reports": []}
 
+
 async def handle_command(cmd):
     """Handle a single command"""
     action = cmd.get("action")
-    
+
     print(f"[PY] Received action: {action}", file=sys.stderr)
-    
+
     if action == "login":
         browser = await get_browser(force_new=True)
         page = await browser.get(
@@ -142,13 +150,16 @@ async def handle_command(cmd):
             "&scope=openid&response_type=code"
         )
         result = await startLogin(
-            page, 
-            cmd.get("email", ""), cmd.get("password", ""), 
-            cmd.get("method", ""), cmd.get("autoOtp", False))
-        
+            page,
+            cmd.get("email", ""),
+            cmd.get("password", ""),
+            cmd.get("method", ""),
+            cmd.get("autoOtp", False),
+        )
+
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
-        
+
     elif action == "public-login":
         base_url = (
             "https://sso.taqeem.gov.sa/realms/REL_TAQEEM/protocol/openid-connect/auth"
@@ -173,9 +184,9 @@ async def handle_command(cmd):
         browser = await get_browser()
         if not browser or not browser.main_tab:
             result = {
-                "status": "FAILED", 
+                "status": "FAILED",
                 "error": "No active browser session. Please login first.",
-                "commandId": cmd.get("commandId")
+                "commandId": cmd.get("commandId"),
             }
             print(json.dumps(result), flush=True)
             return
@@ -187,7 +198,7 @@ async def handle_command(cmd):
     elif action == "check-status":
         result = await check_browser_status()
         result["commandId"] = cmd.get("commandId")
-        
+
         print(json.dumps(result), flush=True)
 
     elif action == "open-login-page":
@@ -213,7 +224,7 @@ async def handle_command(cmd):
                     "browserOpen": True,
                     "alreadyOpen": True,
                     "openedNewBrowser": False,
-                    "navigated": False
+                    "navigated": False,
                 }
             else:
                 opened_new = force_new or not browser_open
@@ -233,7 +244,7 @@ async def handle_command(cmd):
                     "alreadyOpen": not opened_new,
                     "openedNewBrowser": opened_new,
                     "navigated": navigated,
-                    "url": login_url
+                    "url": login_url,
                 }
         except Exception as e:
             result = {
@@ -241,7 +252,7 @@ async def handle_command(cmd):
                 "error": str(e),
                 "browserOpen": False,
                 "openedNewBrowser": opened_new,
-                "navigated": navigated
+                "navigated": navigated,
             }
 
         result["commandId"] = cmd.get("commandId")
@@ -255,13 +266,15 @@ async def handle_command(cmd):
 
     elif action == "create-macros":
         browser = await get_browser()
-        
+
         report_id = cmd.get("reportId")
         macro_count = cmd.get("macroCount")
         tabs_num = cmd.get("tabsNum")
         batch_size = cmd.get("batchSize")
 
-        result = await run_create_assets(browser, report_id, macro_count, tabs_num, batch_size)
+        result = await run_create_assets(
+            browser, report_id, macro_count, tabs_num, batch_size
+        )
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
@@ -282,7 +295,7 @@ async def handle_command(cmd):
         result = await pause_grab_macro_ids(report_id)
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
-  
+
     elif action == "resume-grab-macro-ids":
         report_id = cmd.get("reportId")
         result = await resume_grab_macro_ids(report_id)
@@ -316,8 +329,8 @@ async def handle_command(cmd):
     elif action == "retry-macro-ids":
         browser = await get_browser()
 
-        report_id  = cmd.get("reportId")
-        tabs_num   = cmd.get("tabsNum")
+        report_id = cmd.get("reportId")
+        tabs_num = cmd.get("tabsNum")
 
         result = await retry_get_missing_macro_ids(browser, report_id, tabs_num)
         result["commandId"] = cmd.get("commandId")
@@ -334,19 +347,16 @@ async def handle_command(cmd):
         # while it's running
         task = asyncio.create_task(run_macro_edit(browser, report_id, tabs_num))
         running_tasks[report_id] = task
-        
+
         try:
             result = await task
         except asyncio.CancelledError:
-            result = {
-                "status": "CANCELLED",
-                "message": "Macro edit was cancelled"
-            }
+            result = {"status": "CANCELLED", "message": "Macro edit was cancelled"}
         finally:
             # Clean up task reference
             if report_id in running_tasks:
                 del running_tasks[report_id]
-        
+
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
@@ -361,13 +371,8 @@ async def handle_command(cmd):
             result["commandId"] = cmd.get("commandId")
             print(json.dumps(result), flush=True)
 
-
         except Exception:
             pass
-
-        result["commandId"] = cmd.get("commandId")
-
-        print(json.dumps(result, default=str), flush=True)   
 
     elif action == "pause-macro-edit":
         report_id = cmd.get("reportId")
@@ -389,16 +394,22 @@ async def handle_command(cmd):
         result = await stop_macro_edit(report_id)
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
-        
+
     elif action == "elrajhi-filler":
         browser = await get_browser()
-        
+
         batch_id = cmd.get("batchId")
         tabs_num = int(cmd.get("tabsNum", 3))
         pdf_only = bool(cmd.get("pdfOnly", False))
         finalize_submission = bool(cmd.get("finalizeSubmission", True))
-        
-        result = await ElRajhiFiller(browser, batch_id, tabs_num, pdf_only, finalize_submission=finalize_submission)
+
+        result = await ElRajhiFiller(
+            browser,
+            batch_id,
+            tabs_num,
+            pdf_only,
+            finalize_submission=finalize_submission,
+        )
         result["commandId"] = cmd.get("commandId")
 
         if result.get("status") == "SUCCESS":
@@ -407,7 +418,7 @@ async def handle_command(cmd):
                 batch_id=batch_id,
                 tabs_num=tabs_num,
             )
-        
+
         print(json.dumps(result), flush=True)
 
     elif action == "pause-elrajhi-batch":
@@ -415,7 +426,7 @@ async def handle_command(cmd):
 
         result = await pause_batch(batch_id)
         result["commandId"] = cmd.get("commandId")
-        
+
         print(json.dumps(result), flush=True)
 
     elif action == "resume-elrajhi-batch":
@@ -468,7 +479,9 @@ async def handle_command(cmd):
             tabs_num = int(tabs_num) if tabs_num is not None else 3
         except Exception:
             tabs_num = 3
-        result = await run_duplicate_report(record_id=record_id, company_url=company_url, tabs_num=tabs_num)
+        result = await run_duplicate_report(
+            record_id=record_id, company_url=company_url, tabs_num=tabs_num
+        )
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
@@ -494,7 +507,7 @@ async def handle_command(cmd):
 
         print(json.dumps(result), flush=True)
 
-# Add these elif blocks in your handle_command function:
+    # Add these elif blocks in your handle_command function:
 
     elif action == "pause-full-check":
         report_id = cmd.get("reportId")
@@ -539,14 +552,16 @@ async def handle_command(cmd):
         max_rounds = int(cmd.get("maxRounds", 10))
         user_id = cmd.get("userId")
 
-        result = await delete_report_flow(report_id=report_id, max_rounds=max_rounds, user_id=user_id)
+        result = await delete_report_flow(
+            report_id=report_id, max_rounds=max_rounds, user_id=user_id
+        )
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
 
     elif action == "complete-flow":
         browser = await get_browser()
-        
+
         report_id = cmd.get("reportId")
         tabs_num = int(cmd.get("tabsNum", 3))
 
@@ -561,7 +576,9 @@ async def handle_command(cmd):
         report_ids = cmd.get("reportIds")
         max_rounds = int(cmd.get("maxRounds", 10))
 
-        result = await delete_multiple_reports_flow(report_ids=report_ids, max_rounds=max_rounds)
+        result = await delete_multiple_reports_flow(
+            report_ids=report_ids, max_rounds=max_rounds
+        )
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
@@ -570,7 +587,7 @@ async def handle_command(cmd):
         report_id = cmd.get("reportId")
         result = await pause_delete_report(report_id)
         result["commandId"] = cmd.get("commandId")
-        print(json.dumps(result), flush=True)   
+        print(json.dumps(result), flush=True)
 
     elif action == "resume-delete-report":
         report_id = cmd.get("reportId")
@@ -591,7 +608,9 @@ async def handle_command(cmd):
         max_rounds = int(cmd.get("maxRounds", 10))
         user_id = cmd.get("userId")
 
-        result = await delete_incomplete_assets_flow(report_id=report_id, max_rounds=max_rounds, user_id=user_id)
+        result = await delete_incomplete_assets_flow(
+            report_id=report_id, max_rounds=max_rounds, user_id=user_id
+        )
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
@@ -619,23 +638,29 @@ async def handle_command(cmd):
                 docs = await cursor.to_list(length=limit)
                 items = []
                 for d in docs:
-                    items.append({
-                        "report_id": d.get("report_id"),
-                        "delete_type": d.get("delete_type"),
-                        "deleted": bool(d.get("deleted")),
-                        "remaining_assets": d.get("remaining_assets"),
-                        "total_assets": d.get("total_assets"),
-                        "result": d.get("result"),
-                        "report_status": d.get("report_status"),
-                        "updated_at": d.get("updated_at").isoformat() if d.get("updated_at") else None,
-                        "deleted_at": d.get("deleted_at").isoformat() if d.get("deleted_at") else None
-                    })
+                    items.append(
+                        {
+                            "report_id": d.get("report_id"),
+                            "delete_type": d.get("delete_type"),
+                            "deleted": bool(d.get("deleted")),
+                            "remaining_assets": d.get("remaining_assets"),
+                            "total_assets": d.get("total_assets"),
+                            "result": d.get("result"),
+                            "report_status": d.get("report_status"),
+                            "updated_at": d.get("updated_at").isoformat()
+                            if d.get("updated_at")
+                            else None,
+                            "deleted_at": d.get("deleted_at").isoformat()
+                            if d.get("deleted_at")
+                            else None,
+                        }
+                    )
                 result = {
                     "status": "SUCCESS",
                     "items": items,
                     "total": total,
                     "page": page,
-                    "limit": limit
+                    "limit": limit,
                 }
             except Exception as e:
                 result = {"status": "FAILED", "error": str(e)}
@@ -650,6 +675,7 @@ async def handle_command(cmd):
         else:
             try:
                 from datetime import datetime
+
                 coll = mongo_db.report_deletions
                 doc = {
                     "report_id": str(deletion_data.get("reportId")),
@@ -658,14 +684,22 @@ async def handle_command(cmd):
                     "result": deletion_data.get("result"),
                     "report_status": deletion_data.get("reportStatus"),
                     "total_assets": deletion_data.get("totalAssets", 0),
-                    "deleted": deletion_data.get("result") in ["Report - Deleted", "Asset - Deleted"],
-                    "delete_type": "report" if deletion_data.get("action") == "delete-report" else "assets" if deletion_data.get("action") == "delete-assets" else None,
+                    "deleted": deletion_data.get("result")
+                    in ["Report - Deleted", "Asset - Deleted"],
+                    "delete_type": "report"
+                    if deletion_data.get("action") == "delete-report"
+                    else "assets"
+                    if deletion_data.get("action") == "delete-assets"
+                    else None,
                     "updated_at": datetime.utcnow(),
-                    "deleted_at": datetime.utcnow() if deletion_data.get("result") in ["Report - Deleted", "Asset - Deleted"] else None
+                    "deleted_at": datetime.utcnow()
+                    if deletion_data.get("result")
+                    in ["Report - Deleted", "Asset - Deleted"]
+                    else None,
                 }
                 if deletion_data.get("error"):
                     doc["error"] = deletion_data.get("error")
-                
+
                 await coll.insert_one(doc)
                 result = {"status": "SUCCESS", "message": "Deletion record stored"}
             except Exception as e:
@@ -688,10 +722,10 @@ async def handle_command(cmd):
                 deletion_data["report_status"] = deletion_data.get("reportStatus")
                 deletion_data["total_assets"] = deletion_data.get("totalAssets", 0)
                 deletion_data["updated_at"] = datetime.utcnow()
-                
+
                 if deletion_data.get("error"):
                     deletion_data["error"] = deletion_data.get("error")
-                
+
                 # Insert the deletion record
                 await coll.insert_one(deletion_data)
                 result = {"status": "SUCCESS", "message": "Deletion record stored"}
@@ -716,24 +750,37 @@ async def handle_command(cmd):
                 skip = max(page - 1, 0) * limit
                 coll = mongo_db.report_deletions
                 total = await coll.count_documents(query)
-                cursor = coll.find(query).sort("last_status_check_at", -1).skip(skip).limit(limit)
+                cursor = (
+                    coll.find(query)
+                    .sort("last_status_check_at", -1)
+                    .skip(skip)
+                    .limit(limit)
+                )
                 docs = await cursor.to_list(length=limit)
                 items = []
                 for d in docs:
-                    items.append({
-                        "report_id": d.get("report_id"),
-                        "report_status": d.get("report_status"),
-                        "report_status_label": d.get("report_status_label"),
-                        "assets_exact": d.get("assets_exact"),
-                        "last_status_check_status": d.get("last_status_check_status"),
-                        "last_status_check_at": d.get("last_status_check_at").isoformat() if d.get("last_status_check_at") else None
-                    })
+                    items.append(
+                        {
+                            "report_id": d.get("report_id"),
+                            "report_status": d.get("report_status"),
+                            "report_status_label": d.get("report_status_label"),
+                            "assets_exact": d.get("assets_exact"),
+                            "last_status_check_status": d.get(
+                                "last_status_check_status"
+                            ),
+                            "last_status_check_at": d.get(
+                                "last_status_check_at"
+                            ).isoformat()
+                            if d.get("last_status_check_at")
+                            else None,
+                        }
+                    )
                 result = {
                     "status": "SUCCESS",
                     "items": items,
                     "total": total,
                     "page": page,
-                    "limit": limit
+                    "limit": limit,
                 }
             except Exception as e:
                 result = {"status": "FAILED", "error": str(e)}
@@ -750,15 +797,16 @@ async def handle_command(cmd):
         else:
             try:
                 from bson import ObjectId
+
                 coll = mongo_db["report_deletions"]
                 query = {
                     "user_id": str(user_id),
-                    "report_id": {"$in": [str(rid) for rid in report_ids]}
+                    "report_id": {"$in": [str(rid) for rid in report_ids]},
                 }
                 # Get all records sorted by updated_at descending
                 cursor = coll.find(query).sort("updated_at", -1)
                 docs = await cursor.to_list(length=None)
-                
+
                 # Get latest result for each report_id (since sorted by updated_at desc, first occurrence is latest)
                 validation_results = {}
                 for d in docs:
@@ -768,12 +816,12 @@ async def handle_command(cmd):
                             "report_id": report_id,
                             "result": d.get("result"),
                             "report_status": d.get("report_status"),
-                            "total_assets": d.get("total_assets", 0)
+                            "total_assets": d.get("total_assets", 0),
                         }
-                
+
                 result = {
                     "status": "SUCCESS",
-                    "items": list(validation_results.values())
+                    "items": list(validation_results.values()),
                 }
             except Exception as e:
                 result = {"status": "FAILED", "error": str(e)}
@@ -802,7 +850,7 @@ async def handle_command(cmd):
 
         result = await stop_delete_incomplete_assets(report_id)
         result["commandId"] = cmd.get("commandId")
-        
+
         print(json.dumps(result), flush=True)
 
     elif action == "handle-cancelled-report":
@@ -906,7 +954,6 @@ async def handle_command(cmd):
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
 
-    
     elif action == "pause-create-macros":
         report_id = cmd.get("reportId")
         result = await pause_create_macros(report_id)
@@ -924,7 +971,6 @@ async def handle_command(cmd):
         result = await stop_create_macros(report_id)
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
-
 
     elif action == "get-reports-by-batch":
         batch_id = cmd.get("batchId") or cmd.get("batch_id")
@@ -946,18 +992,18 @@ async def handle_command(cmd):
     elif action == "create-report-by-id":
         # Spawn a new browser for each report submission (like create-reports-by-batch)
         new_browser = None
-        
+
         try:
             record_id = cmd.get("recordId") or cmd.get("record_id")
             tabs_num = int(cmd.get("tabsNum", 3))
-            
+
             # Get the existing browser first, then spawn a new one from it
             browser = await get_browser()
             new_browser = await spawn_new_browser(browser)
-            
+
             result = await create_new_report(new_browser, record_id, tabs_num)
             result["commandId"] = cmd.get("commandId")
-            
+
             print(json.dumps(result), flush=True)
         finally:
             # Close the browser after completion
@@ -974,51 +1020,66 @@ async def handle_command(cmd):
         result["commandId"] = cmd.get("commandId")
 
         print(json.dumps(result), flush=True)
-        
+
     elif action == "close":
         await closeBrowser()
         result = {
             "status": "SUCCESS",
             "message": "Browser closed successfully",
-            "commandId": cmd.get("commandId")
+            "commandId": cmd.get("commandId"),
         }
         print(json.dumps(result), flush=True)
         return "close"  # Signal to exit
-        
+
     elif action == "ping":
         result = {
             "status": "SUCCESS",
             "message": "pong",
-            "commandId": cmd.get("commandId")
+            "commandId": cmd.get("commandId"),
         }
         print(json.dumps(result), flush=True)
-        
+
     elif action == "register":
         user_data = {
             "userType": cmd.get("userType"),
             "phone": cmd.get("phone"),
-            "password": cmd.get("password")
+            "password": cmd.get("password"),
         }
-        
+
         result = await register_user(user_data)
         result["commandId"] = cmd.get("commandId")
         print(json.dumps(result), flush=True)
-        
+
     else:
         result = {
-            "status": "FAILED", 
+            "status": "FAILED",
             "error": f"Unknown action: {action}",
             "supported_actions": [
-                "login", "otp", "check-status", "validate-report",
-                "create-macros", "grab-macro-ids", "macro-edit",
-                "pause-macro-edit", "resume-macro-edit", "stop-macro-edit",
-                "full-check", "half-check", "register", "close", "ping",
-                "duplicate-report", "get-reports-by-batch", "create-report-by-id",
-                "download-registration-certificates", "open-login-page"
+                "login",
+                "otp",
+                "check-status",
+                "validate-report",
+                "create-macros",
+                "grab-macro-ids",
+                "macro-edit",
+                "pause-macro-edit",
+                "resume-macro-edit",
+                "stop-macro-edit",
+                "full-check",
+                "half-check",
+                "register",
+                "close",
+                "ping",
+                "duplicate-report",
+                "get-reports-by-batch",
+                "create-report-by-id",
+                "download-registration-certificates",
+                "open-login-page",
             ],
-            "commandId": cmd.get("commandId")
+            "commandId": cmd.get("commandId"),
         }
         print(json.dumps(result), flush=True)
+
 
 async def read_stdin_lines():
     """Generator that yields lines from stdin"""
@@ -1029,25 +1090,26 @@ async def read_stdin_lines():
             break
         yield line.strip()
 
+
 async def command_handler():
     """Main command handler that can process commands concurrently"""
-    
+
     async for line in read_stdin_lines():
         if not line:
             continue
-            
+
         try:
             cmd = json.loads(line)
-            
+
             # Create a task for this command so it doesn't block other commands
             # This allows pause/resume commands to be processed while macro-edit is running
             asyncio.create_task(handle_command(cmd))
-            
+
         except json.JSONDecodeError as e:
             error_response = {
                 "status": "FAILED",
                 "error": f"Invalid JSON: {str(e)}",
-                "received": line
+                "received": line,
             }
             print(json.dumps(error_response), flush=True)
         except Exception as e:
@@ -1055,9 +1117,10 @@ async def command_handler():
             error_response = {
                 "status": "FAILED",
                 "error": f"Command handler error: {str(e)}",
-                "traceback": tb
+                "traceback": tb,
             }
             print(json.dumps(error_response), flush=True)
+
 
 async def main():
     try:
@@ -1069,12 +1132,13 @@ async def main():
         for task in running_tasks.values():
             if not task.done():
                 task.cancel()
-        
+
         # Wait for tasks to finish
         if running_tasks:
             await asyncio.gather(*running_tasks.values(), return_exceptions=True)
-        
+
         await closeBrowser()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

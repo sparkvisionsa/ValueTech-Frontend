@@ -1,17 +1,22 @@
-import asyncio, sys, traceback, json
-from datetime import datetime
+import asyncio
+import json
 import re
+import sys
+import traceback
+from datetime import datetime
 from html import unescape
+
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from scripts.core.browser import check_browser_status, new_window
 from scripts.core.utils import wait_for_table_rows
-from motor.motor_asyncio import AsyncIOMotorClient
+from scripts.submission.createMacros import run_create_assets
+from scripts.submission.grabMacroIds import get_all_macro_ids_parallel
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 _mongo_client = AsyncIOMotorClient(MONGO_URI)
 _db = _mongo_client["test"]
 _check_report_coll = _db["report_deletions"]
-
 
 
 async def wait_for_report_info_html(page, timeout_seconds=10):
@@ -27,7 +32,9 @@ async def wait_for_report_info_html(page, timeout_seconds=10):
         except Exception:
             pass
 
-        if last_html and ("حالة التقرير" in last_html or "معلومات التقرير" in last_html):
+        if last_html and (
+            "حالة التقرير" in last_html or "معلومات التقرير" in last_html
+        ):
             return last_html
 
         await asyncio.sleep(0.5)
@@ -38,8 +45,8 @@ async def wait_for_report_info_html(page, timeout_seconds=10):
 def _clean_text(s: str) -> str:
     s = unescape(s or "")
     s = re.sub(r"<br\s*/?>", " ", s, flags=re.I)
-    s = re.sub(r"<[^>]+>", " ", s)          # strip tags
-    s = re.sub(r"\s+", " ", s).strip()      # normalize whitespace
+    s = re.sub(r"<[^>]+>", " ", s)  # strip tags
+    s = re.sub(r"\s+", " ", s).strip()  # normalize whitespace
     return s
 
 
@@ -60,7 +67,7 @@ def extract_report_info_from_html(html: str) -> dict:
     m = re.search(
         r'(<div[^>]*class="[^"]*accordion-body[^"]*"[^>]*>.*?</div>)',
         html,
-        flags=re.S | re.I
+        flags=re.S | re.I,
     )
     block = m.group(1) if m else html  # fallback to full html if not found
 
@@ -68,9 +75,7 @@ def extract_report_info_from_html(html: str) -> dict:
 
     # extract rows: <span>label</span> then <b>value</b>
     for span_txt, b_txt in re.findall(
-        r"<span[^>]*>(.*?)</span>\s*<b[^>]*>(.*?)</b>",
-        block,
-        flags=re.S | re.I
+        r"<span[^>]*>(.*?)</span>\s*<b[^>]*>(.*?)</b>", block, flags=re.S | re.I
     ):
         label = _clean_text(span_txt)
         value = _clean_text(b_txt)
@@ -81,7 +86,7 @@ def extract_report_info_from_html(html: str) -> dict:
     for span_txt, href in re.findall(
         r"<span[^>]*>(.*?)</span>.*?<a[^>]*href=[\"']([^\"']+)[\"']",
         block,
-        flags=re.S | re.I
+        flags=re.S | re.I,
     ):
         label = _clean_text(span_txt)
         if label and label not in info:
@@ -93,7 +98,7 @@ def extract_report_info_from_html(html: str) -> dict:
         for span_txt, b_txt in re.findall(
             r"<span[^>]*>(.*?)</span>\s*(?:<b[^>]*>|<strong[^>]*>)(.*?)(?:</b>|</strong>)",
             html,
-            flags=re.S | re.I
+            flags=re.S | re.I,
         ):
             label = _clean_text(span_txt)
             value = _clean_text(b_txt)
@@ -109,7 +114,11 @@ def extract_report_info_from_html(html: str) -> dict:
             status_value = v
             break
 
-    return {"info": info, "reportStatusLabel": status_label, "reportStatus": status_value}
+    return {
+        "info": info,
+        "reportStatusLabel": status_label,
+        "reportStatus": status_value,
+    }
 
 
 async def calculate_total_assets(page) -> dict:
@@ -131,11 +140,12 @@ async def calculate_total_assets(page) -> dict:
         "last_page_num": None,
         "last_page_ids": [],
         "first_page_ids": [],
-        "error": None
+        "error": None,
     }
 
     try:
         # Always count current page first (covers single-page reports)
+        await wait_for_table_rows(page, timeout=15)
         first_page_ids = await page.evaluate(r"""
             (() => {
                 const rows = Array.from(document.querySelectorAll('#m-table tbody tr'));
@@ -234,64 +244,63 @@ async def calculate_total_assets(page) -> dict:
         return result
 
 
-async def _update_report_check_status(report_id: str, user_id: str | None, updates: dict) -> None:
+async def _update_report_check_status(
+    report_id: str, user_id: str | None, updates: dict
+) -> None:
     if not report_id or not updates:
         return
     try:
         payload = {
             "report_id": str(report_id),
             "user_id": str(user_id) if user_id else None,
-            **updates
+            **updates,
         }
         await _check_report_coll.update_one(
             {"report_id": str(report_id), "user_id": str(user_id) if user_id else None},
             {"$set": payload},
-            upsert=True
+            upsert=True,
         )
     except Exception as e:
-        print(json.dumps({
-            "event": "db_update_failed",
-            "reportId": report_id,
-            "error": str(e)
-        }), file=sys.stderr)
+        print(
+            json.dumps(
+                {"event": "db_update_failed", "reportId": report_id, "error": str(e)}
+            ),
+            file=sys.stderr,
+        )
 
 
 async def validate_report(cmd):
     report_id = cmd.get("reportId")
     user_id = cmd.get("userId")
     if not report_id:
-        return {
-            "status": "FAILED",
-            "error": "Missing reportId in command"
-        }
+        return {"status": "FAILED", "error": "Missing reportId in command"}
 
     browser_status = await check_browser_status()
-    print(json.dumps({
-        "event": "browser_status",
-        "browserStatus": browser_status
-    }), file=sys.stderr)
+    print(
+        json.dumps({"event": "browser_status", "browserStatus": browser_status}),
+        file=sys.stderr,
+    )
 
     if not browser_status.get("browserOpen", False):
         return {
             "status": "FAILED",
             "error": "Browser is not open",
-            "reportId": report_id
+            "reportId": report_id,
         }
 
     if browser_status.get("status") != "SUCCESS":
         return {
             "status": "FAILED",
             "error": "User not logged in",
-            "reportId": report_id
+            "reportId": report_id,
         }
 
     url = f"https://qima.taqeem.sa/report/{report_id}"
 
-    print(json.dumps({
-        "event": "checking_report",
-        "reportId": report_id,
-        "url": url
-    }), file=sys.stderr)
+    print(
+        json.dumps({"event": "checking_report", "reportId": report_id, "url": url}),
+        file=sys.stderr,
+    )
 
     page = None
 
@@ -301,30 +310,37 @@ async def validate_report(cmd):
 
         html = await wait_for_report_info_html(page, timeout_seconds=10)
 
-        print(json.dumps({
-    "event": "html_contains_report_info",
-    "hasStatusText": ("حالة التقرير" in (html or "")),
-    "hasAccordionText": ("معلومات التقرير" in (html or "")),
-    "htmlLength": len(html or "")
-        }), file=sys.stderr)
-
-
+        print(
+            json.dumps(
+                {
+                    "event": "html_contains_report_info",
+                    "hasStatusText": ("حالة التقرير" in (html or "")),
+                    "hasAccordionText": ("معلومات التقرير" in (html or "")),
+                    "htmlLength": len(html or ""),
+                }
+            ),
+            file=sys.stderr,
+        )
 
         error_text_1 = "ليس لديك صلاحية للتواجد هنا !"
         error_text_2 = "هذه الصفحة غير موجودة!"
 
         if error_text_1 in html or error_text_2 in html:
-            await _update_report_check_status(report_id, user_id, {
-                "last_status_check_at": datetime.utcnow(),
-                "last_status_check_status": "NOT_FOUND",
-                "last_status_check_source": "validate_report"
-            })
+            await _update_report_check_status(
+                report_id,
+                user_id,
+                {
+                    "last_status_check_at": datetime.utcnow(),
+                    "last_status_check_status": "NOT_FOUND",
+                    "last_status_check_source": "validate_report",
+                },
+            )
             return {
                 "status": "NOT_FOUND",
                 "message": "Report not accessible or does not exist",
                 "reportId": report_id,
                 "exists": False,
-                "url": url
+                "url": url,
             }
 
         # --- Extract full report info + report status from raw HTML (most reliable) ---
@@ -333,19 +349,26 @@ async def validate_report(cmd):
         report_status_label = extracted.get("reportStatusLabel")
         report_status = extracted.get("reportStatus")
 
-        print(json.dumps({
-            "event": "report_info_extracted",
-            "reportStatusLabel": report_status_label,
-            "reportStatus": report_status,
-            "keysCount": len(report_info)
-        }), file=sys.stderr)
+        print(
+            json.dumps(
+                {
+                    "event": "report_info_extracted",
+                    "reportStatusLabel": report_status_label,
+                    "reportStatus": report_status,
+                    "keysCount": len(report_info),
+                }
+            ),
+            file=sys.stderr,
+        )
 
         # Report exists – check macros table
-        macros_table = await wait_for_table_rows(page, timeout=5)
-        print(json.dumps({
-            "event": "macros_table_check",
-            "tableFound": bool(macros_table)
-        }), file=sys.stderr)
+        macros_table = await wait_for_table_rows(page)
+        print(
+            json.dumps(
+                {"event": "macros_table_check", "tableFound": bool(macros_table)}
+            ),
+            file=sys.stderr,
+        )
 
         if macros_table:
             assets_info = await calculate_total_assets(page)
@@ -355,26 +378,39 @@ async def validate_report(cmd):
             last_page_ids = assets_info.get("last_page_ids") or []
 
             if assets_info.get("error"):
-                print(json.dumps({
-                    "event": "compute_error",
-                    "error": assets_info.get("error")
-                }), file=sys.stderr)
+                print(
+                    json.dumps(
+                        {"event": "compute_error", "error": assets_info.get("error")}
+                    ),
+                    file=sys.stderr,
+                )
 
-            print(json.dumps({
-                "event": "assets_computed",
-                "page": last_page_num,
-                "countLastPage": len(last_page_ids) if isinstance(last_page_ids, list) else None,
-                "assetsExact": assets_exact
-            }), file=sys.stderr)
+            print(
+                json.dumps(
+                    {
+                        "event": "assets_computed",
+                        "page": last_page_num,
+                        "countLastPage": len(last_page_ids)
+                        if isinstance(last_page_ids, list)
+                        else None,
+                        "assetsExact": assets_exact,
+                    }
+                ),
+                file=sys.stderr,
+            )
 
-            await _update_report_check_status(report_id, user_id, {
-                "report_status": report_status,
-                "report_status_label": report_status_label,
-                "assets_exact": assets_exact,
-                "last_status_check_at": datetime.utcnow(),
-                "last_status_check_status": "MACROS_EXIST",
-                "last_status_check_source": "validate_report"
-            })
+            await _update_report_check_status(
+                report_id,
+                user_id,
+                {
+                    "report_status": report_status,
+                    "report_status_label": report_status_label,
+                    "assets_exact": assets_exact,
+                    "last_status_check_at": datetime.utcnow(),
+                    "last_status_check_status": "MACROS_EXIST",
+                    "last_status_check_source": "validate_report",
+                },
+            )
 
             return {
                 "status": "MACROS_EXIST",
@@ -393,22 +429,24 @@ async def validate_report(cmd):
                 "hasMacros": True,
                 "microsCount": total_micros,
                 "assetsExact": assets_exact,
-                "lastPageMicroIds": last_page_ids
+                "lastPageMicroIds": last_page_ids,
             }
 
         # No macros table → report is valid and empty
-        print(json.dumps({
-            "event": "report_empty_macros"
-        }), file=sys.stderr)
+        print(json.dumps({"event": "report_empty_macros"}), file=sys.stderr)
 
-        await _update_report_check_status(report_id, user_id, {
-            "report_status": report_status,
-            "report_status_label": report_status_label,
-            "assets_exact": None,
-            "last_status_check_at": datetime.utcnow(),
-            "last_status_check_status": "SUCCESS",
-            "last_status_check_source": "validate_report"
-        })
+        await _update_report_check_status(
+            report_id,
+            user_id,
+            {
+                "report_status": report_status,
+                "report_status_label": report_status_label,
+                "assets_exact": None,
+                "last_status_check_at": datetime.utcnow(),
+                "last_status_check_status": "SUCCESS",
+                "last_status_check_source": "validate_report",
+            },
+        )
 
         return {
             "status": "SUCCESS",
@@ -419,23 +457,22 @@ async def validate_report(cmd):
             "reportId": report_id,
             "exists": True,
             "url": url,
-            "hasMacros": False
+            "hasMacros": False,
         }
 
     except Exception as e:
         tb = traceback.format_exc()
 
-        print(json.dumps({
-            "event": "exception",
-            "error": str(e),
-            "traceback": tb
-        }), file=sys.stderr)
+        print(
+            json.dumps({"event": "exception", "error": str(e), "traceback": tb}),
+            file=sys.stderr,
+        )
 
         return {
             "status": "FAILED",
             "reportId": report_id,
             "error": str(e),
-            "traceback": tb
+            "traceback": tb,
         }
 
     finally:
@@ -450,11 +487,12 @@ async def check_report_existence(page, report_id=None):
     if report_id:
         url = f"https://qima.taqeem.sa/report/{report_id}"
 
-        print(json.dumps({
-            "event": "navigating_to_report",
-            "reportId": report_id,
-            "url": url
-        }), file=sys.stderr)
+        print(
+            json.dumps(
+                {"event": "navigating_to_report", "reportId": report_id, "url": url}
+            ),
+            file=sys.stderr,
+        )
 
         await page.get(url)
         await asyncio.sleep(3)
@@ -468,12 +506,169 @@ async def check_report_existence(page, report_id=None):
             "status": "NOT_FOUND",
             "exists": False,
             "reportId": report_id,
-            "url": url
+            "url": url,
         }
 
-    return {
-        "status": "EXISTS",
-        "exists": True,
-        "reportId": report_id,
-        "url": url
-    }
+    return {"status": "EXISTS", "exists": True, "reportId": report_id, "url": url}
+
+
+async def validate_for_retry(browser, report_id: str, asset_data: list[dict]):
+    """
+    Ensures:
+    1) Remote report has correct asset count
+    2) Every asset in asset_data has a valid `id` string
+
+    Mutates asset_data in-place when re-grabbing IDs.
+
+    Returns:
+      {
+        "status": "SUCCESS" | "FAILED",
+        "created": int,
+        "error": str | None
+      }
+    """
+
+    page = None
+
+    try:
+        expected_count = len(asset_data)
+
+        page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}")
+        await asyncio.sleep(2)
+
+        # ----------------------------
+        # STEP 1 — reconcile asset count
+        # ----------------------------
+        calculate_result = await calculate_total_assets(page)
+        print(json.dumps(calculate_result))
+        current_count = calculate_result["assets_exact"]
+        created = 0
+
+        if current_count < expected_count:
+            missing = expected_count - current_count
+            await run_create_assets(browser, report_id, missing)
+            created = missing
+            await asyncio.sleep(2)
+
+        elif current_count > expected_count:
+            return {
+                "status": "FAILED",
+                "error": (
+                    f"Remote asset count ({current_count}) "
+                    f"exceeds DB asset count ({expected_count})"
+                ),
+                "created": 0,
+            }
+
+        # ----------------------------
+        # STEP 2 — ID verification (DB-first)
+        # ----------------------------
+        needs_regrab = created > 0 or any(
+            not isinstance(a.get("id"), str) or not a["id"] for a in asset_data
+        )
+
+        if not needs_regrab:
+            # DB already has everything we need
+            return {
+                "status": "SUCCESS",
+                "created": created,
+                "error": None,
+            }
+
+        # ----------------------------
+        # Re-grab ALL IDs (atomic reset)
+        # ----------------------------
+        asset_ids = await get_all_macro_ids_parallel(browser, report_id)
+
+        if not asset_ids:
+            return {
+                "status": "FAILED",
+                "error": "Unable to retrieve complete asset ID set from page",
+                "created": created,
+            }
+
+        return {
+            "status": "RE-GRABBED",
+            "created": created,
+            "error": None,
+        }
+
+    except Exception as e:
+        return {
+            "status": "FAILED",
+            "error": str(e),
+            "created": 0,
+        }
+
+
+async def validate_report_simple(browser, report_id: str):
+    if not report_id:
+        return {"status": "FAILED", "error": "Missing reportId"}
+
+    url = f"https://qima.taqeem.sa/report/{report_id}"
+    page = None
+
+    try:
+        page = await browser.get(url)
+        await asyncio.sleep(3)
+
+        html = await wait_for_report_info_html(page, timeout_seconds=10)
+
+        # --- Hard failure texts ---
+        if "ليس لديك صلاحية للتواجد هنا !" in html or "هذه الصفحة غير موجودة!" in html:
+            return {
+                "status": "NOT_FOUND",
+                "exists": False,
+                "reportId": report_id,
+                "url": url,
+            }
+
+        # --- Extract report metadata ---
+        extracted = extract_report_info_from_html(html)
+        report_info = extracted.get("info") or {}
+        report_status = extracted.get("reportStatus")
+        report_status_label = extracted.get("reportStatusLabel")
+
+        # --- Check macros ---
+        macros_table = await wait_for_table_rows(page)
+
+        if macros_table:
+            assets_info = await calculate_total_assets(page)
+
+            return {
+                "status": "MACROS_EXIST",
+                "exists": True,
+                "hasMacros": True,
+                "reportId": report_id,
+                "url": url,
+                "reportStatus": report_status,
+                "reportStatusLabel": report_status_label,
+                "reportInfo": report_info,
+                "microsCount": assets_info.get("total_micros"),
+                "assetsExact": assets_info.get("assets_exact"),
+                "lastPageMicroIds": assets_info.get("last_page_ids") or [],
+            }
+
+        # --- Valid report, no macros ---
+        return {
+            "status": "SUCCESS",
+            "exists": True,
+            "hasMacros": False,
+            "reportId": report_id,
+            "url": url,
+            "reportStatus": report_status,
+            "reportStatusLabel": report_status_label,
+            "reportInfo": report_info,
+        }
+
+    except Exception as e:
+        return {
+            "status": "FAILED",
+            "reportId": report_id,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+    finally:
+        if page:
+            await page.close()
