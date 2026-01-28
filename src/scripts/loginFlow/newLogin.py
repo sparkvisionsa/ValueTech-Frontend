@@ -1,5 +1,5 @@
 import asyncio, json
-from scripts.core.browser import get_browser, navigate, switch_to_headless
+from scripts.core.browser import get_browser, navigate, switch_to_headless, closeBrowser
 from scripts.core.utils import wait_for_element, wait_for_table_rows
 
 
@@ -48,8 +48,14 @@ async def get_user_id(page):
 
 async def public_login_flow(login_url, is_auth = False):
     # Step 1: show login UI
-    browser = await get_browser(force_new=False, headless_override=False)
-    page = await browser.get(login_url)
+    try:
+        browser = await get_browser(force_new=False, headless_override=False)
+        page = await browser.get(login_url)
+    except Exception:
+        # If the previous automation browser was closed, recreate it and retry once.
+        await closeBrowser()
+        browser = await get_browser(force_new=True, headless_override=False)
+        page = await browser.get(login_url)
 
     print("Please log in manually...")
 

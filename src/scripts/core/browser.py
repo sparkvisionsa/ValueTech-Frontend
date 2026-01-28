@@ -106,6 +106,15 @@ async def get_browser(force_new=False, headless_override=None):
     if force_new and browser:
         await closeBrowser()
 
+    if browser is not None:
+        try:
+            # If the browser was closed externally, this access can throw or return empty tabs.
+            tabs = browser.tabs
+            if not tabs:
+                await closeBrowser()
+        except Exception:
+            await closeBrowser()
+
     if browser is None:
         # Default behavior from environment
         env_headless = os.getenv("HEADLESS", "false").lower() in ("true", "1", "yes")
@@ -158,6 +167,12 @@ async def check_browser_status():
     
     try:
         page = browser.main_tab
+        if page is None:
+            if browser.tabs and len(browser.tabs) > 0:
+                page = browser.tabs[0]
+            else:
+                await closeBrowser()
+                return {"status": "FAILED", "error": "No browser tabs", "browserOpen": False}
         url = await page.evaluate("window.location.href")
         current_url = url.lower()
         
@@ -178,7 +193,7 @@ async def check_browser_status():
         
     except Exception as e:
         # Browser instance exists but is not actually running
-        _browser = None
+        await closeBrowser()
         return {"status": "FAILED", "error": str(e), "browserOpen": False}
 
 async def new_tab(url):

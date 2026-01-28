@@ -6,6 +6,7 @@ import { useSystemControl } from "../context/SystemControlContext";
 import { useAuthAction } from "../hooks/useAuthAction";
 import usePersistentState from "../hooks/usePersistentState";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
+import { ensureTaqeemAuthorized } from "../../shared/helper/taqeemAuthWrap";
 import {
     FileSpreadsheet,
     Files,

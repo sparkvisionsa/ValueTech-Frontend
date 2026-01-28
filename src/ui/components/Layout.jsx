@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Sidebar from './Sidebar';
 import {
     AlertTriangle,
@@ -28,6 +28,8 @@ import navigation from '../constants/navigation';
 import LanguageToggle from './LanguageToggle';
 import NotificationBell from './NotificationBell';
 import { useTranslation } from 'react-i18next';
+import usePersistentState from '../hooks/usePersistentState';
+import { ensureTaqeemAuthorized } from '../../shared/helper/taqeemAuthWrap';
 const { viewTitles, valueSystemGroups, findTabInfo, valueSystemCards, isValueSystemView } = navigation;
 
 const findCardForGroup = (groupId) =>
@@ -144,7 +146,7 @@ const HeroArt = ({ label, theme, Icon }) => {
 };
 
 const Layout = ({ children, currentView, onViewChange }) => {
-    const { isAuthenticated, user, logout, isGuest } = useSession();
+    const { isAuthenticated, user, logout, isGuest, token, login } = useSession();
     const { t, i18n } = useTranslation();
     const {
         systemState,
@@ -161,7 +163,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
         updateBlocked,
         updateSystemState
     } = useSystemControl();
-    const { taqeemStatus, setCompanyStatus } = useNavStatus();
+    const { taqeemStatus, setCompanyStatus, setTaqeemStatus } = useNavStatus();
     const {
         breadcrumbs,
         activeGroup,
@@ -206,6 +208,12 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const [backendVersion, setBackendVersion] = useState(null);
     const [companyModalSelection, setCompanyModalSelection] = useState(selectedCompany?.url || '');
     const [companyModalBusy, setCompanyModalBusy] = useState(false);
+    const [taqeemEverLoggedIn, setTaqeemEverLoggedIn] = usePersistentState('taqeem:ever-logged-in', false, { storage: 'session' });
+    const [showTaqeemReconnect, setShowTaqeemReconnect] = useState(false);
+    const [reconnectState, setReconnectState] = useState('idle');
+    const [reconnectError, setReconnectError] = useState('');
+    const reconnectCloseTimerRef = useRef(null);
+    const prevTaqeemStateRef = useRef(taqeemStatus?.state);
     const uploadViewsRequiringCompany = useMemo(
         () => new Set([
             'submit-reports-quickly',
@@ -227,6 +235,59 @@ const Layout = ({ children, currentView, onViewChange }) => {
             setCompanyModalSelection(selectedCompany.url);
         }
     }, [selectedCompany]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setShowTaqeemReconnect(false);
+            setReconnectState('idle');
+            setReconnectError('');
+            setTaqeemEverLoggedIn(false);
+            return;
+        }
+
+        const currentState = taqeemStatus?.state;
+        const previousState = prevTaqeemStateRef.current;
+        prevTaqeemStateRef.current = currentState;
+
+        if (currentState === 'success') {
+            if (!taqeemEverLoggedIn) {
+                setTaqeemEverLoggedIn(true);
+            }
+            if (showTaqeemReconnect && reconnectState !== 'success') {
+                setReconnectState('success');
+                if (reconnectCloseTimerRef.current) {
+                    clearTimeout(reconnectCloseTimerRef.current);
+                }
+                reconnectCloseTimerRef.current = setTimeout(() => {
+                    setShowTaqeemReconnect(false);
+                    setReconnectState('idle');
+                    setReconnectError('');
+                }, 1200);
+            }
+            return;
+        }
+
+        if (taqeemEverLoggedIn && currentState !== 'success') {
+            setShowTaqeemReconnect(true);
+            if (previousState === 'success') {
+                setReconnectState('idle');
+                setReconnectError('');
+            }
+        }
+    }, [
+        isAuthenticated,
+        reconnectState,
+        setTaqeemEverLoggedIn,
+        showTaqeemReconnect,
+        taqeemEverLoggedIn,
+        taqeemStatus?.state
+    ]);
+
+    useEffect(() => () => {
+        if (reconnectCloseTimerRef.current) {
+            clearTimeout(reconnectCloseTimerRef.current);
+        }
+    }, []);
 
     useEffect(() => {
         const needsCompany = uploadViewsRequiringCompany.has(currentView);
@@ -376,6 +437,18 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const shouldShowUpdateNotice = isAuthenticated && !isAdmin && latestUpdate && userUpdateState?.status !== 'applied' && !hideUpdateNotice;
 
     const taqeemLoggedIn = taqeemStatus?.state === 'success';
+    const reconnectMessage = useMemo(() => {
+        if (reconnectState === 'opening') {
+            return t('taqeemReconnect.connecting', { defaultValue: 'Opening Taqeem login...' });
+        }
+        if (reconnectState === 'success') {
+            return t('taqeemReconnect.success', { defaultValue: 'Reconnected to Taqeem successfully.' });
+        }
+        if (reconnectState === 'error') {
+            return reconnectError || t('taqeemReconnect.error', { defaultValue: 'Taqeem login failed. Please try again.' });
+        }
+        return t('taqeemReconnect.message', { defaultValue: 'Your Taqeem session is off. Reconnect to continue.' });
+    }, [reconnectError, reconnectState, t]);
     const buildNumber = useMemo(() => buildVersion.build, []);
 
 
@@ -400,6 +473,61 @@ const Layout = ({ children, currentView, onViewChange }) => {
             setForceCompanyModal(false);
         } finally {
             setCompanyModalBusy(false);
+        }
+    };
+
+    const handleReconnectToTaqeem = async () => {
+        if (reconnectState === 'opening') return;
+        if (!window?.electronAPI) {
+            setReconnectError(t('taqeemReconnect.unavailable', { defaultValue: 'Desktop integration unavailable. Restart the app.' }));
+            setReconnectState('error');
+            return;
+        }
+
+        setReconnectError('');
+        setReconnectState('opening');
+        try {
+            const guestSession = isGuest || !token;
+            const authStatus = await ensureTaqeemAuthorized(
+                token,
+                null,
+                taqeemStatus?.state === 'success',
+                0,
+                login,
+                setTaqeemStatus,
+                {
+                    isGuest: guestSession,
+                    guestAccessEnabled: systemState?.guestAccessEnabled ?? true,
+                    allowLoginRedirect: false
+                }
+            );
+
+            if (authStatus?.status === 'INSUFFICIENT_POINTS') {
+                setReconnectError(t('taqeemReconnect.insufficientPoints', { defaultValue: "You don't have enough points to reconnect." }));
+                setReconnectState('error');
+                return;
+            }
+
+            if (authStatus?.status === 'LOGIN_REQUIRED') {
+                setReconnectError(t('taqeemReconnect.loginRequired', { defaultValue: 'Please log in to the system and try again.' }));
+                setReconnectState('error');
+                return;
+            }
+
+            if (authStatus?.status === 'FAILED') {
+                setReconnectError(authStatus?.error || t('taqeemReconnect.error', { defaultValue: 'Taqeem login failed. Please try again.' }));
+                setReconnectState('error');
+                return;
+            }
+
+            if (authStatus === false) {
+                setReconnectError(t('taqeemReconnect.error', { defaultValue: 'Taqeem login failed. Please try again.' }));
+                setReconnectState('error');
+                return;
+            }
+        } catch (err) {
+            setReconnectError(err?.message || t('taqeemReconnect.error', { defaultValue: 'Taqeem login failed. Please try again.' }));
+            setReconnectState('error');
         }
     };
 
@@ -761,6 +889,49 @@ const Layout = ({ children, currentView, onViewChange }) => {
 
     return (
         <div className="flex h-screen bg-transparent overflow-x-hidden max-w-full">
+            {showTaqeemReconnect && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
+                    <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl p-5 space-y-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full ${reconnectState === 'success'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : reconnectState === 'error'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                {reconnectState === 'success' ? <ShieldCheck className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-sm font-semibold text-slate-900">
+                                    {t('taqeemReconnect.title', { defaultValue: 'Taqeem connection lost' })}
+                                </h3>
+                                <p className={`text-[11px] ${reconnectState === 'success'
+                                    ? 'text-emerald-700'
+                                    : reconnectState === 'error'
+                                        ? 'text-rose-700'
+                                        : 'text-slate-600'
+                                    }`}>
+                                    {reconnectMessage}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleReconnectToTaqeem}
+                            disabled={reconnectState === 'opening' || reconnectState === 'success'}
+                            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow ${reconnectState === 'opening' || reconnectState === 'success'
+                                ? 'bg-slate-400 cursor-not-allowed'
+                                : 'bg-emerald-600 hover:bg-emerald-700'
+                                }`}
+                        >
+                            {reconnectState === 'opening' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                            {reconnectState === 'opening'
+                                ? t('taqeemReconnect.connecting', { defaultValue: 'Opening Taqeem login...' })
+                                : t('taqeemReconnect.action', { defaultValue: 'Connect to Taqeem' })}
+                        </button>
+                    </div>
+                </div>
+            )}
             {showCompanyModal && (
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm px-4">
                     <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl p-5 space-y-4">

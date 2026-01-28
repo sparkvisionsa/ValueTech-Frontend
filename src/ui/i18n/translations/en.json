@@ -15,6 +15,17 @@
         "no": "No",
         "open": "Open"
     },
+    "taqeemReconnect": {
+        "title": "Taqeem connection lost",
+        "message": "Your Taqeem session is off. Reconnect to continue.",
+        "action": "Connect to Taqeem",
+        "connecting": "Opening Taqeem login...",
+        "success": "Reconnected to Taqeem successfully.",
+        "error": "Taqeem login failed. Please try again.",
+        "loginRequired": "Please log in to the system and try again.",
+        "unavailable": "Desktop integration unavailable. Restart the app.",
+        "insufficientPoints": "You don't have enough points to reconnect."
+    },
     "layout": {
         "alerts": {
             "loginToManageUpdates": "Please log in to manage updates.",
