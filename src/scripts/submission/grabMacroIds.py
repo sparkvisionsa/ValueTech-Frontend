@@ -823,6 +823,52 @@ async def stop_grab_macro_ids(report_id):
         return {"status": "FAILED", "error": str(e)}
 
 
+async def get_macro_count(browser, report_id):
+    """
+    Get the total count of macro IDs by checking the last page.
+    Formula: 15 * (last_page_num - 1) + assets_on_last_page
+
+    Returns:
+        int: Total count of macro IDs, or 0 if failed
+    """
+    try:
+        base_url = f"https://qima.taqeem.sa/report/{report_id}"
+        main_page = browser.tabs[0]
+        await main_page.get(base_url)
+        await asyncio.sleep(2)
+
+        await wait_for_element(main_page, "li", timeout=30)
+
+        # Get total number of pages from pagination
+        pagination_links = await main_page.query_selector_all("ul.pagination li a")
+        page_numbers = []
+        for link in pagination_links:
+            text = link.text
+            if text and text.strip().isdigit():
+                page_numbers.append(int(text.strip()))
+
+        last_page_num = max(page_numbers) if page_numbers else 1
+        print(f"[MACRO_COUNT] Last page number: {last_page_num}", file=sys.stderr)
+
+        # Get macro IDs from the last page
+        last_page_macro_ids = await get_macro_ids_from_page(
+            main_page, base_url, last_page_num, tab_id=0
+        )
+
+        # Calculate total count
+        total_count = 15 * (last_page_num - 1) + len(last_page_macro_ids)
+        print(f"[MACRO_COUNT] Total macro count: {total_count}", file=sys.stderr)
+
+        return total_count
+
+    except Exception as e:
+        print(f"[MACRO_COUNT] Error getting macro count: {str(e)}", file=sys.stderr)
+        import traceback
+
+        traceback.print_exc()
+        return 0
+
+
 # ==============================
 # Pause/Resume/Stop handlers for retry-macro-ids
 # ==============================

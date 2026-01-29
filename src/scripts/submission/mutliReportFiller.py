@@ -630,7 +630,9 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
         validation_result = await validate_for_retry(new_browser, report_id, asset_data)
 
         if validation_result["status"] == "RE-GRABBED":
-            record = await db.reports.find_one({"report_id": report_id})
+            record, collection = await find_record_in_collections(
+                record_id_obj, collection_names
+            )
             asset_data = record.get("asset_data", [])
 
         elif validation_result["status"] == "FAILED":

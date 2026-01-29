@@ -11,7 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from scripts.core.browser import check_browser_status, new_window
 from scripts.core.utils import wait_for_table_rows
 from scripts.submission.createMacros import run_create_assets
-from scripts.submission.grabMacroIds import get_all_macro_ids_parallel
+from scripts.submission.grabMacroIds import get_all_macro_ids_parallel, get_macro_count
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 _mongo_client = AsyncIOMotorClient(MONGO_URI)
@@ -528,20 +528,14 @@ async def validate_for_retry(browser, report_id: str, asset_data: list[dict]):
       }
     """
 
-    page = None
-
     try:
         expected_count = len(asset_data)
-
-        page = await browser.get(f"https://qima.taqeem.sa/report/{report_id}")
-        await asyncio.sleep(2)
 
         # ----------------------------
         # STEP 1 — reconcile asset count
         # ----------------------------
-        calculate_result = await calculate_total_assets(page)
-        print(json.dumps(calculate_result))
-        current_count = calculate_result["assets_exact"]
+        current_count = await get_macro_count(browser, report_id)
+        print(json.dumps(current_count))
         created = 0
 
         if current_count < expected_count:
