@@ -22,6 +22,11 @@ const valueSystemGroups = {
                 description: 'Access and manage Haraj scraped data with advanced filtering and professional table display.'
             },
             {
+                id: 'haraj-scrape',
+                label: 'Haraj Scrape Data',
+                description: 'New Haraj scrape dataset with tags, pricing filters, and detailed modal insights.'
+            },
+            {
                 id: 'haraj-data-updated',
                 label: 'Haraj Data Updated',
                 description: 'Updated Haraj ads feed with backend filters, comments, and phone visibility.'
@@ -176,6 +181,7 @@ const viewTitles = {
     'word-copy': 'Word Copy',
     'haraj': 'Haraj',
     'haraj-data': 'Haraj Data',
+    'haraj-scrape': 'Haraj Scrape Data',
     'haraj-data-updated': 'Haraj Data Updated',
     'delete-report': 'Delete Assets / Reports',
     'my-reports': 'My Reports',

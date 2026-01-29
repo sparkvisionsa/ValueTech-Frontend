@@ -114,7 +114,7 @@ const uploadElrajhiBatch = async (validationExcelFile, validationPdfFiles, value
     return response.data;
 };
 
-const multiExcelUpload = async (validationExcelFiles, validationPdfFiles) => {
+const multiExcelUpload = async (validationExcelFiles, validationPdfFiles, valuers = null) => {
     const formData = new FormData();
     validationExcelFiles.forEach((file) => {
         formData.append("excels", file);
@@ -122,6 +122,9 @@ const multiExcelUpload = async (validationExcelFiles, validationPdfFiles) => {
     validationPdfFiles.forEach((file) => {
         formData.append("pdfs", file);
     });
+    if (Array.isArray(valuers) && valuers.length > 0) {
+        formData.append("valuers", JSON.stringify(valuers));
+    }
 
     const response = await httpClient.post(
         "/multi-approach",

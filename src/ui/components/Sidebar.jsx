@@ -408,6 +408,7 @@ const Sidebar = ({ currentView, onViewChange }) => {
         if (selectedCard !== 'evaluation-sources') return null;
         const evaluationLinks = [
             { id: 'haraj', label: 'Haraj Data', icon: Database },
+            { id: 'haraj-scrape', label: 'Haraj Scrape Data', icon: Database },
             { id: 'haraj-data-updated', label: 'Haraj Data Updated', icon: Database }
         ];
         return (

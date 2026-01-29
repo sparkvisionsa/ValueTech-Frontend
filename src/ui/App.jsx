@@ -39,6 +39,7 @@ import ValuationSystem from './screens/ValuationSystem';
 import WordCopy from './screens/WordCopy';
 import HarajData from './screens/HarajData';
 import HarajDataUpdated from './screens/HarajDataUpdated';
+import HarajScrapeData from './screens/HarajScrapeData';
 import Apps from './screens/Apps';
 import { ValueNavProvider } from './context/ValueNavContext';
 import ComingSoon from './screens/ComingSoon';
@@ -232,6 +233,8 @@ const AppContent = () => {
                 return <HarajData />;
             case 'haraj-data-updated':
                 return <HarajDataUpdated />;
+            case 'haraj-scrape':
+                return <HarajScrapeData />;
 
             case 'coming-soon':
                 return <ComingSoon />;

@@ -280,6 +280,8 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                     step_config["field_map"],
                     step_config["field_types"],
                     is_last,
+                    is_valuers=step_config.get("is_valuers_step", False)
+                    and bool(record.get("valuers")),
                 )
 
             if isinstance(result, dict) and result.get("status") == "FAILED":

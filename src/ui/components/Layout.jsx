@@ -686,7 +686,7 @@ const Layout = ({ children, currentView, onViewChange }) => {
     const groupTabs = (() => {
         const tabs = resolvedGroup?.tabs || [];
         if (resolvedGroupId === 'evaluationSources') {
-            return tabs.filter((tab) => tab.id === 'haraj' || tab.id === 'haraj-data-updated');
+            return tabs.filter((tab) => tab.id === 'haraj' || tab.id === 'haraj-scrape' || tab.id === 'haraj-data-updated');
         }
         return tabs;
     })();
@@ -747,7 +747,10 @@ const Layout = ({ children, currentView, onViewChange }) => {
                     chooseCard(item.key);
                     if (item.key === 'evaluation-sources') {
                         const evaluationTabs = valueSystemGroups.evaluationSources?.tabs || [];
-                        const mainTab = evaluationTabs.find((tab) => tab.id === 'haraj')?.id || evaluationTabs[0]?.id || 'haraj';
+                        const mainTab = evaluationTabs.find((tab) => tab.id === 'haraj-scrape')?.id
+                            || evaluationTabs.find((tab) => tab.id === 'haraj')?.id
+                            || evaluationTabs[0]?.id
+                            || 'haraj-scrape';
                         setActiveGroup('evaluationSources');
                         setActiveTab(mainTab);
                         onViewChange(mainTab);

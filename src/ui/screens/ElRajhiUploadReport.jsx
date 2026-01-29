@@ -476,6 +476,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const [valuerModalError, setValuerModalError] = useState("");
     const [draftValuers, setDraftValuers] = useState([]);
     const [selectedValuers, setSelectedValuers] = useState([]);
+    const [useDefaultValuers, setUseDefaultValuers] = useState(false);
+    const [showValidationModal, setShowValidationModal] = useState(false);
     const [overrideCompanyValuers, setOverrideCompanyValuers] = useState(null);
     const [fetchingCompanyValuers, setFetchingCompanyValuers] = useState(false);
     const selectedCompanyRef = useRef(selectedCompany);
@@ -483,6 +485,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const fetchCompanyValuersPromiseRef = useRef(null);
     const valuerModalPromiseRef = useRef(null);
     const valuerModalResolveRef = useRef(null);
+    const showValidationAfterPdfChangeRef = useRef(false);
 
     useEffect(() => {
         selectedCompanyRef.current = selectedCompany;
@@ -536,6 +539,8 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setDraftValuers([]);
         setValuerModalError("");
         setOverrideCompanyValuers(null);
+        setUseDefaultValuers(false);
+        setShowValidationModal(false);
         if (valuerModalResolveRef.current) {
             valuerModalResolveRef.current(false);
             valuerModalResolveRef.current = null;
@@ -750,7 +755,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     };
 
     const ensureValuerSelection = async (mode = "validation") => {
-        if (selectedValuersValid) return true;
+        if (selectedValuersValid || useDefaultValuers) return true;
         const result = await openValuerModal(mode, { waitForSelection: true });
         return result === true;
     };
@@ -2184,6 +2189,19 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         });
     };
 
+    const skipValuerSelection = () => {
+        setDraftValuers([]);
+        selectedValuersRef.current = [];
+        setSelectedValuers([]);
+        setUseDefaultValuers(true);
+        setValuerModalError("");
+        closeValuerModal(true);
+        pushValuerMessage(valuerModalMode, "info", "Using default valuers from Taqeem.");
+        if (valuerModalMode === "validation") {
+            setShowValidationModal(true);
+        }
+    };
+
     const applyValuerDraft = () => {
         const total = sumValuerPercentages(draftValuers);
         if (!draftValuers.length) {
@@ -2201,6 +2219,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         }));
         selectedValuersRef.current = cleaned;
         setSelectedValuers(cleaned);
+        setUseDefaultValuers(false);
         setValuerModalError("");
         closeValuerModal(true);
         if (valuerModalMode === "validation") {
@@ -2208,6 +2227,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 type: "success",
                 text: `Selected ${cleaned.length} valuer(s).`,
             });
+            setShowValidationModal(true);
         }
     };
 
@@ -2363,7 +2383,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 } else {
                     const valuerNote = hasAnyValuerData
                         ? ""
-                        : " Select valuers to include in the report.";
+                        : useDefaultValuers
+                            ? " Using default valuers from Taqeem."
+                            : " Select valuers to include in the report.";
                     setValidationMessage({
                         type: "success",
                         text: `Loaded ${assets.length} asset(s). Matched ${matchedCount} PDF(s) by asset name.${valuerNote} Report info looks valid.`,
@@ -2553,6 +2575,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         const files = Array.from(e.target.files || []);
         if (files.length) {
             setWantsPdfUpload(true);
+            showValidationAfterPdfChangeRef.current = true;
+        } else {
+            showValidationAfterPdfChangeRef.current = false;
         }
         setValidationPdfFiles(files);
         setRememberedFiles((prev) => ({
@@ -2579,6 +2604,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     const allAssetsTotalsValid = marketAssets.every(
         (a) => !a.hasValuerData || Math.abs((a.totalPercentage || 0) - 100) < 0.001
     );
+    const valuerTotalsLabel = hasAnyValuerData
+        ? allAssetsTotalsValid
+            ? "OK"
+            : "Check"
+        : useDefaultValuers
+            ? "Default (Taqeem)"
+            : "No valuer data";
     const canSendReports = marketAssets.length > 0
         && allAssetsTotalsValid
         && !loadingValuers
@@ -2596,12 +2628,19 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         setWantsPdfUpload(false);
         resetValidationCardState();
         resetValidationBanner();
+        setShowValidationModal(false);
         clearFileInput(validationExcelInputRef);
         clearFileInput(validationPdfInputRef);
     };
 
     const registerValidationSelection = async () => {
         resetValidationBanner();
+        const maybeOpenValidationModal = () => {
+            if (showValidationAfterPdfChangeRef.current) {
+                showValidationAfterPdfChangeRef.current = false;
+                setShowValidationModal(true);
+            }
+        };
 
         if (!validationExcelFile) {
             setValidationReports([]);
@@ -2611,6 +2650,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 type: "error",
                 text: "Select an Excel file before validation.",
             });
+            maybeOpenValidationModal();
             return;
         }
         if (wantsPdfUpload && !validationPdfFiles.length) {
@@ -2621,6 +2661,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                 type: "error",
                 text: "Add at least one PDF file or disable PDF upload.",
             });
+            maybeOpenValidationModal();
             return;
         }
 
@@ -2671,7 +2712,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             const pdfCount = wantsPdfUpload ? validationPdfFiles.length : 0;
             const valuerNote = assets.some((asset) => asset.hasValuerData)
                 ? ""
-                : " Select valuers to include in the report.";
+                : useDefaultValuers
+                    ? " Using default valuers from Taqeem."
+                    : " Select valuers to include in the report.";
             const pdfNote = wantsPdfUpload ? ` and ${pdfCount} PDF(s)` : "";
 
             setValidationMessage({
@@ -2680,6 +2723,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
             });
         } finally {
             setSavingValidation(false);
+            maybeOpenValidationModal();
         }
     };
 
@@ -3211,6 +3255,13 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
+                            onClick={skipValuerSelection}
+                            className="px-3 py-1.5 rounded-md border border-blue-900/20 text-[10px] font-semibold text-blue-900 hover:bg-blue-50"
+                        >
+                            Skip (use Taqeem default)
+                        </button>
+                        <button
+                            type="button"
                             onClick={autoSplitDraft}
                             disabled={draftValuers.length < 2}
                             className="px-3 py-1.5 rounded-md border border-blue-900/20 text-[10px] font-semibold text-blue-900 hover:bg-blue-50 disabled:opacity-50"
@@ -3231,6 +3282,352 @@ const UploadReportElrajhi = ({ onViewChange }) => {
         </div>
     ) : null;
 
+
+    const getValidationSummary = () => {
+        if (!validationExcelFile) {
+            return { type: "info", text: "Upload Excel file to validate." };
+        }
+        if (validationReportIssues.length) {
+            return {
+                type: "error",
+                text: `Excel has ${validationReportIssues.length} issue(s). Fix them before upload.`,
+            };
+        }
+        if (validationMessage?.type === "error") {
+            return { type: "error", text: validationMessage.text };
+        }
+        if (validationMessage?.type === "success") {
+            return { type: "success", text: validationMessage.text };
+        }
+        return { type: "success", text: "Excel validated. No issues found." };
+    };
+
+    const validationSummary = getValidationSummary();
+
+    const validationSummarySection = (
+        <div className="rounded-xl border border-blue-900/10 bg-white p-3 shadow-sm">
+            <div className="text-[11px] font-semibold text-blue-900 mb-1">Validation on Excel</div>
+            <div
+                className={`rounded-lg border px-3 py-2 inline-flex items-start gap-2 text-[11px] ${validationSummary.type === "error"
+                    ? "bg-rose-50 text-rose-700 border-rose-100"
+                    : validationSummary.type === "success"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        : "bg-blue-50 text-blue-700 border-blue-100"
+                    }`}
+            >
+                {validationSummary.type === "error" ? (
+                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                ) : validationSummary.type === "success" ? (
+                    <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                ) : (
+                    <Info className="w-4 h-4 mt-0.5" />
+                )}
+                <div className="text-[11px]">{validationSummary.text}</div>
+            </div>
+        </div>
+    );
+
+    const validationConsole = (
+        <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900 px-2 py-2 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-1">
+                        <p className="text-[11px] font-semibold">Validation console</p>
+                    </div>
+                    {validationDownloadPath && (
+                        <button
+                            type="button"
+                            onClick={() => downloadExcelFile(validationDownloadPath, setDownloadingValidationExcel, setValidationMessage)}
+                            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/20 disabled:opacity-60"
+                            disabled={downloadingValidationExcel}
+                        >
+                            {downloadingValidationExcel ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Download className="w-4 h-4" />
+                            )}
+                            {downloadingValidationExcel ? "Preparing..." : "Download updated Excel"}
+                        </button>
+                    )}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
+                    <div className="inline-flex rounded-full bg-white/10 p-0.5">
+                        <button
+                            type="button"
+                            onClick={() => setValidationTableTab("report-info")}
+                            className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
+                                ? "bg-white text-blue-900 shadow-sm"
+                                : "text-blue-100 hover:text-white"
+                                }`}
+                        >
+                            Report Info validation
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setValidationTableTab("pdf-assets")}
+                            className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
+                                ? "bg-white text-blue-900 shadow-sm"
+                                : "text-blue-100 hover:text-white"
+                                }`}
+                        >
+                            Validate PDFs & assets data
+                        </button>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsValidationTableCollapsed((prev) => !prev)}
+                        className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[10px] font-semibold text-white/90 shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
+                    >
+                        {isValidationTableCollapsed ? (
+                            <ChevronDown className="w-3 h-3" />
+                        ) : (
+                            <ChevronUp className="w-3 h-3" />
+                        )}
+                        {isValidationTableCollapsed ? "Show table" : "Hide table"}
+                    </button>
+                </div>
+            </div>
+            <div className="p-2 space-y-1">
+                {validationMessage && (
+                    <div
+                        className={`rounded-lg border px-2 py-1 inline-flex items-start gap-1 text-[10px] ${validationMessage.type === "error"
+                            ? "bg-rose-50 text-rose-700 border-rose-100"
+                            : validationMessage.type === "success"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                : "bg-blue-50 text-blue-700 border-blue-100"
+                            }`}
+                    >
+                        {validationMessage.type === "error" ? (
+                            <AlertTriangle className="w-4 h-4 mt-0.5" />
+                        ) : validationMessage.type === "success" ? (
+                            <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                        ) : (
+                            <Info className="w-4 h-4 mt-0.5" />
+                        )}
+                        <div className="text-[10px]">{validationMessage.text}</div>
+                    </div>
+                )}
+
+                {validationTableTab === "report-info" ? (
+                    <div className="space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                            <div className="text-[10px] font-semibold text-blue-900">Report Info status</div>
+                            <span
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${validationReportIssues.length
+                                    ? "bg-rose-50 text-rose-700 border-rose-100"
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                    }`}
+                            >
+                                {validationReportIssues.length ? `${validationReportIssues.length} issue(s)` : "All fields OK"}
+                            </span>
+                        </div>
+                        {hasReportInfoData ? (
+                            isValidationTableCollapsed ? (
+                                <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                    <ChevronDown className="w-3 h-3" />
+                                    Table hidden.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
+                                    <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                        <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                            <tr>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {reportInfoFields.map((field) => {
+                                                const fieldIssues = reportInfoIssuesByField[field.label] || [];
+                                                const hasIssue = fieldIssues.length > 0;
+                                                const hasFieldValue = hasValue(field.value);
+                                                const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
+                                                const statusTone = hasIssue
+                                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                                    : hasFieldValue
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                        : "bg-amber-50 text-amber-700 border-amber-200";
+                                                const notesText = hasIssue
+                                                    ? fieldIssues.map((issue) => issue.message).join(" / ")
+                                                    : hasFieldValue
+                                                        ? "Looks good"
+                                                        : "Missing in Excel";
+                                                return (
+                                                    <tr key={field.label}>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                            {field.label}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                            {hasFieldValue ? field.value : "N/A"}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                            <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
+                                                                {statusLabel}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                            {notesText}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            {extraReportInfoIssues.map((issue, idx) => (
+                                                <tr key={`issue-extra-${idx}`}>
+                                                    <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
+                                                        {issue.field || "Issue"}
+                                                    </td>
+                                                    <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
+                                                        {issue.location || "Report Info"}
+                                                    </td>
+                                                    <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                                                            Issue
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
+                                                        {issue.message}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        ) : null}
+                    </div>
+                ) : (
+                    <div className="space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                            <div className="text-[10px] font-semibold text-blue-900">PDFs & assets validation</div>
+                            <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold">
+                                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-900">
+                                    Assets: {validationReports.length}
+                                </span>
+                                <span
+                                    className={`rounded-full border px-2 py-0.5 ${validationReports.length
+                                        ? "border-blue-100 bg-white text-blue-900"
+                                        : "border-blue-100 bg-blue-50 text-blue-700"
+                                        }`}
+                                >
+                                    PDF matches: {validationReports.length ? `${pdfReportCount}/${validationReports.length}` : "0"}
+                                </span>
+                                <span
+                                    className={`rounded-full border px-2 py-0.5 ${hasAnyValuerData
+                                        ? allAssetsTotalsValid
+                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            : "border-rose-200 bg-rose-50 text-rose-700"
+                                        : "border-blue-100 bg-blue-50 text-blue-700"
+                                        }`}
+                                >
+                                    Valuer totals: {valuerTotalsLabel}
+                                </span>
+                            </div>
+                        </div>
+                        {loadingValuers && (
+                            <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Reading valuers from Excel...
+                            </div>
+                        )}
+                        {validationReports.length ? (
+                            isValidationTableCollapsed ? (
+                                <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
+                                    <ChevronDown className="w-3 h-3" />
+                                    Table hidden.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
+                                    <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
+                                        <thead className="text-[10px] uppercase tracking-wide text-white/90">
+                                            <tr>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">#</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Asset name</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">PDF match</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Client name</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Valuers (ID / Name / %)</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left">Total %</th>
+                                                <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Report ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {validationReports.map((report, idx) => {
+                                                const hasValuerData = report.hasValuerData || (report.valuers || []).length > 0;
+                                                const totalPct = hasValuerData ? Number(report.totalPercentage ?? 0) : null;
+                                                const totalValid = !hasValuerData || Math.abs((totalPct || 0) - 100) < 0.001;
+                                                const totalTone = hasValuerData
+                                                    ? totalValid
+                                                        ? "text-emerald-700"
+                                                        : "text-rose-700"
+                                                    : "text-slate-500";
+                                                return (
+                                                    <tr key={report.id || `${report.asset_name}-${idx}`}>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg text-blue-900/80">
+                                                            {idx + 1}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 font-semibold text-blue-900">
+                                                            {report.asset_name || `Asset ${idx + 1}`}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                            {report.pdf_name ? (
+                                                                <div className="inline-flex items-center gap-2 text-emerald-700">
+                                                                    <FileIcon className="w-4 h-4" />
+                                                                    <span className="font-semibold text-[10px]">{report.pdf_name}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-[10px] text-slate-500">No matching PDF</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/80">
+                                                            {report.client_name || "Pending"}
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                            <div className="flex flex-wrap gap-1 text-[10px]">
+                                                                {(report.valuers || []).length ? (
+                                                                    (report.valuers || []).map((v, vIdx) => (
+                                                                        <span
+                                                                            key={`${report.id}-valuer-${vIdx}`}
+                                                                            className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-blue-900"
+                                                                        >
+                                                                            <span className="font-semibold">{v.valuerId || "N/A"}</span>
+                                                                            <span>{v.valuerName || "N/A"}</span>
+                                                                            <span>({Number(v.percentage ?? 0)}%)</span>
+                                                                        </span>
+                                                                    ))
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-400">N/A</span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10">
+                                                            <span className={`font-semibold text-[10px] ${totalTone}`}>
+                                                                {hasValuerData ? `${totalPct}%` : "N/A"}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg">
+                                                            {report.report_id ? (
+                                                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                                                    <CheckCircle2 className="w-3 h-3" />
+                                                                    {report.report_id}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-slate-400">Pending</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
+                        ) : null}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 
     const validationContent = (
         <div className="space-y-1.5">
@@ -3396,309 +3793,39 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-blue-900 px-2 py-2 text-white">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="space-y-1">
-                                <p className="text-[11px] font-semibold">Validation console</p>
-                            </div>
-                            {validationDownloadPath && (
-                                <button
-                                    type="button"
-                                    onClick={() => downloadExcelFile(validationDownloadPath, setDownloadingValidationExcel, setValidationMessage)}
-                                    className="inline-flex items-center gap-2 rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-white hover:bg-white/20 disabled:opacity-60"
-                                    disabled={downloadingValidationExcel}
-                                >
-                                    {downloadingValidationExcel ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    {downloadingValidationExcel ? "Preparing..." : "Download updated Excel"}
-                                </button>
-                            )}
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
-                            <div className="inline-flex rounded-full bg-white/10 p-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => setValidationTableTab("report-info")}
-                                    className={`px-3 py-1 rounded-full transition ${validationTableTab === "report-info"
-                                        ? "bg-white text-blue-900 shadow-sm"
-                                        : "text-blue-100 hover:text-white"
-                                        }`}
-                                >
-                                    Report Info validation
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setValidationTableTab("pdf-assets")}
-                                    className={`px-3 py-1 rounded-full transition ${validationTableTab === "pdf-assets"
-                                        ? "bg-white text-blue-900 shadow-sm"
-                                        : "text-blue-100 hover:text-white"
-                                        }`}
-                                >
-                                    Validate PDFs & assets data
-                                </button>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsValidationTableCollapsed((prev) => !prev)}
-                                className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[10px] font-semibold text-white/90 shadow-sm backdrop-blur transition hover:bg-white/25 hover:text-white"
-                            >
-                                {isValidationTableCollapsed ? (
-                                    <ChevronDown className="w-3 h-3" />
-                                ) : (
-                                    <ChevronUp className="w-3 h-3" />
-                                )}
-                                {isValidationTableCollapsed ? "Show table" : "Hide table"}
-                            </button>
-                        </div>
-                    </div>
-                    <div className="p-2 space-y-1">
-                        {validationMessage && (
-                            <div
-                                className={`rounded-lg border px-2 py-1 inline-flex items-start gap-1 text-[10px] ${validationMessage.type === "error"
-                                    ? "bg-rose-50 text-rose-700 border-rose-100"
-                                    : validationMessage.type === "success"
-                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                        : "bg-blue-50 text-blue-700 border-blue-100"
-                                    }`}
-                            >
-                                {validationMessage.type === "error" ? (
-                                    <AlertTriangle className="w-4 h-4 mt-0.5" />
-                                ) : validationMessage.type === "success" ? (
-                                    <CheckCircle2 className="w-4 h-4 mt-0.5" />
-                                ) : (
-                                    <Info className="w-4 h-4 mt-0.5" />
-                                )}
-                                <div className="text-[10px]">{validationMessage.text}</div>
-                            </div>
-                        )}
-
-                        {validationTableTab === "report-info" ? (
-                            <div className="space-y-1">
-                                <div className="flex flex-wrap items-center justify-between gap-1">
-                                    <div className="text-[10px] font-semibold text-blue-900">Report Info status</div>
-                                    <span
-                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${validationReportIssues.length
-                                            ? "bg-rose-50 text-rose-700 border-rose-100"
-                                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                            }`}
-                                    >
-                                        {validationReportIssues.length ? `${validationReportIssues.length} issue(s)` : "All fields OK"}
-                                    </span>
-                                </div>
-                                {hasReportInfoData ? (
-                                    isValidationTableCollapsed ? (
-                                        <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
-                                            <ChevronDown className="w-3 h-3" />
-                                            Table hidden.
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
-                                            <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
-                                                <thead className="text-[10px] uppercase tracking-wide text-white/90">
-                                                    <tr>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">Field</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Value</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Status</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Notes</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {reportInfoFields.map((field) => {
-                                                        const fieldIssues = reportInfoIssuesByField[field.label] || [];
-                                                        const hasIssue = fieldIssues.length > 0;
-                                                        const hasFieldValue = hasValue(field.value);
-                                                        const statusLabel = hasIssue ? "Issue" : hasFieldValue ? "OK" : "Missing";
-                                                        const statusTone = hasIssue
-                                                            ? "bg-rose-50 text-rose-700 border-rose-200"
-                                                            : hasFieldValue
-                                                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                                                : "bg-amber-50 text-amber-700 border-amber-200";
-                                                        const notesText = hasIssue
-                                                            ? fieldIssues.map((issue) => issue.message).join(" / ")
-                                                            : hasFieldValue
-                                                                ? "Looks good"
-                                                                : "Missing in Excel";
-                                                        return (
-                                                            <tr key={field.label}>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
-                                                                    {field.label}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
-                                                                    {hasFieldValue ? field.value : "N/A"}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone}`}>
-                                                                        {statusLabel}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
-                                                                    {notesText}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                    {extraReportInfoIssues.map((issue, idx) => (
-                                                        <tr key={`issue-extra-${idx}`}>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg font-semibold text-blue-900">
-                                                                {issue.field || "Issue"}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/90">
-                                                                {issue.location || "Report Info"}
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                                                                    Issue
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg text-blue-900/80">
-                                                                {issue.message}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )
-                                ) : null}
-                            </div>
-                        ) : (
-                            <div className="space-y-1">
-                                <div className="flex flex-wrap items-center justify-between gap-1">
-                                    <div className="text-[10px] font-semibold text-blue-900">PDFs & assets validation</div>
-                                    <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold">
-                                        <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-900">
-                                            Assets: {validationReports.length}
-                                        </span>
-                                        <span
-                                            className={`rounded-full border px-2 py-0.5 ${validationReports.length
-                                                ? "border-blue-100 bg-white text-blue-900"
-                                                : "border-blue-100 bg-blue-50 text-blue-700"
-                                                }`}
-                                        >
-                                            PDF matches: {validationReports.length ? `${pdfReportCount}/${validationReports.length}` : "0"}
-                                        </span>
-                                        <span
-                                            className={`rounded-full border px-2 py-0.5 ${hasAnyValuerData
-                                                ? allAssetsTotalsValid
-                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                    : "border-rose-200 bg-rose-50 text-rose-700"
-                                                : "border-blue-100 bg-blue-50 text-blue-700"
-                                                }`}
-                                        >
-                                            Valuer totals: {hasAnyValuerData ? (allAssetsTotalsValid ? "OK" : "Check") : "No valuer data"}
-                                        </span>
-                                    </div>
-                                </div>
-                                {loadingValuers && (
-                                    <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Reading valuers from Excel...
-                                    </div>
-                                )}
-                                {validationReports.length ? (
-                                    isValidationTableCollapsed ? (
-                                        <div className="flex items-center gap-1 text-[10px] text-blue-900/70">
-                                            <ChevronDown className="w-3 h-3" />
-                                            Table hidden.
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
-                                            <table className="min-w-full text-[10px] leading-tight border-separate border-spacing-0">
-                                                <thead className="text-[10px] uppercase tracking-wide text-white/90">
-                                                    <tr>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-l-lg">#</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Asset name</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">PDF match</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Client name</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Valuers (ID / Name / %)</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left">Total %</th>
-                                                        <th className="px-2 py-1 bg-blue-900/95 text-left rounded-r-lg">Report ID</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {validationReports.map((report, idx) => {
-                                                        const hasValuerData = report.hasValuerData || (report.valuers || []).length > 0;
-                                                        const totalPct = hasValuerData ? Number(report.totalPercentage ?? 0) : null;
-                                                        const totalValid = !hasValuerData || Math.abs((totalPct || 0) - 100) < 0.001;
-                                                        const totalTone = hasValuerData
-                                                            ? totalValid
-                                                                ? "text-emerald-700"
-                                                                : "text-rose-700"
-                                                            : "text-slate-500";
-                                                        return (
-                                                            <tr key={report.id || `${report.asset_name}-${idx}`}>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-l-lg text-blue-900/80">
-                                                                    {idx + 1}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 font-semibold text-blue-900">
-                                                                    {report.asset_name || `Asset ${idx + 1}`}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                    {report.pdf_name ? (
-                                                                        <div className="inline-flex items-center gap-2 text-emerald-700">
-                                                                            <FileIcon className="w-4 h-4" />
-                                                                            <span className="font-semibold text-[10px]">{report.pdf_name}</span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-[10px] text-slate-500">No matching PDF</span>
-                                                                    )}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 text-blue-900/80">
-                                                                    {report.client_name || "Pending"}
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                    <div className="flex flex-wrap gap-1 text-[10px]">
-                                                                        {(report.valuers || []).length ? (
-                                                                            (report.valuers || []).map((v, vIdx) => (
-                                                                                <span
-                                                                                    key={`${report.id}-valuer-${vIdx}`}
-                                                                                    className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-blue-900"
-                                                                                >
-                                                                                    <span className="font-semibold">{v.valuerId || "N/A"}</span>
-                                                                                    <span>{v.valuerName || "N/A"}</span>
-                                                                                    <span>({Number(v.percentage ?? 0)}%)</span>
-                                                                                </span>
-                                                                            ))
-                                                                        ) : (
-                                                                            <span className="text-[10px] text-slate-400">N/A</span>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10">
-                                                                    <span className={`font-semibold text-[10px] ${totalTone}`}>
-                                                                        {hasValuerData ? `${totalPct}%` : "N/A"}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-2 py-1 bg-white border border-blue-900/10 rounded-r-lg">
-                                                                    {report.report_id ? (
-                                                                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                                                                            <CheckCircle2 className="w-3 h-3" />
-                                                                            {report.report_id}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="text-[10px] text-slate-400">Pending</span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )
-                                ) : null}
-                            </div>
-                        )}
-                    </div>
-                </div>
             </div>
 
         </div>
     );
+
+    const validationModal = showValidationModal ? (
+        <div
+            className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-6"
+            onClick={() => setShowValidationModal(false)}
+        >
+            <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" />
+            <div
+                className="relative w-full max-w-5xl"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="rounded-2xl border border-blue-900/20 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
+                    <div className="flex items-center justify-between border-b border-blue-900/10 bg-slate-50 px-4 py-3">
+                        <div className="text-sm font-semibold text-blue-900">Validation results</div>
+                        <button
+                            type="button"
+                            onClick={() => setShowValidationModal(false)}
+                            className="text-[10px] font-semibold text-blue-900 hover:text-blue-700"
+                        >
+                            Close
+                        </button>
+                    </div>
+                    <div className="max-h-[70vh] overflow-y-auto p-3">
+                        {validationConsole}
+                    </div>
+                </div>
+            </div>
+        </div>
+    ) : null;
 
     const noValidationContent = (
         <div className="space-y-6">
@@ -3942,6 +4069,9 @@ const UploadReportElrajhi = ({ onViewChange }) => {
                             {batchList.length || 0}
                         </span>
                         Batches
+                    </div>
+                    <div className="mb-2">
+                        {validationSummarySection}
                     </div>
                     <div className="mb-1 text-xs text-blue-900/80 font-semibold">All batches</div>
                     <div className="overflow-x-auto">
@@ -4655,6 +4785,7 @@ const UploadReportElrajhi = ({ onViewChange }) => {
     return (
         <div className="p-2 space-y-2">
             {valuerModal}
+            {validationModal}
             {validationContent}
             {checkReportsContent}
         </div>

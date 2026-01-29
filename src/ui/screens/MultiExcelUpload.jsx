@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRam } from "../context/RAMContext";
 import { useSession } from "../context/SessionContext";
 import { useNavStatus } from "../context/NavStatusContext";
+import { useValueNav } from "../context/ValueNavContext";
 import { useSystemControl } from "../context/SystemControlContext";
 import { useAuthAction } from "../hooks/useAuthAction";
 import usePersistentState from "../hooks/usePersistentState";
@@ -516,7 +517,7 @@ const validateAssetUsageId = (sheetName, rows) => {
             issues.push({
                 field: "asset_usage_id",
                 location,
-                message: `asset_usage_id ${num} is outside the allowed range (38–56) for asset "${assetName}".`,
+                message: `asset_usage_id ${num} is outside the allowed range (38â€“56) for asset "${assetName}".`,
             });
         }
     });
@@ -620,6 +621,46 @@ const normalizeValuers = (valuers = []) => {
     return cleaned.length ? cleaned : buildDefaultValuers();
 };
 
+const normalizeValuerOption = (valuer = {}) => {
+    const valuerId = (valuer?.valuerId || valuer?.valuer_id || valuer?.id || "").toString().trim();
+    const valuerName = (valuer?.valuerName || valuer?.valuer_name || valuer?.name || "").toString().trim();
+    return { valuerId, valuerName };
+};
+
+const normalizeValuerList = (list = []) =>
+    (Array.isArray(list) ? list : [])
+        .map((valuer) => normalizeValuerOption(valuer))
+        .filter((valuer) => valuer.valuerId || valuer.valuerName);
+
+const toValuerLabel = (valuer = {}) => {
+    const id = (valuer?.valuerId || "").toString().trim();
+    const name = (valuer?.valuerName || "").toString().trim();
+    if (id && name) return `${id} - ${name}`;
+    return name || id || "";
+};
+
+const matchCompanyBySelection = (companies = [], selectedCompany) => {
+    if (!selectedCompany) return null;
+    const officeId = selectedCompany?.officeId || selectedCompany?.office_id;
+    const match = (companies || []).find((company) => {
+        const candidateOffice = company?.officeId || company?.office_id;
+        if (officeId !== undefined && officeId !== null) {
+            return String(candidateOffice) === String(officeId);
+        }
+        if (selectedCompany?.url) {
+            return company?.url === selectedCompany.url;
+        }
+        return company?.name === selectedCompany?.name;
+    });
+    return match || selectedCompany;
+};
+
+const sumValuerPercentages = (list = []) =>
+    (Array.isArray(list) ? list : []).reduce(
+        (sum, valuer) => sum + (Number(valuer?.contribution_percentage) || 0),
+        0
+    );
+
 const getReportRecordId = (report) =>
     report?._id || report?.id || report?.recordId || "";
 
@@ -633,6 +674,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const { systemState } = useSystemControl();
     const { executeWithAuth } = useAuthAction();
     const { taqeemStatus, setTaqeemStatus } = useNavStatus();
+    const { selectedCompany, companies, loadSavedCompanies } = useValueNav();
     const [excelFiles, setExcelFiles] = useState([]);
     const [pdfFiles, setPdfFiles] = useState([]);
     const [selectedReportActions, setSelectedReportActions] = useState({});
@@ -679,6 +721,13 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [errors, setErrors] = useState({});
     const [reportUsers, setReportUsers] = useState([]);
     const [valuers, setValuers] = useState(buildDefaultValuers());
+    const [draftValuers, setDraftValuers] = useState(buildDefaultValuers());
+    const [valuerModalOpen, setValuerModalOpen] = useState(false);
+    const [valuerModalError, setValuerModalError] = useState("");
+    const [useDefaultValuers, setUseDefaultValuers] = useState(false);
+    const [showValidationModal, setShowValidationModal] = useState(false);
+    const [overrideCompanyValuers, setOverrideCompanyValuers] = useState(null);
+    const [fetchingCompanyValuers, setFetchingCompanyValuers] = useState(false);
     const [assetEdit, setAssetEdit] = useState(null);
     const [assetDraft, setAssetDraft] = useState({
         asset_name: "",
@@ -695,6 +744,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
     const [, setReturnView, resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
 
     const pdfInputRef = useRef(null);
+    const fetchCompanyValuersPromiseRef = useRef(null);
 
     // Update state to track batch progress instead of individual report progress
     const [batchProgress, setBatchProgress] = useState({});
@@ -782,14 +832,106 @@ const MultiExcelUpload = ({ onViewChange }) => {
         [guestSession, guestAccessEnabled]
     );
     const isTaqeemLoggedIn = taqeemStatus?.state === "success";
+    const companyFromList = useMemo(
+        () => matchCompanyBySelection(companies, selectedCompany),
+        [companies, selectedCompany]
+    );
+    const companyValuers = useMemo(
+        () => normalizeValuerList(companyFromList?.valuers || []),
+        [companyFromList]
+    );
+    const displayCompanyValuers = overrideCompanyValuers ?? companyValuers;
+    const valuerOptions = useMemo(() => {
+        const seen = new Set();
+        const options = [];
+        displayCompanyValuers.forEach((valuer) => {
+            const label = toValuerLabel(valuer);
+            if (!label || seen.has(label)) return;
+            seen.add(label);
+            options.push(label);
+        });
+        return options;
+    }, [displayCompanyValuers]);
+    const valuerNameOptions = useMemo(() => {
+        const placeholder = fetchingCompanyValuers
+            ? "Loading valuers..."
+            : valuerOptions.length
+                ? "Select valuer"
+                : "No valuers available";
+        return [
+            { value: "", label: placeholder },
+            ...valuerOptions.map((opt) => ({ value: opt, label: opt })),
+        ];
+    }, [fetchingCompanyValuers, valuerOptions]);
+    const selectedCompanyKey = useMemo(
+        () =>
+            String(
+                selectedCompany?.officeId || selectedCompany?.office_id || selectedCompany?.url || ""
+            ),
+        [selectedCompany]
+    );
 
     const excelInputRef = useRef(null);
+
+    useEffect(() => {
+        setOverrideCompanyValuers(null);
+        setValuerModalError("");
+        setUseDefaultValuers(false);
+        setDraftValuers(buildDefaultValuers());
+        setValuerModalOpen(false);
+        setShowValidationModal(false);
+    }, [selectedCompanyKey]);
+
+    useEffect(() => {
+        if (!valuerModalOpen) return;
+        setDraftValuers((prev) => {
+            const base = Array.isArray(prev) && prev.length ? prev : buildDefaultValuers();
+            if (!valuerOptions.length) {
+                return base.map((valuer) => ({ ...valuer, valuer_name: "" }));
+            }
+            const cleaned = base.map((valuer) =>
+                valuerOptions.includes(valuer.valuer_name)
+                    ? valuer
+                    : { ...valuer, valuer_name: "" }
+            );
+            const hasAny = cleaned.some((valuer) => valuer.valuer_name);
+            if (!hasAny && valuerOptions.length === 1) {
+                return [{ valuer_name: valuerOptions[0], contribution_percentage: 100 }];
+            }
+            return cleaned;
+        });
+    }, [valuerModalOpen, valuerOptions]);
+
+    useEffect(() => {
+        setValuers((prev) => {
+            const base = Array.isArray(prev) && prev.length ? prev : buildDefaultValuers();
+            if (!valuerOptions.length) {
+                return base.map((valuer) => ({ ...valuer, valuer_name: "" }));
+            }
+            const cleaned = base.map((valuer) =>
+                valuerOptions.includes(valuer.valuer_name)
+                    ? valuer
+                    : { ...valuer, valuer_name: "" }
+            );
+            const hasAny = cleaned.some((valuer) => valuer.valuer_name);
+            if (!hasAny && valuerOptions.length === 1) {
+                return [{ valuer_name: valuerOptions[0], contribution_percentage: 100 }];
+            }
+            return cleaned;
+        });
+    }, [selectedCompanyKey, valuerOptions]);
 
     // Update handleExcelChange to use the ref
     const handleExcelChange = (e) => {
         const files = Array.from(e.target.files || []);
         setExcelFiles(files);
         resetMessages();
+        resetValidation();
+        setShowValidationModal(false);
+        setUseDefaultValuers(false);
+        if (files.length) {
+            void openValuerModal();
+        }
     };
 
     // Update handlePdfChange to use the ref
@@ -797,6 +939,10 @@ const MultiExcelUpload = ({ onViewChange }) => {
         const files = Array.from(e.target.files || []);
         setPdfFiles(files);
         resetMessages();
+        if (files.length && excelFiles.length) {
+            setValidationTableTab("pdf-assets");
+            setShowValidationModal(true);
+        }
     };
 
     const handlePdfToggle = (checked) => {
@@ -832,6 +978,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
         setUploadResult(null);
         resetMessages();
         resetValidation();
+        setDraftValuers(buildDefaultValuers());
+        setValuerModalOpen(false);
+        setValuerModalError("");
+        setUseDefaultValuers(false);
+        setShowValidationModal(false);
         resetPendingSubmit();
         resetPendingBatch();
         resetReturnView();
@@ -1528,7 +1679,11 @@ const MultiExcelUpload = ({ onViewChange }) => {
                         : `Uploading Excel files. PDFs will use ${DUMMY_PDF_NAME}.`
                 );
 
-                const data = await multiExcelUpload(excelFiles, wantsPdfUpload ? pdfFiles : []);
+                const data = await multiExcelUpload(
+                    excelFiles,
+                    wantsPdfUpload ? pdfFiles : [],
+                    useDefaultValuers ? [] : buildValuersPayload()
+                );
 
                 if (data.status !== "success") {
                     throw new Error(data.error || "Upload failed");
@@ -1597,7 +1752,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                 const data = await multiExcelUpload(
                     excelFiles,
-                    wantsPdfUpload ? pdfFiles : []
+                    wantsPdfUpload ? pdfFiles : [],
+                    useDefaultValuers ? [] : buildValuersPayload()
                 );
 
                 if (!data || data.status !== "success") {
@@ -1739,9 +1895,140 @@ const MultiExcelUpload = ({ onViewChange }) => {
         ]);
     };
 
-    const handleRemoveValuer = (idx) => {
-        setValuers((prev) => prev.filter((_, index) => index !== idx));
-    };
+const handleRemoveValuer = (idx) => {
+    setValuers((prev) => prev.filter((_, index) => index !== idx));
+};
+
+const refreshCompaniesFromDb = useCallback(async () => {
+    if (!loadSavedCompanies) {
+        throw new Error("Company list unavailable.");
+    }
+    if (fetchCompanyValuersPromiseRef.current) {
+        return fetchCompanyValuersPromiseRef.current;
+    }
+    const run = (async () => {
+        setFetchingCompanyValuers(true);
+        try {
+            return await loadSavedCompanies(selectedCompany?.type || "equipment");
+        } finally {
+            setFetchingCompanyValuers(false);
+        }
+    })();
+    fetchCompanyValuersPromiseRef.current = run;
+    try {
+        return await run;
+    } finally {
+        fetchCompanyValuersPromiseRef.current = null;
+    }
+}, [loadSavedCompanies, selectedCompany?.type]);
+
+const openValuerModal = async () => {
+    setDraftValuers(valuers.map((valuer) => ({ ...valuer })));
+    setValuerModalError("");
+    setUseDefaultValuers(false);
+    setOverrideCompanyValuers(null);
+    setValuerModalOpen(true);
+
+    const currentCompany = companyFromList || selectedCompany;
+    if (!currentCompany) {
+        setValuerModalError("Select a company to load valuers.");
+        return;
+    }
+
+    if (valuerOptions.length) return;
+
+    try {
+        const refreshed = await refreshCompaniesFromDb();
+        const match = matchCompanyBySelection(refreshed, currentCompany);
+        const refreshedValuers = normalizeValuerList(match?.valuers || []);
+        if (refreshedValuers.length) {
+            setOverrideCompanyValuers(refreshedValuers);
+        } else {
+            setValuerModalError("No valuers found for the selected company.");
+        }
+    } catch (err) {
+        setValuerModalError(err?.message || "Failed to load valuers.");
+    }
+};
+
+const closeValuerModal = () => {
+    setValuerModalOpen(false);
+    setValuerModalError("");
+};
+
+const handleDraftValuerChange = (idx, field, value) => {
+    setDraftValuers((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], [field]: value };
+        return next;
+    });
+};
+
+const handleAddDraftValuer = () => {
+    setDraftValuers((prev) => [
+        ...prev,
+        { valuer_name: "", contribution_percentage: 0 },
+    ]);
+};
+
+const handleRemoveDraftValuer = (idx) => {
+    setDraftValuers((prev) => prev.filter((_, index) => index !== idx));
+};
+
+const autoSplitDraftValuers = () => {
+    setDraftValuers((prev) => {
+        const count = prev.length;
+        if (!count) return prev;
+        const base = Math.floor(100 / count / 5) * 5;
+        let remainder = 100 - base * count;
+        return prev.map((valuer) => {
+            const add = remainder >= 5 ? 5 : 0;
+            remainder -= add;
+            return {
+                ...valuer,
+                contribution_percentage: base + add,
+            };
+        });
+    });
+};
+
+const applyValuerSelection = () => {
+    if (!valuerOptions.length) {
+        setValuerModalError("No valuers available for the selected company. Use Skip.");
+        return;
+    }
+    const total = sumValuerPercentages(draftValuers);
+    const hasNamedValuer = draftValuers.some(
+        (valuer) => String(valuer?.valuer_name || "").trim()
+    );
+    if (!hasNamedValuer) {
+        setValuerModalError("Select at least one valuer or use Skip.");
+        return;
+    }
+    if (Math.abs(total - 100) > 0.001) {
+        setValuerModalError(`Total must be 100%. Currently ${total}%.`);
+        return;
+    }
+    setValuers(draftValuers.map((valuer) => ({ ...valuer })));
+    setUseDefaultValuers(false);
+    closeValuerModal();
+    setShowValidationModal(true);
+};
+
+const skipValuerSelection = () => {
+    setValuers(buildDefaultValuers());
+    setUseDefaultValuers(true);
+    closeValuerModal();
+    setShowValidationModal(true);
+};
+
+const buildValuersPayload = () =>
+    (Array.isArray(valuers) ? valuers : [])
+        .map((valuer) => ({
+            valuer_name: String(valuer?.valuer_name || "").trim(),
+            contribution_percentage: Number(valuer?.contribution_percentage) || 0,
+        }))
+        .filter((valuer) => valuer.valuer_name);
 
     const validateReport = () => {
         const newErrors = {};
@@ -2337,164 +2624,9 @@ const MultiExcelUpload = ({ onViewChange }) => {
         </div>
     ) : null;
 
-    return (
-        <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
-            {showInsufficientPointsModal && (
-                <div className="fixed inset-0 z-[9999]">
-                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
-                        <InsufficientPointsModal
-                            viewChange={onViewChange}
-                            onClose={() => setShowInsufficientPointsModal(false)}
-                        />
-                    </div>
-                </div>
-            )}
 
-            <div className="space-y-2">
-                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
-                            <div className="flex items-center gap-2 text-xs text-slate-700">
-                                <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-                                <span className="font-semibold">
-                                    {excelFiles.length
-                                        ? excelFiles.length === 1
-                                            ? <span className="truncate max-w-[150px]" title={excelFiles[0].name}>{excelFiles[0].name}</span>
-                                            : `${excelFiles.length} file(s) selected`
-                                        : "Choose Excel file"}
-                                </span>
-                            </div>
-                            <input
-                                type="file"
-                                multiple
-                                accept=".xlsx,.xls"
-                                className="hidden"
-                                onChange={handleExcelChange}
-                                ref={excelInputRef}
-                            />
-                            <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
-                        </label>
-
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                                <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
-                                    checked={wantsPdfUpload}
-                                    onChange={(e) => handlePdfToggle(e.target.checked)}
-                                />
-                                <Files className="w-4 h-4 text-blue-600" />
-                                <span className="font-semibold">Upload PDFs</span>
-                                <span className="text-xs text-slate-600">
-                                    {pdfFiles.length
-                                        ? `${pdfFiles.length} file(s) selected`
-                                        : "Choose PDF files"}
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (pdfInputRef?.current) {
-                                        pdfInputRef.current.value = null;
-                                        pdfInputRef.current.click();
-                                    }
-                                }}
-                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
-                            >
-                                Browse
-                            </button>
-                            <input
-                                ref={pdfInputRef}
-                                type="file"
-                                multiple
-                                accept=".pdf"
-                                className="hidden"
-                                onChange={handlePdfChange}
-                            />
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={downloadExcelTemplate}
-                            disabled={downloadingTemplate}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            {downloadingTemplate ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <Download className="w-3.5 h-3.5" />
-                            )}
-                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={resetAll}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Reset
-                        </button>
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <button
-                        type="button"
-                        onClick={handleUploadAndCreate}
-                        disabled={loading || creatingReports || !isReadyToUpload}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
-                                bg-green-600 hover:bg-green-700
-                                text-white text-xs font-semibold
-                                shadow-md hover:shadow-lg hover:scale-[1.01]
-                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
-                                transition-all"
-                    >
-                        {(loading || creatingReports) ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <Send className="w-4 h-4" />
-                        )}
-                        {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Send To Taqeem"}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={handleStoreOnly}
-                        disabled={loading || !isReadyToUpload}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
-                                bg-blue-600 hover:bg-blue-700
-                                text-white text-xs font-semibold
-                                shadow-md hover:shadow-lg hover:scale-[1.01]
-                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
-                                transition-all"
-                    >
-                        {loading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <FileIcon className="w-4 h-4" />
-                        )}
-                        {loading ? "Storing..." : "Store and Send Later"}
-                    </button>
-                </div>
-            </div>
-
-            {(error || success) && (
-                <div
-                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
-                        ? "bg-rose-50 text-rose-700 border-rose-300"
-                        : "bg-emerald-50 text-emerald-700 border-emerald-300"
-                        }`}
-                >
-                    {error ? (
-                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    ) : (
-                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div className="text-xs font-medium">{error || success}</div>
-                </div>
-            )}
-
-            <div className="space-y-2">
+    const validationConsole = (
+<div className="space-y-2">
                 <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden card-animate">
                     <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 px-3 py-2.5 text-white">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2592,6 +2724,7 @@ const MultiExcelUpload = ({ onViewChange }) => {
                                             { label: "Client Name", value: item.snapshot?.clientName },
                                             { label: "Client Telephone", value: item.snapshot?.telephone },
                                             { label: "Client Email", value: item.snapshot?.email },
+                                            { label: "Valuers", value: valuerSummary },
                                             { label: "Date of Valuation", value: item.snapshot?.valuedAt ? formatDateForDisplay(item.snapshot.valuedAt) : "" },
                                             { label: "Report Issuing Date", value: item.snapshot?.submittedAt ? formatDateForDisplay(item.snapshot.submittedAt) : "" },
                                         ];
@@ -2815,6 +2948,297 @@ const MultiExcelUpload = ({ onViewChange }) => {
                     </div>
                 </div>
             </div>
+    );
+
+    const draftValuerTotal = sumValuerPercentages(draftValuers);
+    const draftHasNamedValuer = draftValuers.some((valuer) => String(valuer?.valuer_name || "").trim());
+    const draftValuerValid = draftHasNamedValuer && Math.abs(draftValuerTotal - 100) < 0.001;
+    const valuerSummary = useMemo(() => {
+        const cleaned = buildValuersPayload();
+        if (useDefaultValuers || cleaned.length === 0) {
+            return "Using default valuer";
+        }
+        return cleaned
+            .map((valuer) => `${valuer.valuer_name} (${valuer.contribution_percentage}%)`)
+            .join(", ");
+    }, [useDefaultValuers, valuers]);
+
+    const valuerModal = (
+        <Modal
+            open={valuerModalOpen}
+            onClose={closeValuerModal}
+            title="Select valuers"
+            maxWidth="max-w-3xl"
+        >
+            <div className="space-y-3">
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-semibold text-slate-800">Choose valuers and set contribution percentages (total 100%).</div>
+                </div>
+                {!selectedCompany && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        Select a company to load valuers.
+                    </div>
+                )}
+                {fetchingCompanyValuers && (
+                    <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading valuers from your companies...
+                    </div>
+                )}
+                {!fetchingCompanyValuers && selectedCompany && !valuerOptions.length && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        No valuers found for the selected company.
+                    </div>
+                )}
+                <div className="space-y-2">
+                    {draftValuers.map((valuer, idx) => (
+                        <div key={`draft-valuer-${idx}`} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                            <SelectField
+                                label="Valuer name"
+                                value={valuer.valuer_name}
+                                options={valuerNameOptions}
+                                onChange={(e) => handleDraftValuerChange(idx, "valuer_name", e.target.value)}
+                                disabled={fetchingCompanyValuers || !valuerOptions.length}
+                            />
+                            <InputField
+                                label="Contribution %"
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={valuer.contribution_percentage}
+                                onChange={(e) => handleDraftValuerChange(idx, "contribution_percentage", e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveDraftValuer(idx)}
+                                className="text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-md border border-rose-200 hover:border-rose-300 bg-rose-50/60"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleAddDraftValuer}
+                        disabled={fetchingCompanyValuers || !valuerOptions.length}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 disabled:opacity-50"
+                    >
+                        Add valuer
+                    </button>
+                    <button
+                        type="button"
+                        onClick={autoSplitDraftValuers}
+                        disabled={fetchingCompanyValuers || !valuerOptions.length || draftValuers.length < 2}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                        Auto split
+                    </button>
+                </div>
+                {valuerModalError && (
+                    <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                        {valuerModalError}
+                    </div>
+                )}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                    <div className="text-xs text-slate-600 font-semibold">
+                        Selected: {draftValuers.length} | Total: {draftValuerTotal}%
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={skipValuerSelection}
+                            className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Skip (use default)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={applyValuerSelection}
+                            disabled={!draftValuerValid || fetchingCompanyValuers || !valuerOptions.length}
+                            className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            Save valuers
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+    );
+
+    const validationModal = (
+        <Modal
+            open={showValidationModal}
+            onClose={() => setShowValidationModal(false)}
+            title="Validation Console"
+            maxWidth="max-w-6xl"
+        >
+            {validationConsole}
+        </Modal>
+    );
+
+
+    return (
+        <div className="relative p-3 space-y-3 page-animate overflow-x-hidden">
+            {showInsufficientPointsModal && (
+                <div className="fixed inset-0 z-[9999]">
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-full max-w-sm">
+                        <InsufficientPointsModal
+                            viewChange={onViewChange}
+                            onClose={() => setShowInsufficientPointsModal(false)}
+                        />
+                    </div>
+                </div>
+            )}
+            {valuerModal}
+            {validationModal}
+
+            <div className="space-y-2">
+                <div className="rounded-lg border border-slate-200 bg-white shadow-sm p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-all min-w-[180px] flex-[0.85] group">
+                            <div className="flex items-center gap-2 text-xs text-slate-700">
+                                <FileSpreadsheet className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                                <span className="font-semibold">
+                                    {excelFiles.length
+                                        ? excelFiles.length === 1
+                                            ? <span className="truncate max-w-[150px]" title={excelFiles[0].name}>{excelFiles[0].name}</span>
+                                            : `${excelFiles.length} file(s) selected`
+                                        : "Choose Excel file"}
+                                </span>
+                            </div>
+                            <input
+                                type="file"
+                                multiple
+                                accept=".xlsx,.xls"
+                                className="hidden"
+                                onChange={handleExcelChange}
+                                ref={excelInputRef}
+                            />
+                            <span className="text-xs font-semibold text-blue-600 group-hover:text-blue-700 whitespace-nowrap">Browse</span>
+                        </label>
+
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border-2 border-dashed border-slate-300 bg-slate-50 transition-all hover:bg-blue-50 hover:border-blue-400 min-w-[220px] flex-[1.35] group">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                                    checked={wantsPdfUpload}
+                                    onChange={(e) => handlePdfToggle(e.target.checked)}
+                                />
+                                <Files className="w-4 h-4 text-blue-600" />
+                                <span className="font-semibold">Upload PDFs</span>
+                                <span className="text-xs text-slate-600">
+                                    {pdfFiles.length
+                                        ? `${pdfFiles.length} file(s) selected`
+                                        : "Choose PDF files"}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (pdfInputRef?.current) {
+                                        pdfInputRef.current.value = null;
+                                        pdfInputRef.current.click();
+                                    }
+                                }}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
+                            >
+                                Browse
+                            </button>
+                            <input
+                                ref={pdfInputRef}
+                                type="file"
+                                multiple
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={handlePdfChange}
+                            />
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={downloadExcelTemplate}
+                            disabled={downloadingTemplate}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {downloadingTemplate ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Download className="w-3.5 h-3.5" />
+                            )}
+                            {downloadingTemplate ? "Downloading..." : "Export Excel Template"}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={resetAll}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                        >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Reset
+                        </button>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                        type="button"
+                        onClick={handleUploadAndCreate}
+                        disabled={loading || creatingReports || !isReadyToUpload}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-green-600 hover:bg-green-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {(loading || creatingReports) ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Send className="w-4 h-4" />
+                        )}
+                        {creatingReports ? "Creating Reports..." : loading ? "Uploading..." : "Upload & Send To Taqeem"}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleStoreOnly}
+                        disabled={loading || !isReadyToUpload}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md
+                                bg-blue-600 hover:bg-blue-700
+                                text-white text-xs font-semibold
+                                shadow-md hover:shadow-lg hover:scale-[1.01]
+                                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                                transition-all"
+                    >
+                        {loading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <FileIcon className="w-4 h-4" />
+                        )}
+                        {loading ? "Storing..." : "Store and Send Later"}
+                    </button>
+                </div>
+            </div>
+
+            {(error || success) && (
+                <div
+                    className={`rounded-lg border px-3 py-2 flex items-start gap-2 shadow-sm card-animate ${error
+                        ? "bg-rose-50 text-rose-700 border-rose-300"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-300"
+                        }`}
+                >
+                    {error ? (
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    ) : (
+                        <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="text-xs font-medium">{error || success}</div>
+                </div>
+            )}
+
+            
 
             <Section title="Reports">
                 <div className="space-y-2 mb-2">
@@ -3641,12 +4065,26 @@ const MultiExcelUpload = ({ onViewChange }) => {
 
                     <Section title="Valuers">
                         <div className="space-y-2">
+                            {!selectedCompany && (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-700">
+                                    Select a company to load valuers.
+                                </div>
+                            )}
+                            {selectedCompany && !valuerOptions.length && (
+                                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] text-slate-600">
+                                    {fetchingCompanyValuers
+                                        ? "Loading valuers for the selected company..."
+                                        : "No valuers found for the selected company."}
+                                </div>
+                            )}
                             {valuers.map((valuer, idx) => (
                                 <div key={`valuer-${idx}`} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                                    <InputField
+                                    <SelectField
                                         label="Valuer name"
                                         value={valuer.valuer_name}
+                                        options={valuerNameOptions}
                                         onChange={(e) => handleValuerChange(idx, "valuer_name", e.target.value)}
+                                        disabled={fetchingCompanyValuers || !valuerOptions.length}
                                     />
                                     <InputField
                                         label="Contribution %"
@@ -3666,7 +4104,8 @@ const MultiExcelUpload = ({ onViewChange }) => {
                             <button
                                 type="button"
                                 onClick={handleAddValuer}
-                                className="rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                                disabled={fetchingCompanyValuers || !valuerOptions.length}
+                                className="rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Add valuer
                             </button>

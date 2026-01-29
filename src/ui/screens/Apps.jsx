@@ -103,7 +103,10 @@ const Apps = ({ onViewChange }) => {
 
     const openEvaluationSources = (card) => {
         const evaluationTabs = valueSystemGroups.evaluationSources?.tabs || [];
-        const mainTab = evaluationTabs.find((tab) => tab.id === 'haraj')?.id || evaluationTabs[0]?.id || 'haraj';
+        const mainTab = evaluationTabs.find((tab) => tab.id === 'haraj-scrape')?.id
+            || evaluationTabs.find((tab) => tab.id === 'haraj')?.id
+            || evaluationTabs[0]?.id
+            || 'haraj-scrape';
 
         chooseCard(card.id);
         setActiveGroup('evaluationSources');
