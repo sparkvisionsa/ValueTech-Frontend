@@ -1,16 +1,30 @@
-import asyncio, traceback, sys, json
-
+import asyncio
+import json
+import sys
+import traceback
 from datetime import datetime, timezone
+
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
-from scripts.core.company_context import build_report_create_url, require_selected_company
-from scripts.core.utils import wait_for_element
+
 from scripts.core.browser import spawn_new_browser
-from .formSteps import form_steps
-from .formFiller import fill_form
-from .macroFiller import handle_macro_edits
+from scripts.core.company_context import (
+    build_report_create_url,
+    require_selected_company,
+)
+from scripts.core.utils import wait_for_element
+from scripts.submission.validateReport import validate_for_retry
+
 from .createMacros import run_create_assets_by_count
-from .grabMacroIds import update_report_pg_count, get_balanced_page_distribution, get_macro_ids_from_page, update_report_with_macro_ids
+from .formFiller import fill_form
+from .formSteps import form_steps
+from .grabMacroIds import (
+    get_balanced_page_distribution,
+    get_macro_ids_from_page,
+    update_report_pg_count,
+    update_report_with_macro_ids,
+)
+from .macroFiller import handle_macro_edits
 
 MONGO_URI = "mongodb+srv://Aasim:userAasim123@electron.cwbi8id.mongodb.net"
 client = AsyncIOMotorClient(MONGO_URI)
@@ -29,94 +43,122 @@ async def navigate_to_existing_report_assets(browser, report_id):
 
     return main_page
 
-async def get_all_macro_ids_parallel(browser, report_id, tabs_num=3, collection_name=None):
+
+async def get_all_macro_ids_parallel(
+    browser, report_id, tabs_num=3, collection_name=None
+):
     try:
         if not report_id:
             print("[MACRO_ID] No report_id provided", file=sys.stderr)
             return []
-        
+
         # Use provided collection_name or default
         if collection_name is None:
-            collection_name = 'multiapproachreports'
-        
+            collection_name = "multiapproachreports"
+
         base_url = f"https://qima.taqeem.sa/report/{report_id}"
         main_page = browser.tabs[0]
         await main_page.get(base_url)
         await asyncio.sleep(2)
-        
+
         await wait_for_element(main_page, "li", timeout=30)
-        
+
         # Get total number of pages from pagination
-        pagination_links = await main_page.query_selector_all('ul.pagination li a')
+        pagination_links = await main_page.query_selector_all("ul.pagination li a")
         page_numbers = []
         for link in pagination_links:
             text = link.text
             if text and text.strip().isdigit():
                 page_numbers.append(int(text.strip()))
-        
+
         total_pages = max(page_numbers) if page_numbers else 1
         print(f"[MACRO_ID] Found {total_pages} pages to scan", file=sys.stderr)
-        await update_report_pg_count(report_id, total_pages, collection_name=collection_name)
-        
+        await update_report_pg_count(
+            report_id, total_pages, collection_name=collection_name
+        )
+
         # Create pages for parallel processing
         pages = [main_page] + [
-            await browser.get("about:blank", new_tab=True) 
+            await browser.get("about:blank", new_tab=True)
             for _ in range(min(tabs_num - 1, total_pages - 1))
         ]
-        
+
         # Distribute pages across tabs
         page_chunks = get_balanced_page_distribution(total_pages, len(pages))
-        print(f"[MACRO_ID] Page distribution: {[len(chunk) for chunk in page_chunks]} pages per tab", file=sys.stderr)
-        
+        print(
+            f"[MACRO_ID] Page distribution: {[len(chunk) for chunk in page_chunks]} pages per tab",
+            file=sys.stderr,
+        )
+
         all_macro_ids_with_pages = []
         macro_ids_lock = asyncio.Lock()
-        
+
         async def process_pages_chunk(page, page_numbers_chunk, tab_id):
             """Process a chunk of pages in a single tab"""
             local_macro_ids_with_pages = []
-            print(f"[MACRO_ID-TAB-{tab_id}] Processing pages: {page_numbers_chunk}", file=sys.stderr)
-            
+            print(
+                f"[MACRO_ID-TAB-{tab_id}] Processing pages: {page_numbers_chunk}",
+                file=sys.stderr,
+            )
+
             for page_num in page_numbers_chunk:
-                page_macro_ids = await get_macro_ids_from_page(page, base_url, page_num, tab_id)
+                page_macro_ids = await get_macro_ids_from_page(
+                    page, base_url, page_num, tab_id
+                )
                 local_macro_ids_with_pages.extend(page_macro_ids)
-            
+
             async with macro_ids_lock:
                 all_macro_ids_with_pages.extend(local_macro_ids_with_pages)
-            
-            print(f"[MACRO_ID-TAB-{tab_id}] Completed processing, found {len(local_macro_ids_with_pages)} macro IDs", file=sys.stderr)
-        
+
+            print(
+                f"[MACRO_ID-TAB-{tab_id}] Completed processing, found {len(local_macro_ids_with_pages)} macro IDs",
+                file=sys.stderr,
+            )
+
         # Process pages in parallel
         tasks = []
         for i, (page, chunk) in enumerate(zip(pages, page_chunks)):
             if chunk:
                 tasks.append(process_pages_chunk(page, chunk, i))
-        
+
         await asyncio.gather(*tasks)
-        
+
         # Close extra tabs
         for p in pages[1:]:
             await p.close()
-        
-        print(f"[MACRO_ID] ID collection complete. Found {len(all_macro_ids_with_pages)} macro IDs", file=sys.stderr)
-        
+
+        print(
+            f"[MACRO_ID] ID collection complete. Found {len(all_macro_ids_with_pages)} macro IDs",
+            file=sys.stderr,
+        )
+
         if all_macro_ids_with_pages:
             # Use provided collection_name or try to detect it
             if collection_name is None:
-                collection_name = 'multiapproachreports'  # Default fallback
-            
-            success = await update_report_with_macro_ids(report_id, all_macro_ids_with_pages, collection_name=collection_name)
+                collection_name = "multiapproachreports"  # Default fallback
+
+            success = await update_report_with_macro_ids(
+                report_id, all_macro_ids_with_pages, collection_name=collection_name
+            )
             if success:
-                print(f"[MACRO_ID] Successfully updated report in MongoDB", file=sys.stderr)
+                print(
+                    f"[MACRO_ID] Successfully updated report in MongoDB",
+                    file=sys.stderr,
+                )
             else:
                 print(f"[MACRO_ID] Failed to update report in MongoDB", file=sys.stderr)
-        
+
         return {"status": "SUCCESS", "macro_ids_with_pages": all_macro_ids_with_pages}
-        
+
     except Exception as e:
-        print(f"[MACRO_ID] Error in get_all_macro_ids_parallel: {str(e)}", file=sys.stderr)
+        print(
+            f"[MACRO_ID] Error in get_all_macro_ids_parallel: {str(e)}", file=sys.stderr
+        )
         import traceback
+
         traceback.print_exc()
         return []
+
 
 async def find_record_in_collections(record_id_obj, collection_names):
     """Try to find a record in multiple collections, return (record, collection) or (None, None)"""
@@ -127,7 +169,10 @@ async def find_record_in_collections(record_id_obj, collection_names):
             return record, collection
     return None, None
 
-def emit_progress_update(record_id, percentage, message, status="processing", created_report_id=None):
+
+def emit_progress_update(
+    record_id, percentage, message, status="processing", created_report_id=None
+):
     """Emit progress update to stdout for frontend to receive"""
     progress_data = {
         "type": "progress",
@@ -136,11 +181,12 @@ def emit_progress_update(record_id, percentage, message, status="processing", cr
         "percentage": percentage,
         "message": message,
         "status": status,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     if created_report_id:
         progress_data["createdReportId"] = str(created_report_id)
     print(json.dumps(progress_data), flush=True)
+
 
 async def create_report_for_record(browser, record, tabs_num=3, collection=None):
     try:
@@ -149,7 +195,7 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
 
         record_id = str(record["_id"])
         asset_count = len(record.get("asset_data", []))
-        
+
         # Calculate progress increments
         # 10% for report creation, 5% for asset creation, 85% for asset filling
         REPORT_CREATE_PERCENT = 10
@@ -162,9 +208,11 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
             collection_names = [
                 "multiapproachreports",
                 "submitreportsquicklies",
-                "submitreportsquickly"
+                "submitreportsquickly",
             ]
-            _, collection = await find_record_in_collections(record["_id"], collection_names)
+            _, collection = await find_record_in_collections(
+                record["_id"], collection_names
+            )
             if collection is None:
                 collection = db.multiapproachreports  # Default fallback
 
@@ -177,10 +225,12 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
         # Mark start time
         await collection.update_one(
             {"_id": record["_id"]},
-            {"$set": {"startSubmitTime": datetime.now(timezone.utc)}}
+            {"$set": {"startSubmitTime": datetime.now(timezone.utc)}},
         )
 
-        emit_progress_update(record_id, 0, "Starting report submission...", "processing")
+        emit_progress_update(
+            record_id, 0, "Starting report submission...", "processing"
+        )
 
         results = []
         record["number_of_macros"] = str(asset_count)
@@ -204,11 +254,13 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
         for step_num, step_config in enumerate(form_steps, 1):
             is_last = step_num == len(form_steps)
 
-            results.append({
-                "status": "STEP_STARTED",
-                "step": step_num,
-                "recordId": str(record["_id"])
-            })
+            results.append(
+                {
+                    "status": "STEP_STARTED",
+                    "step": step_num,
+                    "recordId": str(record["_id"]),
+                }
+            )
 
             if step_num == 2 and len(record.get("asset_data", [])) > 10:
                 # Create assets with progress tracking
@@ -216,7 +268,7 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                     browser,
                     len(record.get("asset_data")),
                     tabs_num=tabs_num,
-                    batch_size=10
+                    batch_size=10,
                 )
                 # Mark that assets were created
                 if not isinstance(result, dict) or result.get("status") != "FAILED":
@@ -231,17 +283,19 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                 )
 
             if isinstance(result, dict) and result.get("status") == "FAILED":
-                results.append({
-                    "status": "FAILED",
-                    "step": step_num,
-                    "recordId": str(record["_id"]),
-                    "error": result.get("error")
-                })
+                results.append(
+                    {
+                        "status": "FAILED",
+                        "step": step_num,
+                        "recordId": str(record["_id"]),
+                        "error": result.get("error"),
+                    }
+                )
 
                 # Mark end time even on failure
                 await collection.update_one(
                     {"_id": record["_id"]},
-                    {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                    {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
                 )
                 return {"status": "FAILED", "results": results}
 
@@ -249,139 +303,199 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                 main_url = await main_page.evaluate("window.location.href")
                 form_id = main_url.split("/")[-1]
                 if not form_id:
-                    results.append({
-                        "status": "FAILED",
-                        "step": "report_id",
-                        "recordId": str(record["_id"]),
-                        "error": "Could not determine report_id"
-                    })
+                    results.append(
+                        {
+                            "status": "FAILED",
+                            "step": "report_id",
+                            "recordId": str(record["_id"]),
+                            "error": "Could not determine report_id",
+                        }
+                    )
 
                     await collection.update_one(
                         {"_id": record["_id"]},
-                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
                     )
-                    emit_progress_update(record_id, 0, "Failed to create report", "error")
+                    emit_progress_update(
+                        record_id, 0, "Failed to create report", "error"
+                    )
                     return {"status": "FAILED", "results": results}
 
                 # Save report_id on document - Update instantly
                 await collection.update_one(
-                    {"_id": record["_id"]},
-                    {"$set": {"report_id": form_id}}
+                    {"_id": record["_id"]}, {"$set": {"report_id": form_id}}
                 )
                 record["report_id"] = form_id
-                
+
                 # Calculate progress: 10% for report creation, +5% if assets already created = 15%
                 if assets_created_in_step2:
                     # Assets were created in step 2, so we're at 15% total
                     current_progress = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT
-                    emit_progress_update(record_id, current_progress, f"Report created: {form_id}", "processing", created_report_id=form_id)
+                    emit_progress_update(
+                        record_id,
+                        current_progress,
+                        f"Report created: {form_id}",
+                        "processing",
+                        created_report_id=form_id,
+                    )
                 else:
                     # Assets will be created via fill_form, so we're at 10%
-                    emit_progress_update(record_id, REPORT_CREATE_PERCENT, f"Report created: {form_id}", "processing", created_report_id=form_id)
+                    emit_progress_update(
+                        record_id,
+                        REPORT_CREATE_PERCENT,
+                        f"Report created: {form_id}",
+                        "processing",
+                        created_report_id=form_id,
+                    )
 
                 # Determine collection name for macro ID update
                 collection_name_map = {
-                    db.multiapproachreports: 'multiapproachreports',
-                    db.submitreportsquicklies: 'submitreportsquicklies',
-                    db.submitreportsquickly: 'submitreportsquickly'
+                    db.multiapproachreports: "multiapproachreports",
+                    db.submitreportsquicklies: "submitreportsquicklies",
+                    db.submitreportsquickly: "submitreportsquickly",
                 }
-                coll_name = collection_name_map.get(collection, 'multiapproachreports')
+                coll_name = collection_name_map.get(collection, "multiapproachreports")
 
                 # Get macro IDs - Keep progress at 15% (or 10% if assets not created yet)
                 # Preserve current progress percentage and message
-                current_progress_before_macro_ids = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT if assets_created_in_step2 else REPORT_CREATE_PERCENT
+                current_progress_before_macro_ids = (
+                    REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT
+                    if assets_created_in_step2
+                    else REPORT_CREATE_PERCENT
+                )
                 current_message_before_macro_ids = f"Report created: {form_id}"
-                
+
                 # Emit progress to maintain 15% (or 10%) while getting macro IDs
-                emit_progress_update(record_id, current_progress_before_macro_ids, current_message_before_macro_ids, "processing")
-                
-                macro_ids_result = await get_all_macro_ids_parallel(browser, form_id, tabs_num=tabs_num, collection_name=coll_name)
-                if isinstance(macro_ids_result, dict) and macro_ids_result.get("status") == "FAILED":
-                    results.append({
-                        "status": "FAILED",
-                        "step": "macro_ids",
-                        "recordId": str(record["_id"]),
-                        "error": macro_ids_result.get("error")
-                    })
+                emit_progress_update(
+                    record_id,
+                    current_progress_before_macro_ids,
+                    current_message_before_macro_ids,
+                    "processing",
+                )
+
+                macro_ids_result = await get_all_macro_ids_parallel(
+                    browser, form_id, tabs_num=tabs_num, collection_name=coll_name
+                )
+                if (
+                    isinstance(macro_ids_result, dict)
+                    and macro_ids_result.get("status") == "FAILED"
+                ):
+                    results.append(
+                        {
+                            "status": "FAILED",
+                            "step": "macro_ids",
+                            "recordId": str(record["_id"]),
+                            "error": macro_ids_result.get("error"),
+                        }
+                    )
 
                     await collection.update_one(
                         {"_id": record["_id"]},
-                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
                     )
                     return {"status": "FAILED", "results": results}
-                
+
                 # Reload record from database to get updated macro IDs
                 # Save the original record ID before reloading
                 original_record_id = record.get("_id") if record else None
                 record = await collection.find_one({"report_id": form_id})
                 if not record:
-                    results.append({
-                        "status": "FAILED",
-                        "step": "macro_ids",
-                        "recordId": str(original_record_id) if original_record_id else form_id,
-                        "error": "Could not reload record after macro ID update"
-                    })
+                    results.append(
+                        {
+                            "status": "FAILED",
+                            "step": "macro_ids",
+                            "recordId": str(original_record_id)
+                            if original_record_id
+                            else form_id,
+                            "error": "Could not reload record after macro ID update",
+                        }
+                    )
                     # Try to update using form_id if we have it
                     await collection.update_one(
                         {"report_id": form_id},
-                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
                     )
                     return {"status": "FAILED", "results": results}
 
                 # After getting macro IDs, maintain 15% (or 10%) progress with report created message
                 # This ensures progress doesn't reset when navigating to report page
-                emit_progress_update(record_id, current_progress_before_macro_ids, current_message_before_macro_ids, "processing")
+                emit_progress_update(
+                    record_id,
+                    current_progress_before_macro_ids,
+                    current_message_before_macro_ids,
+                    "processing",
+                )
 
                 # Handle macro edits with progress tracking
                 # Calculate base progress (report + assets = 15% if assets created, otherwise 10%)
-                base_progress = REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT if assets_created_in_step2 else REPORT_CREATE_PERCENT
-                
+                base_progress = (
+                    REPORT_CREATE_PERCENT + ASSET_CREATE_PERCENT
+                    if assets_created_in_step2
+                    else REPORT_CREATE_PERCENT
+                )
+
                 # Custom progress callback that maps macro filling (0-100%) to 15-100% range
                 def progress_callback(completed, total):
                     if total == 0:
                         return
                     # Map completed/total (0-1) to 15-100% range
-                    fill_progress = base_progress + (ASSET_FILL_BASE * completed / total)
+                    fill_progress = base_progress + (
+                        ASSET_FILL_BASE * completed / total
+                    )
                     emit_progress_update(
                         record_id,
                         fill_progress,
                         f"Filling assets: {completed}/{total}",
-                        "processing"
+                        "processing",
                     )
-                
-                macro_result = await handle_macro_edits(browser, record, tabs_num=tabs_num, record_id=record_id, progress_callback=progress_callback, collection=collection)
-                if isinstance(macro_result, dict) and macro_result.get("status") == "FAILED":
-                    results.append({
-                        "status": "FAILED",
-                        "step": "macro_edit",
-                        "recordId": str(record["_id"]),
-                        "error": macro_result.get("error")
-                    })
+
+                macro_result = await handle_macro_edits(
+                    browser,
+                    record,
+                    tabs_num=tabs_num,
+                    record_id=record_id,
+                    progress_callback=progress_callback,
+                    collection=collection,
+                )
+                if (
+                    isinstance(macro_result, dict)
+                    and macro_result.get("status") == "FAILED"
+                ):
+                    results.append(
+                        {
+                            "status": "FAILED",
+                            "step": "macro_edit",
+                            "recordId": str(record["_id"]),
+                            "error": macro_result.get("error"),
+                        }
+                    )
 
                     await collection.update_one(
                         {"_id": record["_id"]},
-                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                        {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
                     )
                     return {"status": "FAILED", "results": results}
 
-                results.append({
-                    "status": "MACRO_EDIT_SUCCESS",
-                    "message": "All macros filled",
-                    "recordId": str(record["_id"])
-                })
+                results.append(
+                    {
+                        "status": "MACRO_EDIT_SUCCESS",
+                        "message": "All macros filled",
+                        "recordId": str(record["_id"]),
+                    }
+                )
 
         # Mark successful end time
         await collection.update_one(
             {"_id": record["_id"]},
-            {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+            {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
         )
 
         emit_progress_update(
-            record_id, 
-            100, 
-            "Report completed successfully", 
+            record_id,
+            100,
+            "Report completed successfully",
             "completed",
-            created_report_id=form_id
+            created_report_id=form_id,
         )
 
         return {"status": "SUCCESS", "results": results}
@@ -395,42 +509,54 @@ async def create_report_for_record(browser, record, tabs_num=3, collection=None)
                 collection_names = [
                     "multiapproachreports",
                     "submitreportsquicklies",
-                    "submitreportsquickly"
+                    "submitreportsquickly",
                 ]
-                _, collection = await find_record_in_collections(record["_id"], collection_names)
+                _, collection = await find_record_in_collections(
+                    record["_id"], collection_names
+                )
                 if collection is None:
                     collection = db.multiapproachreports  # Default fallback
             await collection.update_one(
                 {"_id": record["_id"]},
-                {"$set": {"endSubmitTime": datetime.now(timezone.utc)}}
+                {"$set": {"endSubmitTime": datetime.now(timezone.utc)}},
             )
         return {"status": "FAILED", "error": str(e), "traceback": tb}
+
 
 async def create_new_report(browser, record_id, tabs_num=3):
     try:
         # Convert record_id to string if needed
         record_id_str = str(record_id).strip()
-        
+
         if not ObjectId.is_valid(record_id_str):
-            return {"status": "FAILED", "error": f"Invalid record_id format: {record_id_str}"}
+            return {
+                "status": "FAILED",
+                "error": f"Invalid record_id format: {record_id_str}",
+            }
 
         record_id_obj = ObjectId(record_id_str)
-        
+
         # Try to find record in all possible collections
         # Order: multiapproachreports, submitreportsquicklies (plural - Mongoose default), submitreportsquickly (singular)
         collection_names = [
             "multiapproachreports",
             "submitreportsquicklies",  # Mongoose pluralizes: SubmitReportsQuickly -> submitreportsquicklies
-            "submitreportsquickly"     # Fallback in case custom collection name is used
+            "submitreportsquickly",  # Fallback in case custom collection name is used
         ]
-        
-        record, collection = await find_record_in_collections(record_id_obj, collection_names)
-        
+
+        record, collection = await find_record_in_collections(
+            record_id_obj, collection_names
+        )
+
         if not record:
             # List available collections for debugging
             try:
                 all_collections = await db.list_collection_names()
-                submit_collections = [c for c in all_collections if 'submit' in c.lower() and 'quick' in c.lower()]
+                submit_collections = [
+                    c
+                    for c in all_collections
+                    if "submit" in c.lower() and "quick" in c.lower()
+                ]
                 error_msg = f"Record not found with id: {record_id_str}. "
                 if submit_collections:
                     error_msg += f"Available submit collections: {', '.join(submit_collections)}. "
@@ -439,14 +565,17 @@ async def create_new_report(browser, record_id, tabs_num=3):
                 error_msg = f"Record not found with id: {record_id_str}"
             return {"status": "FAILED", "error": error_msg}
 
-        return await create_report_for_record(browser, record, tabs_num=tabs_num, collection=collection)
+        return await create_report_for_record(
+            browser, record, tabs_num=tabs_num, collection=collection
+        )
 
     except Exception as e:
         return {
             "status": "FAILED",
             "error": f"Error finding record: {str(e)}",
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
+
 
 async def retry_create_new_report(browser, record_id, tabs_num=3):
     """Retry creating a report by only processing assets with submitState == 0"""
@@ -454,79 +583,92 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
     try:
         # Convert record_id to string if needed
         record_id_str = str(record_id).strip()
-        
+
         if not ObjectId.is_valid(record_id_str):
-            return {"status": "FAILED", "error": f"Invalid record_id format: {record_id_str}"}
+            return {
+                "status": "FAILED",
+                "error": f"Invalid record_id format: {record_id_str}",
+            }
 
         record_id_obj = ObjectId(record_id_str)
-        
+
         # Try to find record in all possible collections
         collection_names = [
             "multiapproachreports",
             "submitreportsquicklies",
-            "submitreportsquickly"
+            "duplicatereports",
+            "submitreportsquickly",
         ]
-        
-        record, collection = await find_record_in_collections(record_id_obj, collection_names)
-        
+
+        record, collection = await find_record_in_collections(
+            record_id_obj, collection_names
+        )
+
         if not record:
-            return {"status": "FAILED", "error": f"Record not found with id: {record_id_str}"}
-        
-        # Check if report_id exists (report must have been created already)
-        if not record.get("report_id"):
             return {
-                "status": "FAILED", 
-                "error": "No report_id found. Use create_new_report instead of retry."
+                "status": "FAILED",
+                "error": f"Record not found with id: {record_id_str}",
+            }
+
+        # Check if report_id exists (report must have been created already)
+        report_id = record.get("report_id")
+
+        if not report_id:
+            return {
+                "status": "FAILED",
+                "error": "No report_id found. Use create_new_report instead of retry.",
             }
 
         asset_data = record.get("asset_data", [])
         if not asset_data:
             return {"status": "SUCCESS", "message": "No assets found"}
 
+        new_browser = await spawn_new_browser(browser)
         # Filter retryable assets (submitState == 0)
+        validation_result = await validate_for_retry(new_browser, report_id, asset_data)
+
+        if validation_result["status"] == "RE-GRABBED":
+            record = await db.reports.find_one({"report_id": report_id})
+            asset_data = record.get("asset_data", [])
+
+        elif validation_result["status"] == "FAILED":
+            return {"status": "FAILED", "message": "Validation failed"}
+
         retry_assets = [
-            asset for asset in asset_data
-            if asset.get("submitState", 0) == 0
+            asset for asset in asset_data if asset.get("submitState", 0) == 0
         ]
 
         if not retry_assets:
             return {
                 "status": "SUCCESS",
-                "message": "No retryable assets found (all macros already submitted)"
+                "message": "No retryable assets found (all macros already submitted)",
             }
 
         # Verify IDs
-        missing_ids = [
-            i for i, asset in enumerate(retry_assets)
-            if not asset.get("id")
-        ]
+        missing_ids = [i for i, asset in enumerate(retry_assets) if not asset.get("id")]
         if missing_ids:
             return {
                 "status": "FAILED",
-                "error": f"Retry assets missing macro IDs at indices: {missing_ids}"
+                "error": f"Retry assets missing macro IDs at indices: {missing_ids}",
             }
 
         # Update retry start time
         await collection.update_one(
             {"_id": record["_id"]},
-            {"$set": {"retryStartTime": datetime.now(timezone.utc)}}
+            {"$set": {"retryStartTime": datetime.now(timezone.utc)}},
         )
 
         emit_progress_update(
             record_id_str,
             0,
             f"Starting retry for {len(retry_assets)} macros...",
-            "processing"
+            "processing",
         )
 
         # Create a shallow copy of record with filtered assets
-        retry_record = {
-            **record,
-            "asset_data": retry_assets
-        }
+        retry_record = {**record, "asset_data": retry_assets}
 
         # Spawn new browser for retry
-        new_browser = await spawn_new_browser(browser)
 
         # Calculate base progress (report already created = 15%)
         base_progress = 15
@@ -542,7 +684,7 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
                 record_id_str,
                 fill_progress,
                 f"Retrying assets: {completed}/{total}",
-                "processing"
+                "processing",
             )
 
         # Process retry assets using handle_macro_edits
@@ -552,13 +694,13 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
             tabs_num=tabs_num,
             record_id=record_id_str,
             progress_callback=progress_callback,
-            collection=collection
+            collection=collection,
         )
 
         # Update retry end time
         await collection.update_one(
             {"_id": record["_id"]},
-            {"$set": {"retryEndTime": datetime.now(timezone.utc)}}
+            {"$set": {"retryEndTime": datetime.now(timezone.utc)}},
         )
 
         # Emit completion message
@@ -567,14 +709,14 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
                 record_id_str,
                 100,
                 f"Retry completed: {result.get('completed', 0)}/{total_assets} macros filled",
-                "completed"
+                "completed",
             )
         else:
             emit_progress_update(
                 record_id_str,
                 0,
                 f"Retry failed: {result.get('error', 'Unknown error')}",
-                "error"
+                "error",
             )
 
         return result
@@ -582,22 +724,22 @@ async def retry_create_new_report(browser, record_id, tabs_num=3):
     except Exception as e:
         # Clear process state on error
         from scripts.core.processControl import clear_process
+
         clear_process(record_id_str)
-        
+
         return {
             "status": "FAILED",
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
-    
+
     finally:
         if new_browser:
             new_browser.stop()
 
 
-
 async def create_reports_by_batch(browser, batch_id, tabs_num=3):
-    new_browser = None  
+    new_browser = None
     try:
         if not batch_id:
             return {"status": "FAILED", "error": "Missing batch_id"}
@@ -608,7 +750,7 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
         if not records:
             return {
                 "status": "FAILED",
-                "error": f"No records found for batch_id: {batch_id}"
+                "error": f"No records found for batch_id: {batch_id}",
             }
 
         total_records = len(records)
@@ -617,32 +759,37 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             "totalRecords": total_records,
             "successCount": 0,
             "failureCount": 0,
-            "records": []
+            "records": [],
         }
 
         # Emit initial progress
-        emit_batch_progress(batch_id, 0, total_records, 0, f"Starting batch with {total_records} reports...", "processing")
+        emit_batch_progress(
+            batch_id,
+            0,
+            total_records,
+            0,
+            f"Starting batch with {total_records} reports...",
+            "processing",
+        )
 
-        new_browser = await spawn_new_browser(browser) 
+        new_browser = await spawn_new_browser(browser)
 
         for index, record in enumerate(records):
             record_id_str = str(record["_id"])
             try:
                 # Emit progress for current report
                 emit_batch_progress(
-                    batch_id, 
-                    index, 
-                    total_records, 
+                    batch_id,
+                    index,
+                    total_records,
                     (index / total_records) * 100,
                     f"Processing report {index + 1}/{total_records}: {record_id_str[:8]}...",
                     "processing",
-                    current_record_id=record_id_str
+                    current_record_id=record_id_str,
                 )
 
                 result = await create_report_for_record(
-                    browser=new_browser,
-                    record=record,
-                    tabs_num=tabs_num
+                    browser=new_browser, record=record, tabs_num=tabs_num
                 )
 
                 if result.get("status") == "SUCCESS":
@@ -654,29 +801,28 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
                         ((index + 1) / total_records) * 100,
                         f"Completed {index + 1}/{total_records} reports",
                         "processing",
-                        current_record_id=record_id_str
+                        current_record_id=record_id_str,
                     )
                 else:
                     batch_results["failureCount"] += 1
 
-                batch_results["records"].append({
-                    "recordId": record_id_str,
-                    "result": result
-                })
+                batch_results["records"].append(
+                    {"recordId": record_id_str, "result": result}
+                )
 
             except Exception as record_err:
                 batch_results["failureCount"] += 1
-                batch_results["records"].append({
-                    "recordId": record_id_str,
-                    "status": "FAILED",
-                    "error": str(record_err),
-                    "traceback": traceback.format_exc()
-                })
+                batch_results["records"].append(
+                    {
+                        "recordId": record_id_str,
+                        "status": "FAILED",
+                        "error": str(record_err),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
 
         batch_results["status"] = (
-            "SUCCESS"
-            if batch_results["failureCount"] == 0
-            else "PARTIAL_SUCCESS"
+            "SUCCESS" if batch_results["failureCount"] == 0 else "PARTIAL_SUCCESS"
         )
 
         # Emit completion
@@ -686,25 +832,18 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             total_records,
             100,
             f"Batch complete: {batch_results['successCount']} succeeded, {batch_results['failureCount']} failed",
-            "completed" if batch_results["failureCount"] == 0 else "partial"
+            "completed" if batch_results["failureCount"] == 0 else "partial",
         )
 
         return batch_results
 
     except Exception as e:
-        emit_batch_progress(
-            batch_id,
-            0,
-            0,
-            0,
-            f"Batch failed: {str(e)}",
-            "error"
-        )
+        emit_batch_progress(batch_id, 0, 0, 0, f"Batch failed: {str(e)}", "error")
         return {
             "status": "FAILED",
             "batch_id": batch_id,
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
 
     finally:
@@ -712,7 +851,15 @@ async def create_reports_by_batch(browser, batch_id, tabs_num=3):
             new_browser.stop()
 
 
-def emit_batch_progress(batch_id, current, total, percentage, message, status="processing", current_record_id=None):
+def emit_batch_progress(
+    batch_id,
+    current,
+    total,
+    percentage,
+    message,
+    status="processing",
+    current_record_id=None,
+):
     """Emit batch progress update to stdout for frontend to receive"""
     progress_data = {
         "type": "progress",  # Changed from "batch-progress" to "progress"
@@ -725,7 +872,7 @@ def emit_batch_progress(batch_id, current, total, percentage, message, status="p
         "message": message,
         "status": status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "processType": "batch_creation"  # Add processType to distinguish
+        "processType": "batch_creation",  # Add processType to distinguish
     }
     if current_record_id:
         progress_data["currentRecordId"] = str(current_record_id)

@@ -610,7 +610,7 @@ async def validate_report_simple(browser, report_id: str):
 
     try:
         page = await browser.get(url)
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
         html = await wait_for_report_info_html(page, timeout_seconds=10)
 
@@ -630,7 +630,7 @@ async def validate_report_simple(browser, report_id: str):
         report_status_label = extracted.get("reportStatusLabel")
 
         # --- Check macros ---
-        macros_table = await wait_for_table_rows(page)
+        macros_table = await wait_for_table_rows(page, timeout=7)
 
         if macros_table:
             assets_info = await calculate_total_assets(page)
@@ -668,7 +668,3 @@ async def validate_report_simple(browser, report_id: str):
             "error": str(e),
             "traceback": traceback.format_exc(),
         }
-
-    finally:
-        if page:
-            await page.close()

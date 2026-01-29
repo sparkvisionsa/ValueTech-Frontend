@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ExcelJS from "exceljs/dist/exceljs.min.js";
 import { useAuthAction } from "../hooks/useAuthAction";
 
@@ -33,18 +39,32 @@ import {
 } from "lucide-react";
 import { downloadTemplateFile } from "../utils/templateDownload";
 
-
-
-const toComparable = (v) => String(v ?? "").trim().toLowerCase();
+const toComparable = (v) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase();
 
 const numComparable = (v) => {
-  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  const n = Number(
+    String(v ?? "")
+      .replace(/,/g, "")
+      .trim(),
+  );
   return Number.isFinite(n) ? n : NaN;
 };
 
 const normalizeValuerOption = (valuer = {}) => {
-  const valuerId = (valuer.valuerId || valuer.valuer_id || valuer.id || "").toString().trim();
-  const valuerName = (valuer.valuerName || valuer.valuer_name || valuer.name || "").toString().trim();
+  const valuerId = (valuer.valuerId || valuer.valuer_id || valuer.id || "")
+    .toString()
+    .trim();
+  const valuerName = (
+    valuer.valuerName ||
+    valuer.valuer_name ||
+    valuer.name ||
+    ""
+  )
+    .toString()
+    .trim();
   return { valuerId, valuerName };
 };
 
@@ -96,9 +116,12 @@ const findCreatedReport = (list, draft) => {
       Number.isFinite(rValue) &&
       Math.abs(rValue - draftValue) < 0.0001;
 
-    const identityOk = (draftEmail && rEmail === draftEmail) || (draftTel && rTel === draftTel);
+    const identityOk =
+      (draftEmail && rEmail === draftEmail) || (draftTel && rTel === draftTel);
 
-    return rTitle === draftTitle && rClient === draftClient && valueOk && identityOk;
+    return (
+      rTitle === draftTitle && rClient === draftClient && valueOk && identityOk
+    );
   });
 
   if (strong) return strong;
@@ -120,7 +143,6 @@ const findCreatedReport = (list, draft) => {
   return medium || null;
 };
 
-
 const InputField = ({
   label,
   required = false,
@@ -134,8 +156,9 @@ const InputField = ({
     </label>
     <input
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-        }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+      }`}
     />
     {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
@@ -155,8 +178,9 @@ const SelectField = ({
     </label>
     <select
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-        }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+      }`}
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -181,13 +205,13 @@ const TextAreaField = ({
     </label>
     <textarea
       {...props}
-      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
-        }`}
+      className={`w-full px-2.5 py-1.5 border rounded-md text-[11px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900/40 transition-all resize-none ${
+        error ? "border-rose-300 bg-rose-50" : "border-blue-900/20 bg-white/90"
+      }`}
     />
     {error && <p className="text-rose-600 text-[10px] mt-1">{error}</p>}
   </div>
 );
-
 
 const Section = ({ title, children }) => (
   <div className="rounded-2xl border border-blue-900/15 bg-white shadow-sm p-2.5 mb-2">
@@ -260,21 +284,21 @@ const pickFieldValue = (row, candidates = []) => {
 const worksheetToObjects = (worksheet) => {
   const headerRow = worksheet.getRow(1);
   const headerMap = [];
-  const maxCol = worksheet.columnCount || (headerRow.values.length - 1);
+  const maxCol = worksheet.columnCount || headerRow.values.length - 1;
   const headerCounts = {};
 
   const nextHeaderName = (rawHeader, fallback) => {
-    const base = (String(rawHeader || fallback || "").trim()) || fallback;
+    const base = String(rawHeader || fallback || "").trim() || fallback;
     const count = (headerCounts[base] || 0) + 1;
     headerCounts[base] = count;
     return count === 1 ? base : `${base}_${count}`;
   };
 
   for (let col = 1; col <= maxCol; col++) {
-    const header = String(
-      normalizeCellValue(headerRow.getCell(col).value) || `col_${col}`
-    )
-      .trim() || `col_${col}`;
+    const header =
+      String(
+        normalizeCellValue(headerRow.getCell(col).value) || `col_${col}`,
+      ).trim() || `col_${col}`;
     headerMap[col] = nextHeaderName(header, `col_${col}`);
   }
 
@@ -297,7 +321,7 @@ const worksheetToObjects = (worksheet) => {
 const buildAssetPreview = (rows = [], sheetLabel) =>
   rows
     .filter((row) =>
-      Object.values(row).some((value) => String(value ?? "").trim() !== "")
+      Object.values(row).some((value) => String(value ?? "").trim() !== ""),
     )
     .map((row) => ({
       sheet: sheetLabel,
@@ -322,9 +346,12 @@ const buildAssetPreview = (rows = [], sheetLabel) =>
       city: pickFieldValue(row, ["city", "city name", "city_name"]),
     }));
 
-
-    const parsePositiveNumber = (v) => {
-  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+const parsePositiveNumber = (v) => {
+  const n = Number(
+    String(v ?? "")
+      .replace(/,/g, "")
+      .trim(),
+  );
   return Number.isFinite(n) ? n : NaN;
 };
 
@@ -348,7 +375,9 @@ const validateAssetRow = (asset, rowIndex) => {
   } else if (!Number.isInteger(usageId)) {
     errors.push(`Row ${rowIndex + 2}: Asset usage id must be an integer`);
   } else if (usageId < 38 || usageId > 56) {
-    errors.push(`Row ${rowIndex + 2}: Asset usage id must be between 38 and 56`);
+    errors.push(
+      `Row ${rowIndex + 2}: Asset usage id must be between 38 and 56`,
+    );
   }
 
   if (!Number.isFinite(finalValue) || finalValue <= 0) {
@@ -360,7 +389,6 @@ const validateAssetRow = (asset, rowIndex) => {
 
   return errors;
 };
-
 
 // const parseExcelValidation = async (file) => {
 //   const workbook = new ExcelJS.Workbook();
@@ -403,8 +431,6 @@ const validateAssetRow = (asset, rowIndex) => {
 //   };
 // };
 
-
-
 const parseExcelValidation = async (file) => {
   const workbook = new ExcelJS.Workbook();
   const buffer = await file.arrayBuffer();
@@ -415,18 +441,25 @@ const parseExcelValidation = async (file) => {
 
   const issues = [];
 
-  if (!marketSheet) issues.push({ sheet: "market", message: 'Missing sheet "market".' });
-  if (!costSheet) issues.push({ sheet: "cost", message: 'Missing sheet "cost".' });
+  if (!marketSheet)
+    issues.push({ sheet: "market", message: 'Missing sheet "market".' });
+  if (!costSheet)
+    issues.push({ sheet: "cost", message: 'Missing sheet "cost".' });
 
   const marketRows = marketSheet ? worksheetToObjects(marketSheet) : [];
   const costRows = costSheet ? worksheetToObjects(costSheet) : [];
 
-  const marketAssets = marketSheet ? buildAssetPreview(marketRows, "market") : [];
+  const marketAssets = marketSheet
+    ? buildAssetPreview(marketRows, "market")
+    : [];
   const costAssets = costSheet ? buildAssetPreview(costRows, "cost") : [];
 
   // If sheet exists but no non-empty rows
   if (marketSheet && marketAssets.length === 0) {
-    issues.push({ sheet: "market", message: 'No assets found in "market" sheet.' });
+    issues.push({
+      sheet: "market",
+      message: 'No assets found in "market" sheet.',
+    });
   }
   if (costSheet && costAssets.length === 0) {
     issues.push({ sheet: "cost", message: 'No assets found in "cost" sheet.' });
@@ -438,7 +471,7 @@ const parseExcelValidation = async (file) => {
 
   marketAssets.forEach((asset, index) => {
     validateAssetRow(asset, index).forEach((msg) =>
-      issues.push({ sheet: "market", message: msg })
+      issues.push({ sheet: "market", message: msg }),
     );
     const v = parsePositiveNumber(asset.finalValue);
     if (Number.isFinite(v)) marketTotal += v;
@@ -446,7 +479,7 @@ const parseExcelValidation = async (file) => {
 
   costAssets.forEach((asset, index) => {
     validateAssetRow(asset, index).forEach((msg) =>
-      issues.push({ sheet: "cost", message: msg })
+      issues.push({ sheet: "cost", message: msg }),
     );
     const v = parsePositiveNumber(asset.finalValue);
     if (Number.isFinite(v)) costTotal += v;
@@ -471,7 +504,6 @@ const parseExcelValidation = async (file) => {
   };
 };
 
-
 const buildDefaultFormData = () => ({
   report_id: "",
   title: "",
@@ -493,12 +525,12 @@ const buildDefaultFormData = () => ({
   report_users: [],
 });
 
-const buildDefaultValuers = () => ([
+const buildDefaultValuers = () => [
   {
     valuer_name: "",
     contribution_percentage: 100,
   },
-]);
+];
 
 const reportStatusLabels = {
   approved: "Approved",
@@ -565,17 +597,15 @@ const getAssetApproach = (asset) => {
 };
 
 const DuplicateReport = ({ onViewChange }) => {
-
   const [pagination, setPagination] = useState({
-  page: 1,
-  limit: 10,
-  total: 0,
-  pages: 1,
-});
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 1,
+  });
 
-const [pageSize, setPageSize] = useState(10);
-const [currentPage, setCurrentPage] = useState(1);
-
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { user, token, isLoading, isGuest } = useSession();
   const { systemState } = useSystemControl();
@@ -591,9 +621,10 @@ const [currentPage, setCurrentPage] = useState(1);
     replaceCompanies,
   } = useValueNav();
 
-
-
-  const [formData, setFormData, resetFormData] = usePersistentState("duplicate:formData", buildDefaultFormData());
+  const [formData, setFormData, resetFormData] = usePersistentState(
+    "duplicate:formData",
+    buildDefaultFormData(),
+  );
   const [errors, setErrors] = useState({});
   const [selectedReportActions, setSelectedReportActions] = useState({});
   const [selectedAssetActions, setSelectedAssetActions] = useState({});
@@ -604,19 +635,28 @@ const [currentPage, setCurrentPage] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
-  const [reportUsers, setReportUsers, resetReportUsers] = usePersistentState("duplicate:reportUsers", formData?.report_users || []);
-  const [valuers, setValuers, resetValuers] = usePersistentState("duplicate:valuers", buildDefaultValuers());
+  const [reportUsers, setReportUsers, resetReportUsers] = usePersistentState(
+    "duplicate:reportUsers",
+    formData?.report_users || [],
+  );
+  const [valuers, setValuers, resetValuers] = usePersistentState(
+    "duplicate:valuers",
+    buildDefaultValuers(),
+  );
   const [overrideCompanyValuers, setOverrideCompanyValuers] = useState(null);
   const [fetchingCompanyValuers, setFetchingCompanyValuers] = useState(false);
   const [valuerNotice, setValuerNotice] = useState(null);
-  const [fileNotes, setFileNotes, resetFileNotes] = usePersistentState("duplicate:fileNotes", { excelName: null, pdfName: null });
- const [excelValidation, setExcelValidation] = useState({
-  status: "idle",
-  issues: [],
-  assets: [],
-  totals: { market: 0, cost: 0, total: 0 },
-  counts: { market: 0, cost: 0, total: 0 },
-});
+  const [fileNotes, setFileNotes, resetFileNotes] = usePersistentState(
+    "duplicate:fileNotes",
+    { excelName: null, pdfName: null },
+  );
+  const [excelValidation, setExcelValidation] = useState({
+    status: "idle",
+    issues: [],
+    assets: [],
+    totals: { market: 0, cost: 0, total: 0 },
+    counts: { market: 0, cost: 0, total: 0 },
+  });
 
   const [excelValidationLoading, setExcelValidationLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -641,8 +681,13 @@ const [currentPage, setCurrentPage] = useState(1);
     city: "",
   });
   const [isValidationCollapsed, setIsValidationCollapsed] = useState(false);
-  const [pendingSubmit, setPendingSubmit, resetPendingSubmit] = usePersistentState("duplicate:pendingSubmit", null, { storage: "session" });
-  const [, setReturnView, resetReturnView] = usePersistentState("taqeem:returnView", null, { storage: "session" });
+  const [pendingSubmit, setPendingSubmit, resetPendingSubmit] =
+    usePersistentState("duplicate:pendingSubmit", null, { storage: "session" });
+  const [, setReturnView, resetReturnView] = usePersistentState(
+    "taqeem:returnView",
+    null,
+    { storage: "session" },
+  );
   const pdfInputRef = useRef(null);
   const fetchCompanyValuersPromiseRef = useRef(null);
   const recommendedTabs = ramInfo?.recommendedTabs || 1;
@@ -650,19 +695,22 @@ const [currentPage, setCurrentPage] = useState(1);
   const guestSession = isGuest || !token;
   const authOptions = useMemo(
     () => ({ isGuest: guestSession, guestAccessEnabled }),
-    [guestSession, guestAccessEnabled]
+    [guestSession, guestAccessEnabled],
   );
   const isTaqeemLoggedIn = taqeemStatus?.state === "success";
   const previewLimit = 200;
   const isEditing = Boolean(editingReportId);
-  const selectedReportSet = useMemo(() => new Set(selectedReportIds), [selectedReportIds]);
+  const selectedReportSet = useMemo(
+    () => new Set(selectedReportIds),
+    [selectedReportIds],
+  );
   const companyFromList = useMemo(
     () => matchCompanyBySelection(companies, selectedCompany),
-    [companies, selectedCompany]
+    [companies, selectedCompany],
   );
   const companyValuers = useMemo(
     () => normalizeValuerList(companyFromList?.valuers || []),
-    [companyFromList]
+    [companyFromList],
   );
   const displayCompanyValuers = overrideCompanyValuers ?? companyValuers;
   const valuerOptions = useMemo(() => {
@@ -681,20 +729,19 @@ const [currentPage, setCurrentPage] = useState(1);
       5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95,
       100,
     ],
-    []
+    [],
   );
   const selectedCompanyKey = useMemo(
     () =>
       String(
-        selectedCompany?.officeId || selectedCompany?.office_id || selectedCompany?.url || ""
+        selectedCompany?.officeId ||
+          selectedCompany?.office_id ||
+          selectedCompany?.url ||
+          "",
       ),
-    [selectedCompany]
+    [selectedCompany],
   );
   const valuerInputsDisabled = valuerOptions.length === 0;
-
-
-
-
 
   const requiredFields = useMemo(
     () => [
@@ -710,34 +757,34 @@ const [currentPage, setCurrentPage] = useState(1);
       "telephone",
       "email",
     ],
-    []
+    [],
   );
 
+  // ✅ parse report value once (shared by UI + validate)
+  const parsedValue = useMemo(() => {
+    const rawValue = formData.value;
+    const n =
+      rawValue === null || rawValue === undefined
+        ? NaN
+        : Number(String(rawValue).replace(/,/g, "").trim());
+    return n;
+  }, [formData.value]);
 
- // ✅ parse report value once (shared by UI + validate)
-const parsedValue = useMemo(() => {
-  const rawValue = formData.value;
-  const n =
-    rawValue === null || rawValue === undefined
-      ? NaN
-      : Number(String(rawValue).replace(/,/g, "").trim());
-  return n;
-}, [formData.value]);
+  // ✅ compute mismatch message OUTSIDE validate (safe)
+  const excelMismatchMessage = useMemo(() => {
+    if (!excelFile) return "";
+    if ((excelValidation?.counts?.total || 0) <= 0) return "";
 
-// ✅ compute mismatch message OUTSIDE validate (safe)
-const excelMismatchMessage = useMemo(() => {
-  if (!excelFile) return "";
-  if ((excelValidation?.counts?.total || 0) <= 0) return "";
+    const excelTotal = Number(excelValidation?.totals?.total ?? NaN);
+    if (!Number.isFinite(excelTotal))
+      return "Excel totals not ready yet. Please re-upload the Excel file.";
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) return ""; // value not valid -> handled by validate()
 
-  const excelTotal = Number(excelValidation?.totals?.total ?? NaN);
-  if (!Number.isFinite(excelTotal)) return "Excel totals not ready yet. Please re-upload the Excel file.";
-  if (!Number.isFinite(parsedValue) || parsedValue <= 0) return ""; // value not valid -> handled by validate()
-
-  const same = Math.abs(excelTotal - parsedValue) < 0.0001;
-  return same
-    ? ""
-    : `Final Value must equal to Sum of Final value in Excel . Excel: ${excelTotal}, Report: ${parsedValue}`;
-}, [excelFile, excelValidation, parsedValue]);
+    const same = Math.abs(excelTotal - parsedValue) < 0.0001;
+    return same
+      ? ""
+      : `Final Value must equal to Sum of Final value in Excel . Excel: ${excelTotal}, Report: ${parsedValue}`;
+  }, [excelFile, excelValidation, parsedValue]);
 
   useEffect(() => {
     setOverrideCompanyValuers(null);
@@ -746,112 +793,109 @@ const excelMismatchMessage = useMemo(() => {
 
   useEffect(() => {
     setValuers((prev) => {
-      const base = Array.isArray(prev) && prev.length ? prev : buildDefaultValuers();
+      const base =
+        Array.isArray(prev) && prev.length ? prev : buildDefaultValuers();
       if (!valuerOptions.length) {
         return base.map((valuer) => ({ ...valuer, valuer_name: "" }));
       }
       const cleaned = base.map((valuer) =>
         valuerOptions.includes(valuer.valuer_name)
           ? valuer
-          : { ...valuer, valuer_name: "" }
+          : { ...valuer, valuer_name: "" },
       );
       const hasAny = cleaned.some((valuer) => valuer.valuer_name);
       if (!hasAny && valuerOptions.length === 1) {
-        return [{ valuer_name: valuerOptions[0], contribution_percentage: 100 }];
+        return [
+          { valuer_name: valuerOptions[0], contribution_percentage: 100 },
+        ];
       }
       return cleaned;
     });
   }, [selectedCompanyKey, setValuers, valuerOptions]);
 
-const validate = () => {
-  const newErrors = {};
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const validate = () => {
+    const newErrors = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  requiredFields.forEach((field) => {
-    if (!formData[field]) {
-      const fieldLabels = {
-        purpose_id: "Purpose of Valuation",
-        value_premise_id: "Value Attributes",
-        submitted_at: "Report Issuing Date",
-        valued_at: "Date of Valuation",
-        inspection_date: "Inspection Date",
-        value: "Final Value",
-        client_name: "Client Name",
-        telephone: "Client Telephone",
-        email: "Client Email",
-        title: "Report Title",
-        report_type: "Report Type",
-      };
-      newErrors[field] = `${fieldLabels[field] || field} is required`;
+    requiredFields.forEach((field) => {
+      if (!formData[field]) {
+        const fieldLabels = {
+          purpose_id: "Purpose of Valuation",
+          value_premise_id: "Value Attributes",
+          submitted_at: "Report Issuing Date",
+          valued_at: "Date of Valuation",
+          inspection_date: "Inspection Date",
+          value: "Final Value",
+          client_name: "Client Name",
+          telephone: "Client Telephone",
+          email: "Client Email",
+          title: "Report Title",
+          report_type: "Report Type",
+        };
+        newErrors[field] = `${fieldLabels[field] || field} is required`;
+      }
+    });
+
+    if (formData.purpose_id === "to set") {
+      newErrors.purpose_id = "Purpose of Valuation is required";
     }
-  });
 
-  if (formData.purpose_id === "to set") {
-    newErrors.purpose_id = "Purpose of Valuation is required";
-  }
-
-  if (formData.value_premise_id === "to set") {
-    newErrors.value_premise_id = "Value Attributes is required";
-  }
-
-  ["submitted_at", "valued_at", "inspection_date"].forEach((field) => {
-    if (formData[field]) {
-      const date = new Date(formData[field]);
-      date.setHours(0, 0, 0, 0);
-      if (date > today) newErrors[field] = "Future dates are not allowed";
+    if (formData.value_premise_id === "to set") {
+      newErrors.value_premise_id = "Value Attributes is required";
     }
-  });
 
-  if (formData.valued_at && formData.submitted_at) {
-    const valuedAtDate = new Date(formData.valued_at);
-    const submittedAtDate = new Date(formData.submitted_at);
-    if (valuedAtDate > submittedAtDate) {
-      newErrors.valued_at =
-        "Date of Valuation must be on or before Report Issuing Date";
-    }
-  }
+    ["submitted_at", "valued_at", "inspection_date"].forEach((field) => {
+      if (formData[field]) {
+        const date = new Date(formData[field]);
+        date.setHours(0, 0, 0, 0);
+        if (date > today) newErrors[field] = "Future dates are not allowed";
+      }
+    });
 
-  if (formData.client_name && formData.client_name.trim().length < 9) {
-    newErrors.client_name = "Client Name must be at least 9 characters";
-  }
-
-  if (formData.telephone && formData.telephone.trim().length < 8) {
-    newErrors.telephone = "Client Telephone must be at least 8 characters";
-  }
-
-  if (formData.email) {
-    if (formData.email.trim().length < 8) {
-      newErrors.email = "Client Email must be at least 8 characters";
-    } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        newErrors.email = "Client Email must be a valid email address";
+    if (formData.valued_at && formData.submitted_at) {
+      const valuedAtDate = new Date(formData.valued_at);
+      const submittedAtDate = new Date(formData.submitted_at);
+      if (valuedAtDate > submittedAtDate) {
+        newErrors.valued_at =
+          "Date of Valuation must be on or before Report Issuing Date";
       }
     }
-  }
 
-  // ✅ use memoized parsedValue (do NOT re-declare it)
-  if (!Number.isFinite(parsedValue)) {
-    newErrors.value = "Final Value must be a valid number";
-  } else if (parsedValue <= 0) {
-    newErrors.value = "Final Value must be greater than zero";
-  }
+    if (formData.client_name && formData.client_name.trim().length < 9) {
+      newErrors.client_name = "Client Name must be at least 9 characters";
+    }
 
-  // ✅ enforce excel totals match (uses memoized message)
-  if (!newErrors.value && excelMismatchMessage) {
-    newErrors.value = excelMismatchMessage;
-  }
+    if (formData.telephone && formData.telephone.trim().length < 8) {
+      newErrors.telephone = "Client Telephone must be at least 8 characters";
+    }
 
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-};
+    if (formData.email) {
+      if (formData.email.trim().length < 8) {
+        newErrors.email = "Client Email must be at least 8 characters";
+      } else {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+          newErrors.email = "Client Email must be a valid email address";
+        }
+      }
+    }
 
+    // ✅ use memoized parsedValue (do NOT re-declare it)
+    if (!Number.isFinite(parsedValue)) {
+      newErrors.value = "Final Value must be a valid number";
+    } else if (parsedValue <= 0) {
+      newErrors.value = "Final Value must be greater than zero";
+    }
 
+    // ✅ enforce excel totals match (uses memoized message)
+    if (!newErrors.value && excelMismatchMessage) {
+      newErrors.value = excelMismatchMessage;
+    }
 
-
-
-
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const purgePersistedState = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -869,7 +913,11 @@ const validate = () => {
 
   const clearSavedState = useCallback(
     (options = {}) => {
-      const { purgeStorage = false, closeModal = false, clearTableState = false } = options;
+      const {
+        purgeStorage = false,
+        closeModal = false,
+        clearTableState = false,
+      } = options;
       setFormData(buildDefaultFormData());
       setReportUsers([]);
       setValuers(buildDefaultValuers());
@@ -883,13 +931,13 @@ const validate = () => {
       }
       setStatus(null);
       setFileNotes({ excelName: null, pdfName: null });
-     setExcelValidation({
-  status: "idle",
-  issues: [],
-  assets: [],
-  totals: { market: 0, cost: 0, total: 0 },
-  counts: { market: 0, cost: 0, total: 0 },
-});
+      setExcelValidation({
+        status: "idle",
+        issues: [],
+        assets: [],
+        totals: { market: 0, cost: 0, total: 0 },
+        counts: { market: 0, cost: 0, total: 0 },
+      });
 
       setExcelValidationLoading(false);
       if (clearTableState) {
@@ -939,56 +987,59 @@ const validate = () => {
       setShowCreateModal,
       setValuers,
       setWantsPdfUpload,
-    ]
+    ],
   );
 
-  const getReportRecordId = useCallback((report) => report?._id || report?.id, []);
+  const getReportRecordId = useCallback(
+    (report) => report?._id || report?.id,
+    [],
+  );
 
   const normalizeReportsResponse = useCallback((payload) => {
     if (Array.isArray(payload?.reports)) return payload.reports;
     if (Array.isArray(payload?.data?.reports)) return payload.data.reports;
     if (Array.isArray(payload?.data)) return payload.data;
-    if (Array.isArray(payload)) return payload;F
+    if (Array.isArray(payload)) return payload;
+    F;
     return [];
   }, []);
 
   const loadReports = useCallback(async () => {
-  try {
-    setReportsLoading(true);
-    setReportsError(null);
+    try {
+      setReportsLoading(true);
+      setReportsError(null);
 
-const result = await fetchDuplicateReports({
-  page: currentPage,
-  limit: pageSize,
-  status: reportSelectFilter,
-});
+      const result = await fetchDuplicateReports({
+        page: currentPage,
+        limit: pageSize,
+        status: reportSelectFilter,
+      });
 
-const rows = normalizeReportsResponse(result);
-setReports(rows);
+      const rows = normalizeReportsResponse(result);
+      setReports(rows);
 
-const p = result?.pagination || {};
+      const p = result?.pagination || {};
 
-setPagination({
-  total: p.total ?? rows.length,
-  page: p.page ?? currentPage,
-  limit: p.limit ?? pageSize,
-  pages: p.totalPages ?? 1,      // ✅ map backend totalPages -> frontend pages
-  hasPrev: p.hasPrev ?? false,
-  hasNext: p.hasNext ?? false,
-});
+      setPagination({
+        total: p.total ?? rows.length,
+        page: p.page ?? currentPage,
+        limit: p.limit ?? pageSize,
+        pages: p.totalPages ?? 1, // ✅ map backend totalPages -> frontend pages
+        hasPrev: p.hasPrev ?? false,
+        hasNext: p.hasNext ?? false,
+      });
 
-
-    console.log("📤 Fetched Duplicate Reports:", result);
-  } catch (err) {
-    setReportsError(
-      err?.response?.data?.message ||
-        err?.message ||
-        "Failed to load duplicate reports."
-    );
-  } finally {
-    setReportsLoading(false);
-  }
-}, [currentPage, pageSize, reportSelectFilter, normalizeReportsResponse]);
+      console.log("📤 Fetched Duplicate Reports:", result);
+    } catch (err) {
+      setReportsError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load duplicate reports.",
+      );
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [currentPage, pageSize, reportSelectFilter, normalizeReportsResponse]);
 
   useEffect(() => {
     loadReports();
@@ -996,21 +1047,24 @@ setPagination({
 
   useEffect(() => {
     if (!isLoading && !user) {
-      clearSavedState({ purgeStorage: true, closeModal: true, clearTableState: true });
-       setReports([]); 
-        setReportsError(null);
-    setReportsLoading(false);
+      clearSavedState({
+        purgeStorage: true,
+        closeModal: true,
+        clearTableState: true,
+      });
+      setReports([]);
+      setReportsError(null);
+      setReportsLoading(false);
 
-    // optional: also clear selections
-    setSelectedReportIds([]);
-    setSelectedAssetsByReport({});
+      // optional: also clear selections
+      setSelectedReportIds([]);
+      setSelectedAssetsByReport({});
     }
   }, [clearSavedState, isLoading, user]);
 
- useEffect(() => {
-  setCurrentPage(1);
-
-}, [reportSelectFilter]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [reportSelectFilter]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -1036,9 +1090,11 @@ setPagination({
         if (!id) return;
         const selected = prev[id] || [];
         if (!selected.length) return;
-        const assetCount = Array.isArray(report.asset_data) ? report.asset_data.length : 0;
+        const assetCount = Array.isArray(report.asset_data)
+          ? report.asset_data.length
+          : 0;
         const filtered = selected.filter(
-          (idx) => Number.isInteger(idx) && idx >= 0 && idx < assetCount
+          (idx) => Number.isInteger(idx) && idx >= 0 && idx < assetCount,
         );
         if (filtered.length) {
           next[id] = filtered;
@@ -1058,34 +1114,40 @@ setPagination({
     setEditingReportId(null);
   };
 
-  const applyReportToForm = useCallback((report) => {
-    if (!report) return;
-    const base = buildDefaultFormData();
-    setFormData({
-      ...base,
-      report_id: report.report_id || "",
-      title: report.title || "",
-      purpose_id: report.purpose_id || base.purpose_id,
-      value_premise_id: report.value_premise_id || base.value_premise_id,
-      report_type: report.report_type || base.report_type,
-      valued_at: report.valued_at || "",
-      submitted_at: report.submitted_at || "",
-      inspection_date: report.inspection_date || "",
-      assumptions: report.assumptions || "",
-      special_assumptions: report.special_assumptions || "",
-      value: report.value || "",
-      valuation_currency: report.valuation_currency || base.valuation_currency,
-      client_name: report.client_name || "",
-      owner_name: report.owner_name || report.client_name || "",
-      telephone: report.telephone || "",
-      email: report.email || "",
-      has_other_users: !!report.has_other_users,
-      report_users: report.report_users || [],
-    });
-    setReportUsers(report.report_users || []);
-    setValuers(report.valuers?.length ? report.valuers : buildDefaultValuers());
-    setErrors({});
-  }, [setFormData, setReportUsers, setValuers]);
+  const applyReportToForm = useCallback(
+    (report) => {
+      if (!report) return;
+      const base = buildDefaultFormData();
+      setFormData({
+        ...base,
+        report_id: report.report_id || "",
+        title: report.title || "",
+        purpose_id: report.purpose_id || base.purpose_id,
+        value_premise_id: report.value_premise_id || base.value_premise_id,
+        report_type: report.report_type || base.report_type,
+        valued_at: report.valued_at || "",
+        submitted_at: report.submitted_at || "",
+        inspection_date: report.inspection_date || "",
+        assumptions: report.assumptions || "",
+        special_assumptions: report.special_assumptions || "",
+        value: report.value || "",
+        valuation_currency:
+          report.valuation_currency || base.valuation_currency,
+        client_name: report.client_name || "",
+        owner_name: report.owner_name || report.client_name || "",
+        telephone: report.telephone || "",
+        email: report.email || "",
+        has_other_users: !!report.has_other_users,
+        report_users: report.report_users || [],
+      });
+      setReportUsers(report.report_users || []);
+      setValuers(
+        report.valuers?.length ? report.valuers : buildDefaultValuers(),
+      );
+      setErrors({});
+    },
+    [setFormData, setReportUsers, setValuers],
+  );
 
   const handleEditReport = (report) => {
     const reportId = getReportRecordId(report);
@@ -1096,72 +1158,71 @@ setPagination({
     setPdfFile(null);
     setWantsPdfUpload(false);
     setFileNotes({ excelName: null, pdfName: report?.pdf_path || null });
-  setExcelValidation({
-  status: result.issues.length ? "error" : "success",
-  issues: result.issues,
-  assets: result.assets,
-  totals: result.totals,
-  counts: result.counts,
-});
+    setExcelValidation({
+      status: result.issues.length ? "error" : "success",
+      issues: result.issues,
+      assets: result.assets,
+      totals: result.totals,
+      counts: result.counts,
+    });
 
     setExcelValidationLoading(false);
     applyReportToForm(report);
   };
 
   const setExcelFileAndRemember = async (file) => {
-  setExcelFile(file);
-  setFileNotes((prev) => ({ ...prev, excelName: file ? file.name : null }));
+    setExcelFile(file);
+    setFileNotes((prev) => ({ ...prev, excelName: file ? file.name : null }));
 
-  if (!file) {
+    if (!file) {
+      setExcelValidation({
+        status: "idle",
+        issues: [],
+        assets: [],
+        totals: { market: 0, cost: 0, total: 0 },
+        counts: { market: 0, cost: 0, total: 0 },
+      });
+
+      setExcelValidationLoading(false);
+      return;
+    }
+
+    setExcelValidationLoading(true);
     setExcelValidation({
-  status: "idle",
-  issues: [],
-  assets: [],
-  totals: { market: 0, cost: 0, total: 0 },
-  counts: { market: 0, cost: 0, total: 0 },
-});
-
-    setExcelValidationLoading(false);
-    return;
-  }
-
-  setExcelValidationLoading(true);
- setExcelValidation({
-  status: "idle",
-  issues: [],
-  assets: [],
-  totals: { market: 0, cost: 0, total: 0 },
-  counts: { market: 0, cost: 0, total: 0 },
-});
-
-  try {
-    const result = await parseExcelValidation(file); // ✅ defined here
-
-    setExcelValidation({
-      status: result.issues.length ? "error" : "success",
-      issues: result.issues,
-      assets: result.assets,
-      totals: result.totals,     // ✅ now safe
-      counts: result.counts,
-    });
-  } catch (err) {
-    setExcelValidation({
-      status: "error",
-      issues: [
-        {
-          sheet: "workbook",
-          message: err?.message || "Failed to read Excel file.",
-        },
-      ],
+      status: "idle",
+      issues: [],
       assets: [],
       totals: { market: 0, cost: 0, total: 0 },
       counts: { market: 0, cost: 0, total: 0 },
     });
-  } finally {
-    setExcelValidationLoading(false);
-  }
-};
 
+    try {
+      const result = await parseExcelValidation(file); // ✅ defined here
+
+      setExcelValidation({
+        status: result.issues.length ? "error" : "success",
+        issues: result.issues,
+        assets: result.assets,
+        totals: result.totals, // ✅ now safe
+        counts: result.counts,
+      });
+    } catch (err) {
+      setExcelValidation({
+        status: "error",
+        issues: [
+          {
+            sheet: "workbook",
+            message: err?.message || "Failed to read Excel file.",
+          },
+        ],
+        assets: [],
+        totals: { market: 0, cost: 0, total: 0 },
+        counts: { market: 0, cost: 0, total: 0 },
+      });
+    } finally {
+      setExcelValidationLoading(false);
+    }
+  };
 
   const setPdfFileAndRemember = (file) => {
     setPdfFile(file);
@@ -1188,24 +1249,30 @@ setPagination({
       if (!assetCount || assetCount < 1) return fallbackTabs;
       return Math.max(1, Math.min(fallbackTabs, assetCount));
     },
-    [recommendedTabs]
+    [recommendedTabs],
   );
 
-  const waitForTaqeemLogin = useCallback(async (timeoutMs = 180000, intervalMs = 2000) => {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (!window?.electronAPI?.checkStatus) return true;
-      const status = await window.electronAPI.checkStatus();
-      const ok = status?.browserOpen
-        && String(status?.status || "").toUpperCase().includes("SUCCESS");
-      if (ok) {
-        setTaqeemStatus?.("success", "Taqeem login: On");
-        return true;
+  const waitForTaqeemLogin = useCallback(
+    async (timeoutMs = 180000, intervalMs = 2000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        if (!window?.electronAPI?.checkStatus) return true;
+        const status = await window.electronAPI.checkStatus();
+        const ok =
+          status?.browserOpen &&
+          String(status?.status || "")
+            .toUpperCase()
+            .includes("SUCCESS");
+        if (ok) {
+          setTaqeemStatus?.("success", "Taqeem login: On");
+          return true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-    throw new Error("Timed out waiting for Taqeem login.");
-  }, [setTaqeemStatus]);
+      throw new Error("Timed out waiting for Taqeem login.");
+    },
+    [setTaqeemStatus],
+  );
 
   const refreshCompaniesFromTaqeem = useCallback(async () => {
     if (fetchCompanyValuersPromiseRef.current) {
@@ -1220,8 +1287,11 @@ setPagination({
         let isLoggedIn = taqeemStatus?.state === "success";
         if (window?.electronAPI?.checkStatus) {
           const status = await window.electronAPI.checkStatus();
-          isLoggedIn = status?.browserOpen
-            && String(status?.status || "").toUpperCase().includes("SUCCESS");
+          isLoggedIn =
+            status?.browserOpen &&
+            String(status?.status || "")
+              .toUpperCase()
+              .includes("SUCCESS");
           if (isLoggedIn) {
             setTaqeemStatus?.("success", "Taqeem login: On");
           }
@@ -1234,17 +1304,21 @@ setPagination({
           const loginResult = await window.electronAPI.openTaqeemLogin({
             automationOnly: true,
             onlyIfClosed: true,
-            navigateIfOpen: false
+            navigateIfOpen: false,
           });
           if (loginResult?.status !== "SUCCESS") {
-            throw new Error(loginResult?.error || "Failed to open Taqeem login.");
+            throw new Error(
+              loginResult?.error || "Failed to open Taqeem login.",
+            );
           }
           await waitForTaqeemLogin();
         }
 
         const data = await window.electronAPI.getCompanies();
         if (data?.status && data.status !== "SUCCESS") {
-          throw new Error(data?.error || "Failed to fetch companies from Taqeem.");
+          throw new Error(
+            data?.error || "Failed to fetch companies from Taqeem.",
+          );
         }
         const fetched = Array.isArray(data?.data)
           ? data.data
@@ -1270,7 +1344,11 @@ setPagination({
           }
         }
         if (replaceCompanies) {
-          await replaceCompanies(synced, { quiet: true, skipNavigation: true, autoSelect: false });
+          await replaceCompanies(synced, {
+            quiet: true,
+            skipNavigation: true,
+            autoSelect: false,
+          });
         } else if (loadSavedCompanies) {
           await loadSavedCompanies("equipment");
         }
@@ -1293,7 +1371,7 @@ setPagination({
     setTaqeemStatus,
     syncCompanies,
     taqeemStatus?.state,
-    waitForTaqeemLogin
+    waitForTaqeemLogin,
   ]);
 
   const handleLoadValuers = useCallback(async () => {
@@ -1332,88 +1410,102 @@ setPagination({
     }
   }, [refreshCompaniesFromTaqeem, selectedCompany]);
 
-  
-
   const submitToTaqeem = useCallback(
-  async (recordId, tabsNum, options = {}) => {
-    const { withLoading = true, resume = false } = options;
-    const resolvedTabs = Math.max(1, Number(tabsNum) || resolveTabsForAssets(0));
-
-    if (withLoading) setSubmitting(true);
-
-    try {
-      if (!recordId) {
-        setStatus({ type: "error", message: "Missing record id for submission." });
-        return;
-      }
-
-      // ✅ REMOVED ensureTaqeemAuthorized from here (single source of truth = executeWithAuth)
-
-      setStatus({
-        type: "info",
-        message: resume ? "Resuming Taqeem submission..." : "Submitting report to Taqeem...",
-      });
-
-      if (!window?.electronAPI?.duplicateReportNavigate) {
-        throw new Error("Desktop integration unavailable. Restart the app.");
-      }
-
-      const res = await window.electronAPI.duplicateReportNavigate(
-        recordId,
-        undefined,
-        resolvedTabs
+    async (recordId, tabsNum, options = {}) => {
+      const { withLoading = true, resume = false } = options;
+      const resolvedTabs = Math.max(
+        1,
+        Number(tabsNum) || resolveTabsForAssets(0),
       );
 
-      if (res?.status === "SUCCESS") {
+      if (withLoading) setSubmitting(true);
+
+      try {
+        if (!recordId) {
+          setStatus({
+            type: "error",
+            message: "Missing record id for submission.",
+          });
+          return;
+        }
+
+        // ✅ REMOVED ensureTaqeemAuthorized from here (single source of truth = executeWithAuth)
+
         setStatus({
-          type: "success",
-          message: "Report submitted to Taqeem. Browser closed after completion.",
+          type: "info",
+          message: resume
+            ? "Resuming Taqeem submission..."
+            : "Submitting report to Taqeem...",
+        });
+
+        if (!window?.electronAPI?.duplicateReportNavigate) {
+          throw new Error("Desktop integration unavailable. Restart the app.");
+        }
+
+        const res = await window.electronAPI.duplicateReportNavigate(
+          recordId,
+          undefined,
+          resolvedTabs,
+        );
+
+        if (res?.status === "SUCCESS") {
+          setStatus({
+            type: "success",
+            message:
+              "Report submitted to Taqeem. Browser closed after completion.",
+          });
+          resetPendingSubmit();
+          resetReturnView();
+          return;
+        }
+
+        const errMsg =
+          res?.error ||
+          "Upload to Taqeem failed. Make sure you selected a company.";
+
+        if (/no company selected/i.test(errMsg)) {
+          setStatus({ type: "warning", message: errMsg });
+          setPendingSubmit({
+            recordId,
+            tabsNum: resolvedTabs,
+            resumeOnLoad: true,
+          });
+          setReturnView("duplicate-report");
+          onViewChange?.("get-companies");
+          return;
+        }
+
+        throw new Error(errMsg);
+      } catch (err) {
+        setStatus({
+          type: "error",
+          message: err?.message || "Failed to submit report to Taqeem.",
         });
         resetPendingSubmit();
         resetReturnView();
-        return;
+      } finally {
+        if (withLoading) setSubmitting(false);
       }
-
-      const errMsg =
-        res?.error || "Upload to Taqeem failed. Make sure you selected a company.";
-
-      if (/no company selected/i.test(errMsg)) {
-        setStatus({ type: "warning", message: errMsg });
-        setPendingSubmit({ recordId, tabsNum: resolvedTabs, resumeOnLoad: true });
-        setReturnView("duplicate-report");
-        onViewChange?.("get-companies");
-        return;
-      }
-
-      throw new Error(errMsg);
-    } catch (err) {
-      setStatus({
-        type: "error",
-        message: err?.message || "Failed to submit report to Taqeem.",
-      });
-      resetPendingSubmit();
-      resetReturnView();
-    } finally {
-      if (withLoading) setSubmitting(false);
-    }
-  },
-  [
-    onViewChange,
-    resetPendingSubmit,
-    resetReturnView,
-    resolveTabsForAssets,
-    setPendingSubmit,
-    setReturnView,
-  ]
-);
-
-
+    },
+    [
+      onViewChange,
+      resetPendingSubmit,
+      resetReturnView,
+      resolveTabsForAssets,
+      setPendingSubmit,
+      setReturnView,
+    ],
+  );
 
   useEffect(() => {
     if (submitting) return;
     if (!pendingSubmit?.recordId || !pendingSubmit?.resumeOnLoad) return;
-    setPendingSubmit((prev) => (prev ? { ...prev, resumeOnLoad: false } : prev));
-    submitToTaqeem(pendingSubmit.recordId, pendingSubmit.tabsNum, { resume: true });
+    setPendingSubmit((prev) =>
+      prev ? { ...prev, resumeOnLoad: false } : prev,
+    );
+    submitToTaqeem(pendingSubmit.recordId, pendingSubmit.tabsNum, {
+      resume: true,
+    });
   }, [pendingSubmit, setPendingSubmit, submitToTaqeem, submitting]);
 
   const handleFieldChange = (field, value) => {
@@ -1449,7 +1541,7 @@ setPagination({
 
   const handleValuerChange = (index, field, value) => {
     setValuers((prev) =>
-      prev.map((v, i) => (i === index ? { ...v, [field]: value } : v))
+      prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)),
     );
   };
 
@@ -1512,7 +1604,7 @@ setPagination({
         ...formData,
         report_users: reportUsers || [],
         valuers,
-      })
+      }),
     );
     payload.append("excel", excelFile);
     if (wantsPdfUpload && pdfFile) {
@@ -1552,124 +1644,140 @@ setPagination({
     }
   };
 
-
-
-
-const handleStoreAndSubmitNow = async () => {
-  if (!validate()) {
-    setStatus({ type: "error", message: "Please fill required fields." });
-    return;
-  }
-  if (!excelFile) {
-    setStatus({ type: "error", message: "Excel file is required." });
-    return;
-  }
-  if (excelValidationLoading) {
-    setStatus({ type: "error", message: "Wait for Excel validation to finish." });
-    return;
-  }
-  if (excelValidation.issues.length) {
-    setStatus({ type: "error", message: "Fix Excel validation issues before submitting." });
-    return;
-  }
-  if (wantsPdfUpload && !pdfFile) {
-    setStatus({ type: "error", message: "PDF file is required when enabled." });
-    return;
-  }
-
-  setSubmitting(true);
-  setStatus({ type: "info", message: "Preparing..." });
-
-  try {
-    const requiredPoints = excelValidation?.counts?.total || 0;
-
-    const result = await executeWithAuth(
-      async () => {
-        // 1) STORE report using CURRENT edited formData (this is already correct)
-        const payload = new FormData();
-        const draftSnapshot = {
-          ...formData,
-          report_users: reportUsers || [],
-          valuers,
-        };
-
-        payload.append("formData", JSON.stringify(draftSnapshot));
-        payload.append("excel", excelFile);
-        if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
-
-        const createRes = await createDuplicateReport(payload);
-        if (!createRes?.success) {
-          throw new Error(createRes?.message || "Could not save report.");
-        }
-
-        // 2) FETCH newest reports (page 1, status all) and MATCH by content
-        // ⚠️ Adjust params below to what your backend supports
-        const fetched = await fetchDuplicateReports({
-          page: 1,
-          limit: 50,
-          status: "all",
-          // if your API supports sorting, add it:
-          // sort: "createdAt:desc"
-        });
-
-        const list = normalizeReportsResponse(fetched) || [];
-
-        // If backend returns newest-first already, great.
-        // If not, we sort safely on frontend too.
-        const newestFirst = [...list].sort((a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a));
-
-        const created = findCreatedReport(newestFirst, draftSnapshot);
-
-        // As a last fallback, use newest report
-        const chosen = created || newestFirst[0];
-
-        const recordId = getReportRecordId(chosen);
-
-        if (!recordId) {
-          throw new Error("Report stored but could not determine its record id (matching failed).");
-        }
-
-        // 3) SUBMIT that exact recordId
-        const assetCount = excelValidation?.counts?.total || 0;
-        const tabsForAssets = resolveTabsForAssets(assetCount);
-
-        await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
-
-        return { success: true, recordId };
-      },
-      {},
-      {
-        requiredPoints,
-        onViewChange,
-        showInsufficientPointsModal: () => {
-          setStatus({ type: "warning", message: "Insufficient points." });
-        },
-        onAuthFailure: (reason) => {
-          if (reason === "LOGIN_REQUIRED") {
-            setStatus({ type: "info", message: "Login required. Please login to continue." });
-          } else if (reason === "INSUFFICIENT_POINTS") {
-            setStatus({ type: "warning", message: "Insufficient points." });
-          } else {
-            setStatus({ type: "error", message: reason?.message || "Authentication failed." });
-          }
-        },
-      }
-    );
-
-    if (result?.success) {
-      setStatus({ type: "success", message: "Stored + submitted successfully." });
-      await loadReports();
-      setShowCreateModal(false);
+  const handleStoreAndSubmitNow = async () => {
+    if (!validate()) {
+      setStatus({ type: "error", message: "Please fill required fields." });
+      return;
     }
-  } catch (err) {
-    setStatus({ type: "error", message: err?.message || "Failed." });
-  } finally {
-    setSubmitting(false);
-  }
-};
+    if (!excelFile) {
+      setStatus({ type: "error", message: "Excel file is required." });
+      return;
+    }
+    if (excelValidationLoading) {
+      setStatus({
+        type: "error",
+        message: "Wait for Excel validation to finish.",
+      });
+      return;
+    }
+    if (excelValidation.issues.length) {
+      setStatus({
+        type: "error",
+        message: "Fix Excel validation issues before submitting.",
+      });
+      return;
+    }
+    if (wantsPdfUpload && !pdfFile) {
+      setStatus({
+        type: "error",
+        message: "PDF file is required when enabled.",
+      });
+      return;
+    }
 
+    setSubmitting(true);
+    setStatus({ type: "info", message: "Preparing..." });
 
+    try {
+      const requiredPoints = excelValidation?.counts?.total || 0;
 
+      const result = await executeWithAuth(
+        async () => {
+          // 1) STORE report using CURRENT edited formData (this is already correct)
+          const payload = new FormData();
+          const draftSnapshot = {
+            ...formData,
+            report_users: reportUsers || [],
+            valuers,
+          };
+
+          payload.append("formData", JSON.stringify(draftSnapshot));
+          payload.append("excel", excelFile);
+          if (wantsPdfUpload && pdfFile) payload.append("pdf", pdfFile);
+
+          const createRes = await createDuplicateReport(payload);
+          if (!createRes?.success) {
+            throw new Error(createRes?.message || "Could not save report.");
+          }
+
+          // 2) FETCH newest reports (page 1, status all) and MATCH by content
+          // ⚠️ Adjust params below to what your backend supports
+          const fetched = await fetchDuplicateReports({
+            page: 1,
+            limit: 50,
+            status: "all",
+            // if your API supports sorting, add it:
+            // sort: "createdAt:desc"
+          });
+
+          const list = normalizeReportsResponse(fetched) || [];
+
+          // If backend returns newest-first already, great.
+          // If not, we sort safely on frontend too.
+          const newestFirst = [...list].sort(
+            (a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a),
+          );
+
+          const created = findCreatedReport(newestFirst, draftSnapshot);
+
+          // As a last fallback, use newest report
+          const chosen = created || newestFirst[0];
+
+          const recordId = getReportRecordId(chosen);
+
+          if (!recordId) {
+            throw new Error(
+              "Report stored but could not determine its record id (matching failed).",
+            );
+          }
+
+          // 3) SUBMIT that exact recordId
+          const assetCount = excelValidation?.counts?.total || 0;
+          const tabsForAssets = resolveTabsForAssets(assetCount);
+
+          await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
+
+          return { success: true, recordId };
+        },
+        {},
+        {
+          requiredPoints,
+          onViewChange,
+          showInsufficientPointsModal: () => {
+            setStatus({ type: "warning", message: "Insufficient points." });
+          },
+          onAuthFailure: (reason) => {
+            if (reason === "LOGIN_REQUIRED") {
+              setStatus({
+                type: "info",
+                message: "Login required. Please login to continue.",
+              });
+            } else if (reason === "INSUFFICIENT_POINTS") {
+              setStatus({ type: "warning", message: "Insufficient points." });
+            } else {
+              setStatus({
+                type: "error",
+                message: reason?.message || "Authentication failed.",
+              });
+            }
+          },
+        },
+      );
+
+      if (result?.success) {
+        setStatus({
+          type: "success",
+          message: "Stored + submitted successfully.",
+        });
+        await loadReports();
+        setShowCreateModal(false);
+      }
+    } catch (err) {
+      setStatus({ type: "error", message: err?.message || "Failed." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleUpdateReport = async () => {
     if (!editingReportId) {
@@ -1714,10 +1822,12 @@ const handleStoreAndSubmitNow = async () => {
     }
   };
 
- const orderedReports = useMemo(() => {
-  return [...reports].sort((a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a));
-}, [reports]);
- 
+  const orderedReports = useMemo(() => {
+    return [...reports].sort(
+      (a, b) => getReportSortTimestamp(b) - getReportSortTimestamp(a),
+    );
+  }, [reports]);
+
   const reportIndexMap = useMemo(() => {
     const map = new Map();
     orderedReports.forEach((report, idx) => {
@@ -1736,15 +1846,13 @@ const handleStoreAndSubmitNow = async () => {
   //   );
   // }, [orderedReports, reportSelectFilter]);
 
+  const totalReports = pagination?.total || 0;
+  const totalPages = pagination?.pages || 1;
+  const safeCurrentPage = pagination?.page || currentPage;
 
-const totalReports = pagination?.total || 0;
-const totalPages = pagination?.pages || 1;
-const safeCurrentPage = pagination?.page || currentPage;
-
-
-const pageFrom = totalReports === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
-const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
-
+  const pageFrom =
+    totalReports === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+  const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
 
   useEffect(() => {
     if (reportSelectFilter === "all") {
@@ -1759,7 +1867,7 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
     setExpandedReports((prev) =>
       prev.includes(reportId)
         ? prev.filter((id) => id !== reportId)
-        : [...prev, reportId]
+        : [...prev, reportId],
     );
   };
 
@@ -1767,7 +1875,7 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
     setSelectedReportIds((prev) =>
       prev.includes(reportId)
         ? prev.filter((id) => id !== reportId)
-        : [...prev, reportId]
+        : [...prev, reportId],
     );
   };
 
@@ -1806,7 +1914,11 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
         ...prev,
         [`${reportId}:${assetIndex}`]: "edit",
       }));
-      const result = await updateDuplicateReportAsset(reportId, assetIndex, assetDraft);
+      const result = await updateDuplicateReportAsset(
+        reportId,
+        assetIndex,
+        assetDraft,
+      );
       if (result?.success) {
         setStatus({ type: "success", message: "Asset updated successfully." });
         closeAssetEdit();
@@ -1821,7 +1933,9 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
       setStatus({
         type: "error",
         message:
-          err?.response?.data?.message || err?.message || "Failed to update asset.",
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update asset.",
       });
     } finally {
       setAssetActionBusy((prev) => {
@@ -1959,111 +2073,125 @@ const pageTo = Math.min(totalReports, safeCurrentPage * pageSize);
   //   }
   // };
 
+  const handleReportAction = async (report, action) => {
+    if (!action) return;
 
+    if (action === "edit") {
+      handleEditReport(report);
+      return;
+    }
 
-const handleReportAction = async (report, action) => {
-  if (!action) return;
+    const recordId = getReportRecordId(report);
+    if (!recordId) {
+      setStatus({ type: "error", message: "Missing report record id." });
+      return;
+    }
 
-  if (action === "edit") {
-    handleEditReport(report);
-    return;
-  }
+    if (action === "send-approver") {
+      setStatus({ type: "info", message: "Report sent to approver." });
+      return;
+    }
 
-  const recordId = getReportRecordId(report);
-  if (!recordId) {
-    setStatus({ type: "error", message: "Missing report record id." });
-    return;
-  }
+    if (action === "delete") {
+      const confirmed = window.confirm("Delete this report and its assets?");
+      if (!confirmed) return;
+    }
 
-  if (action === "send-approver") {
-    setStatus({ type: "info", message: "Report sent to approver." });
-    return;
-  }
+    setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
 
-  if (action === "delete") {
-    const confirmed = window.confirm("Delete this report and its assets?");
-    if (!confirmed) return;
-  }
+    try {
+      await executeWithAuth(
+        async ({ token: authToken, recordId, report }) => {
+          if (action === "send") {
+            const assetCount = Array.isArray(report.asset_data)
+              ? report.asset_data.length
+              : 0;
+            const tabsForAssets = resolveTabsForAssets(assetCount);
 
-  setReportActionBusy((prev) => ({ ...prev, [recordId]: action }));
-
-  try {
-    await executeWithAuth(
-      async ({ token: authToken, recordId, report }) => {
-        if (action === "send" || action === "retry") {
-          const assetCount = Array.isArray(report.asset_data)
-            ? report.asset_data.length
-            : 0;
-          const tabsForAssets = resolveTabsForAssets(assetCount);
-
-          // ✅ submitToTaqeem no longer checks auth; executeWithAuth already did.
-          await submitToTaqeem(recordId, tabsForAssets, { withLoading: false });
-          await loadReports();
-          return { success: true };
-        }
-
-        if (action === "approve") {
-          const result = await updateDuplicateReport(recordId, { checked: true });
-          if (!result?.success) {
-            throw new Error(result?.message || "Failed to approve report.");
+            // ✅ submitToTaqeem no longer checks auth; executeWithAuth already did.
+            await submitToTaqeem(recordId, tabsForAssets, {
+              withLoading: false,
+            });
+            await loadReports();
+            return { success: true };
           }
-          setStatus({ type: "success", message: "Report approved." });
-          await loadReports();
-          return { success: true };
-        }
 
-        if (action === "delete") {
-          const result = await deleteDuplicateReport(recordId);
-          if (!result?.success) {
-            throw new Error(result?.message || "Failed to delete report.");
+          if (action === "retry") {
+            const assetCount = Array.isArray(report.asset_data)
+              ? report.asset_data.length
+              : 0;
+            const tabsForAssets = resolveTabsForAssets(assetCount);
+
+            await window.electronAPI.retryCreateReportById(
+              recordId,
+              tabsForAssets,
+            );
+            await loadReports();
+            return { success: true };
           }
-          setStatus({ type: "success", message: "Report deleted." });
-          await loadReports();
-          return { success: true };
-        }
 
-        if (action === "download") {
-          await downloadCertificatesForReports([report]);
-          return { success: true };
-        }
+          if (action === "approve") {
+            const result = await updateDuplicateReport(recordId, {
+              checked: true,
+            });
+            if (!result?.success) {
+              throw new Error(result?.message || "Failed to approve report.");
+            }
+            setStatus({ type: "success", message: "Report approved." });
+            await loadReports();
+            return { success: true };
+          }
 
-        throw new Error("Unsupported action.");
-      },
-      { recordId, report },
-      {
-        requiredPoints: 0,
-        onViewChange,
-        showInsufficientPointsModal: () =>
-          setShowInsufficientPointsModal?.(true),
-        onAuthFailure: (reason) => {
-          setStatus({
-            type: "error",
-            message: reason?.message || "Authentication failed for action",
-          });
+          if (action === "delete") {
+            const result = await deleteDuplicateReport(recordId);
+            if (!result?.success) {
+              throw new Error(result?.message || "Failed to delete report.");
+            }
+            setStatus({ type: "success", message: "Report deleted." });
+            await loadReports();
+            return { success: true };
+          }
+
+          if (action === "download") {
+            await downloadCertificatesForReports([report]);
+            return { success: true };
+          }
+
+          throw new Error("Unsupported action.");
         },
-      }
-    );
-  } catch (err) {
-    setStatus({
-      type: "error",
-      message: err?.response?.data?.message || err?.message || "Action failed.",
-    });
-  } finally {
-    setReportActionBusy((prev) => {
-      const next = { ...prev };
-      delete next[recordId];
-      return next;
-    });
-  }
-};
-
-
-
+        { recordId, report },
+        {
+          requiredPoints: 0,
+          onViewChange,
+          showInsufficientPointsModal: () =>
+            setShowInsufficientPointsModal?.(true),
+          onAuthFailure: (reason) => {
+            setStatus({
+              type: "error",
+              message: reason?.message || "Authentication failed for action",
+            });
+          },
+        },
+      );
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message:
+          err?.response?.data?.message || err?.message || "Action failed.",
+      });
+    } finally {
+      setReportActionBusy((prev) => {
+        const next = { ...prev };
+        delete next[recordId];
+        return next;
+      });
+    }
+  };
 
   const handleBulkReportAction = async (action) => {
     if (!action) return;
     const selectedReports = reports.filter((report) =>
-      selectedReportSet.has(getReportRecordId(report))
+      selectedReportSet.has(getReportRecordId(report)),
     );
     if (!selectedReports.length) {
       setStatus({
@@ -2079,7 +2207,9 @@ const handleReportAction = async (report, action) => {
     }
 
     if (action === "delete") {
-      const confirmed = window.confirm("Delete selected reports and their assets?");
+      const confirmed = window.confirm(
+        "Delete selected reports and their assets?",
+      );
       if (!confirmed) return;
     }
 
@@ -2092,9 +2222,13 @@ const handleReportAction = async (report, action) => {
               ? firstReport.asset_data.length
               : 0;
             const tabsForAssets = resolveTabsForAssets(assetCount);
-            await submitToTaqeem(getReportRecordId(firstReport), tabsForAssets, {
-              withLoading: false,
-            });
+            await submitToTaqeem(
+              getReportRecordId(firstReport),
+              tabsForAssets,
+              {
+                withLoading: false,
+              },
+            );
           }
           return;
         }
@@ -2113,7 +2247,9 @@ const handleReportAction = async (report, action) => {
 
       if (action === "approve") {
         for (const report of selectedReports) {
-          await updateDuplicateReport(getReportRecordId(report), { checked: true });
+          await updateDuplicateReport(getReportRecordId(report), {
+            checked: true,
+          });
         }
         setStatus({ type: "success", message: "Selected reports approved." });
         await loadReports();
@@ -2131,9 +2267,7 @@ const handleReportAction = async (report, action) => {
       setStatus({
         type: "error",
         message:
-          err?.response?.data?.message ||
-          err?.message ||
-          "Bulk action failed.",
+          err?.response?.data?.message || err?.message || "Bulk action failed.",
       });
     }
   };
@@ -2250,7 +2384,8 @@ const handleReportAction = async (report, action) => {
         message: "Excel template downloaded successfully.",
       });
     } catch (err) {
-      const message = err?.message || "Failed to download Excel template. Please try again.";
+      const message =
+        err?.message || "Failed to download Excel template. Please try again.";
       setStatus({
         type: "error",
         message: message.includes("not found")
@@ -2264,14 +2399,15 @@ const handleReportAction = async (report, action) => {
 
   const headerAlert = status ? (
     <div
-      className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${status.type === "error"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
-        : status.type === "warning"
-          ? "border-amber-200 bg-amber-50 text-amber-700"
-          : status.type === "info"
-            ? "border-sky-200 bg-sky-50 text-sky-700"
-            : "border-emerald-200 bg-emerald-50 text-emerald-700"
-        }`}
+      className={`mb-3 rounded-2xl border px-3 py-2 flex items-start gap-2 text-[11px] ${
+        status.type === "error"
+          ? "border-rose-200 bg-rose-50 text-rose-700"
+          : status.type === "warning"
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : status.type === "info"
+              ? "border-sky-200 bg-sky-50 text-sky-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+      }`}
     >
       {status.type === "success" ? (
         <CheckCircle2 className="w-4 h-4 mt-0.5" />
@@ -2288,7 +2424,6 @@ const handleReportAction = async (report, action) => {
 
   return (
     <div className="p-6 space-y-5">
-
       {/* Enhanced button bar with better presentation */}
       <div className="rounded-xl border border-blue-900/10 bg-gradient-to-r from-white to-blue-50/30 shadow-sm p-3 mb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2400,31 +2535,51 @@ const handleReportAction = async (report, action) => {
                 <table className="min-w-full text-[10px] text-slate-700">
                   <thead className="bg-blue-900/10 text-blue-900 sticky top-0">
                     <tr>
-                      <th className="px-2 py-1 text-left font-semibold">Sheet</th>
-                      <th className="px-2 py-1 text-left font-semibold">Asset name</th>
-                      <th className="px-2 py-1 text-left font-semibold">Asset usage id</th>
-                      <th className="px-2 py-1 text-left font-semibold">Region</th>
-                      <th className="px-2 py-1 text-left font-semibold">City</th>
-                      <th className="px-2 py-1 text-left font-semibold">Final value</th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        Sheet
+                      </th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        Asset name
+                      </th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        Asset usage id
+                      </th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        Region
+                      </th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        City
+                      </th>
+                      <th className="px-2 py-1 text-left font-semibold">
+                        Final value
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {excelValidation.assets.slice(0, previewLimit).map((row, idx) => (
-                      <tr key={`${row.sheet}-${idx}`} className="border-t border-blue-900/10">
-                        <td className="px-2 py-1">{row.sheet}</td>
-                        <td className="px-2 py-1">{row.assetName || "-"}</td>
-                        <td className="px-2 py-1">{row.assetUsageId || "-"}</td>
-                        <td className="px-2 py-1">{row.region || "-"}</td>
-                        <td className="px-2 py-1">{row.city || "-"}</td>
-                        <td className="px-2 py-1">{row.finalValue || "-"}</td>
-                      </tr>
-                    ))}
+                    {excelValidation.assets
+                      .slice(0, previewLimit)
+                      .map((row, idx) => (
+                        <tr
+                          key={`${row.sheet}-${idx}`}
+                          className="border-t border-blue-900/10"
+                        >
+                          <td className="px-2 py-1">{row.sheet}</td>
+                          <td className="px-2 py-1">{row.assetName || "-"}</td>
+                          <td className="px-2 py-1">
+                            {row.assetUsageId || "-"}
+                          </td>
+                          <td className="px-2 py-1">{row.region || "-"}</td>
+                          <td className="px-2 py-1">{row.city || "-"}</td>
+                          <td className="px-2 py-1">{row.finalValue || "-"}</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
               {excelValidation.assets.length > previewLimit && (
                 <div className="px-2.5 py-1 text-[10px] text-blue-900/60 border-t border-blue-900/10">
-                  Showing first {previewLimit} of {excelValidation.assets.length} assets.
+                  Showing first {previewLimit} of{" "}
+                  {excelValidation.assets.length} assets.
                 </div>
               )}
             </div>
@@ -2436,8 +2591,6 @@ const handleReportAction = async (report, action) => {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="text-[11px] text-blue-900/70">
             Total reports: {pagination?.total ?? reports.length}
-
-
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold text-blue-900/60">
@@ -2482,60 +2635,58 @@ const handleReportAction = async (report, action) => {
           </div>
         )}
 
+        {orderedReports.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2 rounded-lg border border-blue-900/10 bg-blue-50/40 px-2.5 py-2">
+            <div className="text-[10px] text-blue-900/70">
+              Showing <span className="font-semibold">{pageFrom}</span>–
+              <span className="font-semibold">{pageTo}</span> of{" "}
+              <span className="font-semibold">{totalReports}</span>
+            </div>
 
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-semibold text-blue-900/60">
+                  Rows
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900"
+                >
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-{orderedReports.length > 0 && (
-  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 rounded-lg border border-blue-900/10 bg-blue-50/40 px-2.5 py-2">
-    <div className="text-[10px] text-blue-900/70">
-      Showing <span className="font-semibold">{pageFrom}</span>–
-      <span className="font-semibold">{pageTo}</span> of{" "}
-      <span className="font-semibold">{totalReports}</span>
-    </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safeCurrentPage <= 1}
+              >
+                Prev
+              </button>
 
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1">
-        <span className="text-[10px] font-semibold text-blue-900/60">
-          Rows
-        </span>
-        <select
-          value={pageSize}
-         onChange={(e) => {
-  setPageSize(Number(e.target.value));
-  setCurrentPage(1);
-          }}
-          className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] font-semibold text-blue-900"
-        >
-          {[5, 10, 20, 50, 100].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </div>
-
-   <button
-  type="button"
-  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-  disabled={safeCurrentPage <= 1}
->
-  Prev
-</button>
-
-      <div className="text-[10px] font-semibold text-blue-900/70">
-  Page {safeCurrentPage} / {totalPages}
-</div>
-<button
-  type="button"
-  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-  disabled={safeCurrentPage >= totalPages}
->
-  Next
-</button>
-    </div>
-  </div>
-)}
-
-        
+              <div className="text-[10px] font-semibold text-blue-900/70">
+                Page {safeCurrentPage} / {totalPages}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={safeCurrentPage >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {orderedReports.length > 0 && (
           <div className="overflow-x-auto">
@@ -2553,16 +2704,20 @@ const handleReportAction = async (report, action) => {
                 </tr>
               </thead>
               <tbody>
-               {orderedReports.map((report, idx) => {
-
-
+                {orderedReports.map((report, idx) => {
                   const recordId = getReportRecordId(report);
                   const reportIndex =
-                  (recordId && reportIndexMap.get(recordId)) || idx + 1;
+                    (recordId && reportIndexMap.get(recordId)) || idx + 1;
                   const statusKey = getReportStatus(report);
-                  const assetList = Array.isArray(report.asset_data) ? report.asset_data : [];
-                  const isExpanded = recordId ? expandedReports.includes(recordId) : false;
-                  const reportBusy = recordId ? reportActionBusy[recordId] : null;
+                  const assetList = Array.isArray(report.asset_data)
+                    ? report.asset_data
+                    : [];
+                  const isExpanded = recordId
+                    ? expandedReports.includes(recordId)
+                    : false;
+                  const reportBusy = recordId
+                    ? reportActionBusy[recordId]
+                    : null;
                   const selectedAssets = selectedAssetsByReport[recordId] || [];
                   const selectedAssetSet = new Set(selectedAssets);
                   const assetFilter = assetSelectFilters[recordId] || "all";
@@ -2571,7 +2726,7 @@ const handleReportAction = async (report, action) => {
                     .filter(({ asset }) =>
                       assetFilter === "all"
                         ? true
-                        : getAssetStatus(asset, report) === assetFilter
+                        : getAssetStatus(asset, report) === assetFilter,
                     );
 
                   return (
@@ -2583,10 +2738,14 @@ const handleReportAction = async (report, action) => {
                         <td className="px-2 py-1">
                           <button
                             type="button"
-                            onClick={() => recordId && toggleReportExpansion(recordId)}
+                            onClick={() =>
+                              recordId && toggleReportExpansion(recordId)
+                            }
                             disabled={!recordId}
                             className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-blue-900/20 text-blue-900 hover:bg-blue-50 disabled:opacity-50"
-                            aria-label={isExpanded ? "Hide assets" : "Show assets"}
+                            aria-label={
+                              isExpanded ? "Hide assets" : "Show assets"
+                            }
                           >
                             {isExpanded ? (
                               <ChevronDown className="w-3.5 h-3.5" />
@@ -2611,8 +2770,10 @@ const handleReportAction = async (report, action) => {
                         </td>
                         <td className="px-2 py-1">
                           <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${reportStatusClasses[statusKey] || "border-blue-200 bg-blue-50 text-blue-700"
-                              }`}
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                              reportStatusClasses[statusKey] ||
+                              "border-blue-200 bg-blue-50 text-blue-700"
+                            }`}
                           >
                             {reportStatusLabels[statusKey] || statusKey}
                           </span>
@@ -2635,9 +2796,13 @@ const handleReportAction = async (report, action) => {
                               <option value="retry">Retry submit</option>
                               <option value="delete">Delete</option>
                               <option value="edit">Edit</option>
-                              <option value="send-approver">Send to approver</option>
+                              <option value="send-approver">
+                                Send to approver
+                              </option>
                               <option value="approve">Approve</option>
-                              <option value="download">Download certificate</option>
+                              <option value="download">
+                                Download certificate
+                              </option>
                             </select>
                             <button
                               type="button"
@@ -2653,7 +2818,12 @@ const handleReportAction = async (report, action) => {
                                   });
                                 }
                               }}
-                              disabled={!recordId || !selectedReportActions[recordId] || submitting || !!reportBusy}
+                              disabled={
+                                !recordId ||
+                                !selectedReportActions[recordId] ||
+                                submitting ||
+                                !!reportBusy
+                              }
                               className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                               Go
@@ -2669,15 +2839,22 @@ const handleReportAction = async (report, action) => {
                           <input
                             type="checkbox"
                             disabled={!recordId}
-                            checked={!!recordId && selectedReportSet.has(recordId)}
-                            onChange={() => recordId && toggleReportSelection(recordId)}
+                            checked={
+                              !!recordId && selectedReportSet.has(recordId)
+                            }
+                            onChange={() =>
+                              recordId && toggleReportSelection(recordId)
+                            }
                             className="h-3.5 w-3.5 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
                           />
                         </td>
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={8} className="bg-blue-50/40 border-t border-blue-900/10">
+                          <td
+                            colSpan={8}
+                            className="bg-blue-50/40 border-t border-blue-900/10"
+                          >
                             <div className="p-2 space-y-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="text-[10px] text-blue-900/70">
@@ -2685,7 +2862,9 @@ const handleReportAction = async (report, action) => {
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <select
-                                    value={selectedAssetBulkActions[recordId] || ""}
+                                    value={
+                                      selectedAssetBulkActions[recordId] || ""
+                                    }
                                     onChange={(e) => {
                                       const action = e.target.value;
                                       setSelectedAssetBulkActions((prev) => ({
@@ -2697,12 +2876,15 @@ const handleReportAction = async (report, action) => {
                                   >
                                     <option value="">Asset actions</option>
                                     <option value="delete">Delete</option>
-                                    <option value="retry">Retry submission</option>
+                                    <option value="retry">
+                                      Retry submission
+                                    </option>
                                   </select>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const action = selectedAssetBulkActions[recordId];
+                                      const action =
+                                        selectedAssetBulkActions[recordId];
                                       if (action) {
                                         handleBulkAssetAction(report, action);
                                         // Clear selection after action
@@ -2713,7 +2895,9 @@ const handleReportAction = async (report, action) => {
                                         });
                                       }
                                     }}
-                                    disabled={!selectedAssetBulkActions[recordId]}
+                                    disabled={
+                                      !selectedAssetBulkActions[recordId]
+                                    }
                                     className="inline-flex items-center justify-center px-3 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                   >
                                     Go
@@ -2725,45 +2909,80 @@ const handleReportAction = async (report, action) => {
                                   <table className="min-w-full text-[10px] text-slate-700">
                                     <thead className="bg-white text-blue-900">
                                       <tr>
-                                        <th className="px-2 py-1 text-left font-semibold">Macro ID</th>
-                                        <th className="px-2 py-1 text-left font-semibold">Asset name</th>
-                                        <th className="px-2 py-1 text-left font-semibold">Final value</th>
-                                        <th className="px-2 py-1 text-left font-semibold">Approach</th>
-                                        <th className="px-2 py-1 text-left font-semibold">Status</th>
-                                        <th className="px-2 py-1 text-left font-semibold">Actions</th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Macro ID
+                                        </th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Asset name
+                                        </th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Final value
+                                        </th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Approach
+                                        </th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Status
+                                        </th>
+                                        <th className="px-2 py-1 text-left font-semibold">
+                                          Actions
+                                        </th>
                                         <th className="px-2 py-1 text-left font-semibold">
                                           <div className="flex flex-col gap-1">
                                             <select
                                               value={assetFilter}
                                               onChange={(e) => {
-                                                const nextFilter = e.target.value;
-                                                setAssetSelectFilters((prev) => ({
-                                                  ...prev,
-                                                  [recordId]: nextFilter,
-                                                }));
-                                                if (nextFilter === "all") {
-                                                  setSelectedAssetsByReport((prev) => ({
+                                                const nextFilter =
+                                                  e.target.value;
+                                                setAssetSelectFilters(
+                                                  (prev) => ({
                                                     ...prev,
-                                                    [recordId]: [],
-                                                  }));
+                                                    [recordId]: nextFilter,
+                                                  }),
+                                                );
+                                                if (nextFilter === "all") {
+                                                  setSelectedAssetsByReport(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      [recordId]: [],
+                                                    }),
+                                                  );
                                                   return;
                                                 }
                                                 const nextSelection = assetList
-                                                  .map((asset, assetIndex) => ({ asset, assetIndex }))
-                                                  .filter(({ asset }) =>
-                                                    getAssetStatus(asset, report) === nextFilter
+                                                  .map((asset, assetIndex) => ({
+                                                    asset,
+                                                    assetIndex,
+                                                  }))
+                                                  .filter(
+                                                    ({ asset }) =>
+                                                      getAssetStatus(
+                                                        asset,
+                                                        report,
+                                                      ) === nextFilter,
                                                   )
-                                                  .map(({ assetIndex }) => assetIndex);
-                                                setSelectedAssetsByReport((prev) => ({
-                                                  ...prev,
-                                                  [recordId]: nextSelection,
-                                                }));
+                                                  .map(
+                                                    ({ assetIndex }) =>
+                                                      assetIndex,
+                                                  );
+                                                setSelectedAssetsByReport(
+                                                  (prev) => ({
+                                                    ...prev,
+                                                    [recordId]: nextSelection,
+                                                  }),
+                                                );
                                               }}
                                               className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px]"
                                             >
-                                              <option value="all">All assets</option>
-                                              <option value="complete">Complete</option>
-                                              <option value="incomplete">Incomplete</option>
+                                              <option value="all">
+                                                All assets
+                                              </option>
+                                              <option value="complete">
+                                                Complete
+                                              </option>
+                                              <option value="incomplete">
+                                                Incomplete
+                                              </option>
                                             </select>
                                           </div>
                                         </th>
@@ -2772,85 +2991,155 @@ const handleReportAction = async (report, action) => {
                                     <tbody>
                                       {visibleAssets.length === 0 && (
                                         <tr>
-                                          <td colSpan={7} className="px-2 py-2 text-center text-blue-900/60">
+                                          <td
+                                            colSpan={7}
+                                            className="px-2 py-2 text-center text-blue-900/60"
+                                          >
                                             {assetList.length
                                               ? "No assets match the selected status."
                                               : "No assets available for this report."}
                                           </td>
                                         </tr>
                                       )}
-                                      {visibleAssets.map(({ asset, assetIndex }) => {
-                                        const macroId = getAssetMacroId(asset, report);
-                                        const assetStatus = getAssetStatus(asset, report);
-                                        const assetBusy = assetActionBusy[`${recordId}:${assetIndex}`];
-                                        return (
-                                          <tr key={`${recordId}-${assetIndex}`} className="border-t border-blue-900/10">
-                                            <td className="px-2 py-1">
-                                              {macroId || "Not created"}
-                                            </td>
-                                            <td className="px-2 py-1">{asset.asset_name || "-"}</td>
-                                            <td className="px-2 py-1">{asset.final_value || "-"}</td>
-                                            <td className="px-2 py-1">{getAssetApproach(asset)}</td>
-                                            <td className="px-2 py-1">
-                                              <span
-                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${assetStatusClasses[assetStatus] || "border-rose-200 bg-rose-50 text-rose-700"
+                                      {visibleAssets.map(
+                                        ({ asset, assetIndex }) => {
+                                          const macroId = getAssetMacroId(
+                                            asset,
+                                            report,
+                                          );
+                                          const assetStatus = getAssetStatus(
+                                            asset,
+                                            report,
+                                          );
+                                          const assetBusy =
+                                            assetActionBusy[
+                                              `${recordId}:${assetIndex}`
+                                            ];
+                                          return (
+                                            <tr
+                                              key={`${recordId}-${assetIndex}`}
+                                              className="border-t border-blue-900/10"
+                                            >
+                                              <td className="px-2 py-1">
+                                                {macroId || "Not created"}
+                                              </td>
+                                              <td className="px-2 py-1">
+                                                {asset.asset_name || "-"}
+                                              </td>
+                                              <td className="px-2 py-1">
+                                                {asset.final_value || "-"}
+                                              </td>
+                                              <td className="px-2 py-1">
+                                                {getAssetApproach(asset)}
+                                              </td>
+                                              <td className="px-2 py-1">
+                                                <span
+                                                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                                    assetStatusClasses[
+                                                      assetStatus
+                                                    ] ||
+                                                    "border-rose-200 bg-rose-50 text-rose-700"
                                                   }`}
-                                              >
-                                                {assetStatusLabels[assetStatus] || assetStatus}
-                                              </span>
-                                            </td>
-                                            {/* REPLACE THE EXISTING INDIVIDUAL ASSET ACTIONS SELECT */}
-                                            <td className="px-2 py-1">
-                                              <div className="flex items-center gap-1">
-                                                <select
-                                                  value={selectedAssetActions[`${recordId}:${assetIndex}`] || ""}
-                                                  disabled={!!assetBusy}
-                                                  onChange={(e) => {
-                                                    const action = e.target.value;
-                                                    setSelectedAssetActions((prev) => ({
-                                                      ...prev,
-                                                      [`${recordId}:${assetIndex}`]: action,
-                                                    }));
-                                                  }}
-                                                  className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] flex-1"
                                                 >
-                                                  <option value="">Actions</option>
-                                                  <option value="delete">Delete</option>
-                                                  <option value="retry">Retry submission</option>
-                                                  <option value="edit">Edit</option>
-                                                </select>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    const action = selectedAssetActions[`${recordId}:${assetIndex}`];
-                                                    if (action) {
-                                                      handleAssetAction(report, assetIndex, action);
-                                                      // Clear selection after action
-                                                      setSelectedAssetActions((prev) => {
-                                                        const next = { ...prev };
-                                                        delete next[`${recordId}:${assetIndex}`];
-                                                        return next;
-                                                      });
+                                                  {assetStatusLabels[
+                                                    assetStatus
+                                                  ] || assetStatus}
+                                                </span>
+                                              </td>
+                                              {/* REPLACE THE EXISTING INDIVIDUAL ASSET ACTIONS SELECT */}
+                                              <td className="px-2 py-1">
+                                                <div className="flex items-center gap-1">
+                                                  <select
+                                                    value={
+                                                      selectedAssetActions[
+                                                        `${recordId}:${assetIndex}`
+                                                      ] || ""
                                                     }
-                                                  }}
-                                                  disabled={!!assetBusy || !selectedAssetActions[`${recordId}:${assetIndex}`]}
-                                                  className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                                >
-                                                  Go
-                                                </button>
-                                              </div>
-                                            </td>
-                                            <td className="px-2 py-1">
-                                              <input
-                                                type="checkbox"
-                                                checked={selectedAssetSet.has(assetIndex)}
-                                                onChange={() => toggleAssetSelection(recordId, assetIndex)}
-                                                className="h-3.5 w-3.5 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
-                                              />
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
+                                                    disabled={!!assetBusy}
+                                                    onChange={(e) => {
+                                                      const action =
+                                                        e.target.value;
+                                                      setSelectedAssetActions(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          [`${recordId}:${assetIndex}`]:
+                                                            action,
+                                                        }),
+                                                      );
+                                                    }}
+                                                    className="rounded-md border border-blue-900/20 bg-white px-2 py-1 text-[10px] flex-1"
+                                                  >
+                                                    <option value="">
+                                                      Actions
+                                                    </option>
+                                                    <option value="delete">
+                                                      Delete
+                                                    </option>
+                                                    <option value="retry">
+                                                      Retry submission
+                                                    </option>
+                                                    <option value="edit">
+                                                      Edit
+                                                    </option>
+                                                  </select>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const action =
+                                                        selectedAssetActions[
+                                                          `${recordId}:${assetIndex}`
+                                                        ];
+                                                      if (action) {
+                                                        handleAssetAction(
+                                                          report,
+                                                          assetIndex,
+                                                          action,
+                                                        );
+                                                        // Clear selection after action
+                                                        setSelectedAssetActions(
+                                                          (prev) => {
+                                                            const next = {
+                                                              ...prev,
+                                                            };
+                                                            delete next[
+                                                              `${recordId}:${assetIndex}`
+                                                            ];
+                                                            return next;
+                                                          },
+                                                        );
+                                                      }
+                                                    }}
+                                                    disabled={
+                                                      !!assetBusy ||
+                                                      !selectedAssetActions[
+                                                        `${recordId}:${assetIndex}`
+                                                      ]
+                                                    }
+                                                    className="inline-flex items-center justify-center px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                  >
+                                                    Go
+                                                  </button>
+                                                </div>
+                                              </td>
+                                              <td className="px-2 py-1">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={selectedAssetSet.has(
+                                                    assetIndex,
+                                                  )}
+                                                  onChange={() =>
+                                                    toggleAssetSelection(
+                                                      recordId,
+                                                      assetIndex,
+                                                    )
+                                                  }
+                                                  className="h-3.5 w-3.5 rounded border-blue-900/30 text-blue-900 focus:ring-blue-900/20"
+                                                />
+                                              </td>
+                                            </tr>
+                                          );
+                                        },
+                                      )}
                                     </tbody>
                                   </table>
                                 </div>
@@ -2891,7 +3180,9 @@ const handleReportAction = async (report, action) => {
                 label="Report Type"
                 required
                 value={formData.report_type}
-                onChange={(e) => handleFieldChange("report_type", e.target.value)}
+                onChange={(e) =>
+                  handleFieldChange("report_type", e.target.value)
+                }
                 options={[
                   { value: "تقرير مفصل", label: "Detailed Report" },
                   { value: "ملخص التقرير", label: "Report Summary" },
@@ -2911,7 +3202,9 @@ const handleReportAction = async (report, action) => {
                 label="Valuation Purpose"
                 required
                 value={formData.purpose_id}
-                onChange={(e) => handleFieldChange("purpose_id", e.target.value)}
+                onChange={(e) =>
+                  handleFieldChange("purpose_id", e.target.value)
+                }
                 options={[
                   { value: "to set", label: "Select" },
                   { value: "1", label: "Selling" },
@@ -2989,7 +3282,9 @@ const handleReportAction = async (report, action) => {
               <InputField
                 label="Assumptions"
                 value={formData.assumptions}
-                onChange={(e) => handleFieldChange("assumptions", e.target.value)}
+                onChange={(e) =>
+                  handleFieldChange("assumptions", e.target.value)
+                }
                 placeholder="Enter general assumptions for the valuation"
                 className="bg-white p-1.5"
               />
@@ -3126,10 +3421,11 @@ const handleReportAction = async (report, action) => {
                   type="button"
                   onClick={addValuer}
                   disabled={valuerInputsDisabled}
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold ${valuerInputsDisabled
-                    ? "bg-blue-900/20 text-blue-900/50 cursor-not-allowed"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold ${
+                    valuerInputsDisabled
+                      ? "bg-blue-900/20 text-blue-900/50 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
                 >
                   اضافة مقيم اخر
                 </button>
@@ -3151,15 +3447,18 @@ const handleReportAction = async (report, action) => {
 
             {selectedCompany && !valuerOptions.length && (
               <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-900 flex flex-wrap items-center justify-between gap-2">
-                <span>Connect to Taqeem first to load valuers for this company.</span>
+                <span>
+                  Connect to Taqeem first to load valuers for this company.
+                </span>
                 <button
                   type="button"
                   onClick={handleLoadValuers}
                   disabled={fetchingCompanyValuers}
-                  className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[10px] font-semibold ${fetchingCompanyValuers
-                    ? "bg-amber-200 text-amber-800 cursor-not-allowed"
-                    : "bg-amber-600 text-white hover:bg-amber-700"
-                    }`}
+                  className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[10px] font-semibold ${
+                    fetchingCompanyValuers
+                      ? "bg-amber-200 text-amber-800 cursor-not-allowed"
+                      : "bg-amber-600 text-white hover:bg-amber-700"
+                  }`}
                 >
                   {fetchingCompanyValuers ? "Loading..." : "Connect to Taqeem"}
                 </button>
@@ -3168,14 +3467,15 @@ const handleReportAction = async (report, action) => {
 
             {valuerNotice && (
               <div
-                className={`mb-2 rounded-lg border px-3 py-2 text-[10px] ${valuerNotice.type === "success"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : valuerNotice.type === "error"
-                    ? "border-rose-200 bg-rose-50 text-rose-800"
-                    : valuerNotice.type === "warning"
-                      ? "border-amber-200 bg-amber-50 text-amber-900"
-                      : "border-blue-200 bg-blue-50 text-blue-800"
-                  }`}
+                className={`mb-2 rounded-lg border px-3 py-2 text-[10px] ${
+                  valuerNotice.type === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : valuerNotice.type === "error"
+                      ? "border-rose-200 bg-rose-50 text-rose-800"
+                      : valuerNotice.type === "warning"
+                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                        : "border-blue-200 bg-blue-50 text-blue-800"
+                }`}
               >
                 {valuerNotice.message}
               </div>
@@ -3219,7 +3519,7 @@ const handleReportAction = async (report, action) => {
                         handleValuerChange(
                           idx,
                           "contribution_percentage",
-                          Number(e.target.value)
+                          Number(e.target.value),
                         )
                       }
                     >
@@ -3264,7 +3564,9 @@ const handleReportAction = async (report, action) => {
                       type="file"
                       accept=".xlsx,.xls"
                       className="hidden"
-                      onChange={(e) => setExcelFileAndRemember(e.target.files?.[0] || null)}
+                      onChange={(e) =>
+                        setExcelFileAndRemember(e.target.files?.[0] || null)
+                      }
                     />
                   </label>
                 </div>
@@ -3286,7 +3588,9 @@ const handleReportAction = async (report, action) => {
                     <div className="flex items-center justify-between">
                       <div>
                         {pdfFile ? (
-                          <p className="text-xs text-green-700 mt-1">{pdfFile.name}</p>
+                          <p className="text-xs text-green-700 mt-1">
+                            {pdfFile.name}
+                          </p>
                         ) : (
                           fileNotes.pdfName && (
                             <p className="text-xs text-blue-700 mt-1">
@@ -3303,7 +3607,9 @@ const handleReportAction = async (report, action) => {
                           accept=".pdf"
                           className="hidden"
                           ref={pdfInputRef}
-                          onChange={(e) => setPdfFileAndRemember(e.target.files?.[0] || null)}
+                          onChange={(e) =>
+                            setPdfFileAndRemember(e.target.files?.[0] || null)
+                          }
                           onClick={(e) => {
                             e.currentTarget.value = null;
                           }}
@@ -3311,14 +3617,17 @@ const handleReportAction = async (report, action) => {
                       </label>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-blue-900/60">PDF upload is disabled.</p>
+                    <p className="text-[10px] text-blue-900/60">
+                      PDF upload is disabled.
+                    </p>
                   )}
                 </div>
               </div>
             </Section>
           ) : (
             <div className="rounded-xl border border-blue-900/10 bg-blue-50/40 px-3 py-2 text-[10px] text-blue-900/70">
-              Attachments are locked while editing. Create a new report to upload Excel or PDF files.
+              Attachments are locked while editing. Create a new report to
+              upload Excel or PDF files.
             </div>
           )}
 
@@ -3333,10 +3642,11 @@ const handleReportAction = async (report, action) => {
               <button
                 onClick={handleUpdateReport}
                 disabled={updatingReport}
-                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${updatingReport
-                  ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
-                  : "bg-blue-900 hover:bg-blue-800 text-white"
-                  }`}
+                className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
+                  updatingReport
+                    ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                    : "bg-blue-900 hover:bg-blue-800 text-white"
+                }`}
               >
                 {updatingReport ? (
                   <span className="inline-flex items-center gap-2">
@@ -3352,10 +3662,11 @@ const handleReportAction = async (report, action) => {
                 <button
                   onClick={() => handleCreateReport()}
                   disabled={submitting || excelValidationLoading}
-                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
-                    ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
-                    : "bg-blue-900 hover:bg-blue-800 text-white"
-                    }`}
+                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
+                    submitting
+                      ? "bg-blue-900/10 text-blue-900/50 cursor-not-allowed"
+                      : "bg-blue-900 hover:bg-blue-800 text-white"
+                  }`}
                 >
                   {submitting ? (
                     <span className="inline-flex items-center gap-2">
@@ -3370,10 +3681,11 @@ const handleReportAction = async (report, action) => {
                 <button
                   onClick={handleStoreAndSubmitNow}
                   disabled={submitting || excelValidationLoading}
-                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${submitting
-                    ? "bg-emerald-900/10 text-emerald-900/50 cursor-not-allowed"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    }`}
+                  className={`px-4 py-2 rounded-md text-[11px] font-semibold shadow-sm transition-all ${
+                    submitting
+                      ? "bg-emerald-900/10 text-emerald-900/50 cursor-not-allowed"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  }`}
                 >
                   {submitting ? (
                     <span className="inline-flex items-center gap-2">
@@ -3405,7 +3717,10 @@ const handleReportAction = async (report, action) => {
               label="Asset name"
               value={assetDraft.asset_name}
               onChange={(e) =>
-                setAssetDraft((prev) => ({ ...prev, asset_name: e.target.value }))
+                setAssetDraft((prev) => ({
+                  ...prev,
+                  asset_name: e.target.value,
+                }))
               }
             />
             <InputField
@@ -3455,8 +3770,11 @@ const handleReportAction = async (report, action) => {
               type="button"
               onClick={handleSaveAssetEdit}
               disabled={assetEditBusy}
-              className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${assetEditBusy ? "bg-blue-900/40" : "bg-blue-900 hover:bg-blue-800"
-                }`}
+              className={`rounded-md px-4 py-2 text-[11px] font-semibold text-white ${
+                assetEditBusy
+                  ? "bg-blue-900/40"
+                  : "bg-blue-900 hover:bg-blue-800"
+              }`}
             >
               {assetEditBusy ? "Saving..." : "Save"}
             </button>
