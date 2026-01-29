@@ -2030,6 +2030,18 @@ const buildValuersPayload = () =>
         }))
         .filter((valuer) => valuer.valuer_name);
 
+
+
+         const valuerSummary = useMemo(() => {
+        const cleaned = buildValuersPayload();
+        if (useDefaultValuers || cleaned.length === 0) {
+            return "Using default valuer";
+        }
+        return cleaned
+            .map((valuer) => `${valuer.valuer_name} (${valuer.contribution_percentage}%)`)
+            .join(", ");
+    }, [useDefaultValuers, valuers]);
+
     const validateReport = () => {
         const newErrors = {};
         const today = new Date();
@@ -2953,16 +2965,9 @@ const buildValuersPayload = () =>
     const draftValuerTotal = sumValuerPercentages(draftValuers);
     const draftHasNamedValuer = draftValuers.some((valuer) => String(valuer?.valuer_name || "").trim());
     const draftValuerValid = draftHasNamedValuer && Math.abs(draftValuerTotal - 100) < 0.001;
-    const valuerSummary = useMemo(() => {
-        const cleaned = buildValuersPayload();
-        if (useDefaultValuers || cleaned.length === 0) {
-            return "Using default valuer";
-        }
-        return cleaned
-            .map((valuer) => `${valuer.valuer_name} (${valuer.contribution_percentage}%)`)
-            .join(", ");
-    }, [useDefaultValuers, valuers]);
 
+
+   
     const valuerModal = (
         <Modal
             open={valuerModalOpen}
